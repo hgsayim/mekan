@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a1a1a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MekanApp">
+    <title>MekanApp - Kafe Yönetimi</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="header-content">
+                <h1>🍺 MekanApp</h1>
+                <nav class="main-nav-compact">
+                    <button class="menu-toggle" id="menu-toggle">☰ Menü</button>
+                    <div class="menu-dropdown" id="menu-dropdown">
+                        <button class="nav-btn-compact active" data-view="tables">Masalar</button>
+                        <button class="nav-btn-compact" data-view="products">Ürünler</button>
+                        <button class="nav-btn-compact" data-view="customers">Müşteriler</button>
+                        <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
+                        <button class="nav-btn-compact" data-view="daily">Rapor</button>
+                    </div>
+                </nav>
+            </div>
+        </header>
+
+        <main>
+            <!-- Tables View -->
+            <section id="tables-view" class="view active">
+                <div class="view-header">
+                    <h2>Masalar</h2>
+                    <button class="btn btn-primary btn-add-icon" id="add-table-btn" title="Masa Ekle">+ Masa Ekle</button>
+                </div>
+                <div id="tables-container" class="tables-grid"></div>
+            </section>
+
+            <!-- Products View -->
+            <section id="products-view" class="view">
+                <div class="view-header">
+                    <h2>Ürünler</h2>
+                    <button class="btn btn-primary btn-add-icon" id="add-product-btn" title="Ürün Ekle">+ Ürün Ekle</button>
+                </div>
+                <div id="products-container" class="products-grid"></div>
+            </section>
+
+            <!-- Customers View -->
+            <section id="customers-view" class="view">
+                <div class="view-header">
+                    <h2>Müşteriler</h2>
+                    <button class="btn btn-primary btn-add-icon" id="add-customer-btn" title="Müşteri Ekle">+ Müşteri Ekle</button>
+                </div>
+                <div id="customers-container" class="customers-grid"></div>
+            </section>
+
+            <!-- Sales History View -->
+            <section id="sales-view" class="view">
+                <div class="view-header">
+                    <h2>Satış Geçmişi</h2>
+                    <div class="filter-controls">
+                        <select id="sales-table-filter">
+                            <option value="">Tüm Masalar</option>
+                        </select>
+                        <select id="sales-status-filter">
+                            <option value="">Tüm Durumlar</option>
+                            <option value="paid">Ödendi</option>
+                            <option value="unpaid">Ödenmedi</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="sales-container" class="sales-list"></div>
+            </section>
+
+            <!-- Daily Dashboard View -->
+            <section id="daily-view" class="view">
+                <div class="view-header">
+                    <h2>Rapor ve Analiz</h2>
+                    <div class="report-controls">
+                        <div class="report-date-controls">
+                            <label class="report-date-label">
+                                <strong>Başlangıç Tarihi:</strong>
+                                <input type="date" id="report-start-date" class="report-date-input">
+                            </label>
+                            <label class="report-date-label">
+                                <strong>Bitiş Tarihi:</strong>
+                                <input type="date" id="report-end-date" class="report-date-input">
+                            </label>
+                            <button class="btn btn-primary report-btn" id="report-apply-btn">Uygula</button>
+                            <button class="btn btn-secondary report-btn" id="report-today-btn">Bugün</button>
+                            <button class="btn btn-danger report-btn" id="add-manual-session-btn">+ Manuel Oyun</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="daily-container">
+                    <!-- Stats Cards -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-icon">💰</div>
+                            <div class="stat-content">
+                                <h3>Günlük Gelir</h3>
+                                <p class="stat-value" id="daily-income">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📦</div>
+                            <div class="stat-content">
+                                <h3>Satılan Ürün</h3>
+                                <p class="stat-value" id="products-sold">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">⏱️</div>
+                            <div class="stat-content">
+                                <h3>Masa Saatleri</h3>
+                                <p class="stat-value" id="table-hours">0 dk</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💵</div>
+                            <div class="stat-content">
+                                <h3>Saatlik Gelir</h3>
+                                <p class="stat-value" id="hourly-income">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🛒</div>
+                            <div class="stat-content">
+                                <h3>Ürün Geliri</h3>
+                                <p class="stat-value" id="product-income">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📊</div>
+                            <div class="stat-content">
+                                <h3>İşlemler</h3>
+                                <p class="stat-value" id="transactions-count">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">💎</div>
+                            <div class="stat-content">
+                                <h3>Ürün Karı</h3>
+                                <p class="stat-value" id="product-profit">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">🎮</div>
+                            <div class="stat-content">
+                                <h3>Oyun Karı</h3>
+                                <p class="stat-value" id="game-profit">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">📈</div>
+                            <div class="stat-content">
+                                <h3>Toplam Kar</h3>
+                                <p class="stat-value" id="total-profit">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
+                            <div class="stat-icon">💳</div>
+                            <div class="stat-content">
+                                <h3>Bugün Verilen Veresiye</h3>
+                                <p class="stat-value" id="credit-given-today">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="background: #f8d7da; border-color: #dc3545;">
+                            <div class="stat-icon">📋</div>
+                            <div class="stat-content">
+                                <h3>Toplam Veresiye Bakiyesi</h3>
+                                <p class="stat-value" id="total-credit-balance">0.00 ₺</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Section -->
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Türe Göre Gelir</h3>
+                            <div id="income-chart-container" style="position: relative; height: 300px;">
+                                <canvas id="income-chart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <h3>Satılan Ürünler</h3>
+                            <div id="products-chart-container" style="position: relative; height: 300px;">
+                                <canvas id="products-chart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Table Usage Details -->
+                    <div class="table-usage-section">
+                        <h3>Masa Kullanım Detayları</h3>
+                        <div id="table-usage-list"></div>
+                    </div>
+
+                    <!-- Manual Sessions -->
+                    <div class="table-usage-section">
+                        <h3>Manuel Oyun Kayıtları</h3>
+                        <div id="manual-sessions-list"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer id="info-footer">
+            <div class="footer-content">
+                <div class="footer-item">
+                    <span class="footer-label">Tarih & Saat:</span>
+                    <span id="footer-date-time" class="footer-value">--:--</span>
+                </div>
+                <div class="footer-item footer-credit">
+                    <span class="footer-value">developed by hgs for Mekan 2026</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Table Detail Modal -->
+    <div id="table-modal" class="modal">
+        <div class="modal-content">
+            <div class="table-modal-header">
+                <h2 id="table-modal-title">Masa</h2>
+                <span class="close close-header">&times;</span>
+            </div>
+            <div id="table-modal-body">
+                <!-- Products Selection Section (shown when table is open or regular table) -->
+                <div id="table-products-section" style="display: none;">
+                    <h3 style="margin-top: 12px; margin-bottom: 10px; font-size: 1.1rem;">Ürün Seçin</h3>
+                    <div id="table-products-grid" class="products-grid-mini"></div>
+                </div>
+                <!-- Divider between products and orders -->
+                <div class="table-modal-divider"></div>
+                <div id="table-sales-list" class="sales-items"></div>
+            </div>
+            <div class="table-modal-footer">
+                <div class="table-info-footer">
+                    <div id="hourly-info" style="display: none;" class="table-info-grid">
+                        <span><strong>Açılış:</strong> <span id="modal-open-time"></span></span>
+                        <span><strong>Oyun:</strong> <span id="modal-hourly-total"></span> ₺</span>
+                        <span><strong>Ürün:</strong> <span id="modal-sales-total"></span> ₺</span>
+                        <span class="table-info-total"><strong>Toplam:</strong> <span id="modal-check-total"></span> ₺</span>
+                    </div>
+                    <div id="regular-info" class="table-info-grid" style="display: none;">
+                        <span class="table-info-total"><strong>Toplam:</strong> <span id="modal-check-total-regular"></span> ₺</span>
+                    </div>
+                </div>
+                <div class="table-footer-buttons">
+                    <button class="btn btn-warning btn-footer" id="pay-table-btn">₺ Nakit</button>
+                    <button class="btn btn-info btn-footer" id="credit-table-btn" style="display: none;">💳 Veresiye</button>
+                    <button class="btn btn-danger btn-footer" id="cancel-hourly-btn" style="display: none;">✖ İptal</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delayed Start Modal (Hourly Tables) -->
+    <div id="delayed-start-modal" class="modal">
+        <div class="modal-content delayed-start-modal-content">
+            <span class="close">&times;</span>
+            <h2>Gecikmeli Başlat</h2>
+            <input type="hidden" id="delayed-start-table-id">
+            <label>
+                Başlama Saati (Bugün):
+                <input type="time" id="delayed-start-time" class="delayed-start-time-input" required>
+            </label>
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" id="delayed-start-confirm-btn">Başlat</button>
+                <button type="button" class="btn btn-secondary" id="delayed-start-cancel-btn">İptal</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Session Modal (Report Backfill) -->
+    <div id="manual-session-modal" class="modal">
+        <div class="modal-content manual-session-modal-content">
+            <span class="close">&times;</span>
+            <h2>Manuel Oyun Girişi</h2>
+            <form id="manual-session-form">
+                <label>
+                    Masa:
+                    <select id="manual-session-table" required></select>
+                </label>
+                <label>
+                    Başlangıç:
+                    <input type="time" id="manual-session-start" required>
+                </label>
+                <label>
+                    Bitiş:
+                    <input type="time" id="manual-session-end" required>
+                </label>
+                <label class="stock-control-label" style="margin-top: 6px;">
+                    <div class="stock-checkbox-group">
+                        <input type="checkbox" id="manual-session-auto-amount" checked>
+                        <span>Tutarı otomatik hesapla (Masanın saatlik ücretine göre)</span>
+                    </div>
+                </label>
+                <label>
+                    Alınan Tutar (₺):
+                    <input type="number" id="manual-session-amount" step="0.01" min="0" required>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                    <button type="button" class="btn btn-secondary" id="manual-session-cancel-btn">İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Product Modal -->
+    <div id="product-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="product-modal-title">Ürün Ekle</h2>
+            <form id="product-form">
+                <input type="hidden" id="product-id">
+                <label>
+                    Ürün Adı:
+                    <input type="text" id="product-name" required>
+                </label>
+                <label>
+                    Satış Fiyatı (₺):
+                    <input type="number" id="product-price" step="0.01" min="0" required>
+                </label>
+                <label>
+                    Alış Fiyatı (₺):
+                    <input type="number" id="product-arrival-price" step="0.01" min="0" required>
+                </label>
+                <label id="product-stock-label" class="stock-control-label">
+                    <div class="stock-checkbox-group">
+                        <input type="checkbox" id="product-track-stock" checked>
+                        <span>Stok Takibi Yap</span>
+                    </div>
+                    <div class="stock-input-group">
+                        <span>Stok:</span>
+                        <input type="number" id="product-stock" min="0" value="0" class="stock-input">
+                    </div>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-product-btn">İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Table Modal -->
+    <div id="table-form-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="table-form-modal-title">Masa Ekle</h2>
+            <form id="table-form">
+                <input type="hidden" id="table-id">
+                <label>
+                    Masa Adı:
+                    <input type="text" id="table-name" required>
+                </label>
+                <label>
+                    Masa Tipi:
+                    <select id="table-type" required>
+                        <option value="regular">Normal Masa</option>
+                        <option value="hourly">Saatlik Ücretli Masa</option>
+                    </select>
+                </label>
+                <label id="hourly-rate-label" style="display: none;">
+                    Saatlik Ücret (₺):
+                    <input type="number" id="table-hourly-rate" step="0.01" min="0">
+                </label>
+                <label id="table-icon-label">
+                    Masa İkonu:
+                    <select id="table-icon" required>
+                        <option value="🪑">🪑 Sandalye</option>
+                        <option value="🍽️">🍽️ Masa</option>
+                        <option value="💺">💺 Koltuk</option>
+                        <option value="🛋️">🛋️ Koltuk (Yumuşak)</option>
+                        <option value="☕">☕ Kahve</option>
+                        <option value="🍺">🍺 Bira</option>
+                        <option value="🎱">🎱 Bilardo</option>
+                        <option value="🎮">🎮 PlayStation</option>
+                        <option value="🎯">🎯 Dart</option>
+                        <option value="🎲">🎲 Zar Oyunu</option>
+                        <option value="🏓">🏓 Masa Tenisi</option>
+                        <option value="🎳">🎳 Bowling</option>
+                        <option value="🎸">🎸 Gitar</option>
+                        <option value="🎤">🎤 Mikrofon</option>
+                        <option value="🎹">🎹 Piyano</option>
+                        <option value="🃏">🃏 Kart Oyunu</option>
+                    </select>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-table-form-btn">İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Product to Table Modal -->
+    <div id="add-product-table-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Masaya Ürün Ekle</h2>
+            <form id="add-product-table-form">
+                <input type="hidden" id="current-table-id">
+                <label>
+                    Ürün:
+                    <select id="product-select" required></select>
+                </label>
+                <label>
+                    Miktar:
+                    <input type="number" id="product-amount" min="1" value="1" required>
+                </label>
+                <div id="product-stock-info"></div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Ekle</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-add-product-table-btn">İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add/Edit Customer Modal -->
+    <div id="customer-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="customer-modal-title">Müşteri Ekle</h2>
+            <form id="customer-form">
+                <input type="hidden" id="customer-id">
+                <label>
+                    Müşteri Adı:
+                    <input type="text" id="customer-name" required>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-customer-btn">İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Customer Payment Modal -->
+    <div id="customer-payment-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="customer-payment-title">Müşteri Ödemesi</h2>
+            <div id="customer-payment-body">
+                <div style="margin-bottom: 20px;">
+                    <p><strong>Müşteri:</strong> <span id="payment-customer-name"></span></p>
+                    <p><strong>Veresiye Bakiyesi:</strong> <span id="payment-customer-balance" style="font-size: 1.2rem; font-weight: bold; color: #e74c3c;"></span></p>
+                </div>
+                <form id="customer-payment-form">
+                    <input type="hidden" id="payment-customer-id">
+                    <label>
+                        Ödeme Miktarı (₺):
+                        <input type="number" id="payment-amount" step="0.01" min="0.01" required>
+                    </label>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-success" id="pay-full-amount-btn">TAMAMINI AL</button>
+                        <button type="submit" class="btn btn-primary">Ödeme Yap</button>
+                        <button type="button" class="btn btn-secondary" id="cancel-customer-payment-btn">İptal</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Selection Modal for Credit -->
+    <div id="customer-selection-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Müşteri Seçin</h2>
+            <div id="customer-selection-buttons" class="customer-selection-buttons"></div>
+        </div>
+    </div>
+
+    <!-- Adisyon (Receipt) Modal -->
+    <div id="receipt-modal" class="modal">
+        <div class="modal-content receipt-modal-content">
+            <div class="receipt-header">
+                <h2>ADİSYON</h2>
+                <div id="receipt-date-time" class="receipt-date-time"></div>
+            </div>
+            <div id="receipt-body" class="receipt-body">
+                <!-- Receipt content will be inserted here -->
+            </div>
+            <div class="receipt-actions">
+                <button class="btn btn-secondary" id="cancel-receipt-btn">İptal</button>
+                <button class="btn btn-success" id="confirm-payment-btn">Ödemeyi Tamamla</button>
+                <button class="btn btn-info" id="confirm-credit-btn" style="display: none;">Veresiye İşaretle</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Dialog (replaces browser alert/confirm) -->
+    <div id="app-dialog" class="modal app-dialog-modal" aria-hidden="true">
+        <div class="modal-content app-dialog-content" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title">
+            <div class="app-dialog-header">
+                <h2 id="app-dialog-title">Uyarı</h2>
+                <span class="close app-dialog-close" id="app-dialog-close" aria-label="Kapat">&times;</span>
+            </div>
+            <div id="app-dialog-message" class="app-dialog-message"></div>
+            <div class="form-actions app-dialog-actions">
+                <button type="button" class="btn btn-secondary" id="app-dialog-cancel-btn" style="display:none;">İptal</button>
+                <button type="button" class="btn btn-primary" id="app-dialog-confirm-btn">Tamam</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="database.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

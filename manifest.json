@@ -1,0 +1,11 @@
+{
+  "name": "MekanApp - Kafe Yönetimi",
+  "short_name": "MekanApp",
+  "description": "Kafe ve restoran yönetim uygulaması",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ecf0f1",
+  "theme_color": "#1a1a1a",
+  "orientation": "any",
+  "categories": ["business", "productivity"]
+}
