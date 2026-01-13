@@ -603,6 +603,15 @@ class MekanApp {
             if (!this._dialogResolver) return;
             const resolver = this._dialogResolver;
             this._dialogResolver = null;
+            // Avoid aria-hidden warning: blur focus inside modal before hiding it
+            try {
+                const activeEl = document.activeElement;
+                if (activeEl && modal.contains(activeEl)) {
+                    activeEl.blur();
+                }
+            } catch (e) {
+                // ignore
+            }
             modal.classList.remove('active');
             modal.setAttribute('aria-hidden', 'true');
             resolver(value);
@@ -3071,16 +3080,26 @@ class MekanApp {
         container.addEventListener('click', (e) => {
             const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
             if (!target) return;
-            
-            const id = target.id.split('-').pop();
-            if (!id) return;
-            
-            if (target.id.startsWith('edit-product-')) {
+
+            const extractId = (prefix) => {
+                if (!target.id.startsWith(prefix)) return null;
+                const idPart = target.id.slice(prefix.length);
+                return idPart || null;
+            };
+
+            const editPrefix = 'edit-product-';
+            const deletePrefix = 'delete-product-';
+
+            if (target.id.startsWith(editPrefix)) {
+                const id = extractId(editPrefix);
+                if (!id) return;
                 const product = products.find(p => String(p.id) === String(id));
                 if (product) {
                     this.openProductFormModal(product);
                 }
-            } else if (target.id.startsWith('delete-product-')) {
+            } else if (target.id.startsWith(deletePrefix)) {
+                const id = extractId(deletePrefix);
+                if (!id) return;
                 this.deleteProduct(id);
             }
         });
