@@ -63,6 +63,54 @@ export class SupabaseDatabase {
         updatedAt: 'updated_at',
       },
     };
+
+    // Prevent 400 errors: app.js may include fields that are not real DB columns
+    // (e.g. tables.sales array used only in IndexedDB). We whitelist columns per table.
+    this.allowedColumns = {
+      products: new Set(['id', 'name', 'price', 'arrival_price', 'track_stock', 'stock', 'created_at', 'updated_at']),
+      tables: new Set([
+        'id',
+        'name',
+        'type',
+        'icon',
+        'hourly_rate',
+        'is_active',
+        'open_time',
+        'close_time',
+        'sales_total',
+        'check_total',
+        'hourly_total',
+        'created_at',
+        'updated_at',
+      ]),
+      sales: new Set([
+        'id',
+        'table_id',
+        'customer_id',
+        'items',
+        'sell_datetime',
+        'sale_total',
+        'is_paid',
+        'is_credit',
+        'payment_time',
+        'created_at',
+        'updated_at',
+      ]),
+      customers: new Set(['id', 'name', 'balance', 'created_at', 'updated_at']),
+      manualSessions: new Set([
+        'id',
+        'type',
+        'table_id',
+        'table_name',
+        'open_time',
+        'close_time',
+        'hours_used',
+        'hourly_rate',
+        'amount',
+        'created_at',
+        'updated_at',
+      ]),
+    };
   }
 
   // Keep parity with old Database.init()
@@ -80,10 +128,13 @@ export class SupabaseDatabase {
   _camelToSnake(tableKey, obj) {
     if (!obj) return obj;
     const map = this.columnMaps[tableKey] || {};
+    const allowed = this.allowedColumns?.[tableKey] || null;
     const out = {};
     Object.keys(obj).forEach((k) => {
       const dbKey = map[k] || k;
-      out[dbKey] = obj[k];
+      if (!allowed || allowed.has(dbKey)) {
+        out[dbKey] = obj[k];
+      }
     });
     return out;
   }

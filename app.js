@@ -650,7 +650,7 @@ class MekanApp {
                 this.startTableCardPriceUpdates();
             }
         } catch (error) {
-            console.error('Error loading initial data:', error);
+            console.error('Error loading initial data:', error, error?.message, error?.details, error?.hint, error?.code);
             // Continue anyway - some data might still load
         }
     }
@@ -1176,7 +1176,7 @@ class MekanApp {
             document.getElementById('table-form-modal').classList.remove('active');
             await this.loadTables();
         } catch (error) {
-            console.error('Masa kaydedilirken hata:', error);
+            console.error('Masa kaydedilirken hata:', error, error?.message, error?.details, error?.hint, error?.code);
             await this.appAlert('Masa kaydedilirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
