@@ -11,6 +11,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Generated in dist/ by build.mjs on Cloudflare Pages -->
+    <script src="env.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -512,7 +514,30 @@
         </div>
     </div>
 
-    <script src="database.js"></script>
-    <script src="app.js"></script>
+    <!-- Auth Modal (Supabase) -->
+    <div id="auth-modal" class="modal active" style="display:none;">
+        <div class="modal-content" style="max-width: 420px;">
+            <div class="table-modal-header">
+                <h2>Giriş Yap</h2>
+            </div>
+            <div style="margin-top: 10px;">
+                <label>
+                    Email:
+                    <input type="email" id="auth-email" autocomplete="email" required>
+                </label>
+                <label>
+                    Şifre:
+                    <input type="password" id="auth-password" autocomplete="current-password" required>
+                </label>
+                <div id="auth-error" style="margin-top: 10px; color: #e74c3c; font-weight: 600; display:none;"></div>
+                <div class="form-actions" style="margin-top: 12px;">
+                    <button type="button" class="btn btn-primary" id="auth-login-btn">Giriş Yap</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Supabase + App (module) -->
+    <script type="module" src="app.js"></script>
 </body>
 </html>

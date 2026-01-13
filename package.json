@@ -1,0 +1,10 @@
+{
+  "name": "mekanapp",
+  "private": true,
+  "version": "1.0.0",
+  "description": "MekanApp (Cloudflare Pages static) with Supabase",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}
+

@@ -1,0 +1,45 @@
+import { mkdir, rm, writeFile, copyFile, readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+
+const DIST_DIR = 'dist';
+
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+
+function required(name, value) {
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+}
+
+required('SUPABASE_URL', SUPABASE_URL);
+required('SUPABASE_ANON_KEY', SUPABASE_ANON_KEY);
+
+await rm(DIST_DIR, { recursive: true, force: true });
+await mkdir(DIST_DIR, { recursive: true });
+
+// Copy all top-level project files we serve (keep it explicit to avoid shipping notes/docs)
+const FILES = [
+  'index.html',
+  'styles.css',
+  'app.js',
+  'supabase-db.js',
+  'supabase-config.js',
+  'service-worker.js',
+  'manifest.json',
+];
+
+for (const f of FILES) {
+  await copyFile(f, join(DIST_DIR, f));
+}
+
+// Generate env.js (loaded before app.js). Safe: anon key is public; still nicer not to commit.
+const envJs = `// Generated at build time by build.mjs (Cloudflare Pages env vars)
+window.__MEKANAPP_ENV__ = {
+  SUPABASE_URL: ${JSON.stringify(SUPABASE_URL)},
+  SUPABASE_ANON_KEY: ${JSON.stringify(SUPABASE_ANON_KEY)}
+};
+`;
+
+await writeFile(join(DIST_DIR, 'env.js'), envJs, 'utf8');
+

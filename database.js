@@ -285,18 +285,6 @@ class Database {
         });
     }
 
-    async getSalesByTable(tableId) {
-        const transaction = this.db.transaction(['sales'], 'readonly');
-        const store = transaction.objectStore('sales');
-        const index = store.index('tableId');
-        const request = index.getAll(tableId);
-        
-        return new Promise((resolve, reject) => {
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
     async getSale(id) {
         const transaction = this.db.transaction(['sales'], 'readonly');
         const store = transaction.objectStore('sales');
@@ -342,22 +330,6 @@ class Database {
             request.onsuccess = () => {
                 const sales = request.result.filter(sale => !sale.isPaid);
                 resolve(sales);
-            };
-            request.onerror = () => {
-                reject(request.error);
-            };
-        });
-    }
-
-    async getAllSalesByTable(tableId) {
-        const transaction = this.db.transaction(['sales'], 'readonly');
-        const store = transaction.objectStore('sales');
-        const index = store.index('tableId');
-        
-        return new Promise((resolve, reject) => {
-            const request = index.getAll(tableId);
-            request.onsuccess = () => {
-                resolve(request.result);
             };
             request.onerror = () => {
                 reject(request.error);

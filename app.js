@@ -1,7 +1,88 @@
 // Main Application Logic
+// Loaded as a module (see index.html) for Supabase ESM import.
+
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
+import { SupabaseDatabase } from './supabase-db.js';
+
+function setAuthError(message) {
+    const el = document.getElementById('auth-error');
+    if (!el) return;
+    if (!message) {
+        el.style.display = 'none';
+        el.textContent = '';
+        return;
+    }
+    el.style.display = 'block';
+    el.textContent = message;
+}
+
+function showAuthModal(show) {
+    const modal = document.getElementById('auth-modal');
+    if (!modal) return;
+    modal.style.display = show ? 'block' : 'none';
+    if (show) {
+        modal.classList.add('active');
+    } else {
+        modal.classList.remove('active');
+        setAuthError('');
+    }
+}
+
+async function ensureSignedIn(supabase) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+        console.error('Auth session error:', error);
+    }
+    const session = data?.session || null;
+    if (session) return session;
+
+    showAuthModal(true);
+
+    const loginBtn = document.getElementById('auth-login-btn');
+    const emailEl = document.getElementById('auth-email');
+    const passEl = document.getElementById('auth-password');
+
+    return await new Promise((resolve) => {
+        const handler = async () => {
+            const email = (emailEl?.value || '').trim();
+            const password = passEl?.value || '';
+            if (!email || !password) {
+                setAuthError('Email ve şifre girin.');
+                return;
+            }
+            setAuthError('');
+            loginBtn.disabled = true;
+            try {
+                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+                if (signInError) {
+                    setAuthError(signInError.message || 'Giriş başarısız.');
+                    loginBtn.disabled = false;
+                    return;
+                }
+                showAuthModal(false);
+                resolve(signInData.session);
+            } catch (e) {
+                setAuthError(e?.message || 'Giriş başarısız.');
+                loginBtn.disabled = false;
+            }
+        };
+
+        if (loginBtn) loginBtn.addEventListener('click', handler);
+
+        // Also allow Enter key
+        const keyHandler = (e) => {
+            if (e.key === 'Enter') handler();
+        };
+        if (emailEl) emailEl.addEventListener('keydown', keyHandler);
+        if (passEl) passEl.addEventListener('keydown', keyHandler);
+    });
+}
+
 class MekanApp {
     constructor() {
-        this.db = new Database();
+        this.supabase = window.supabase;
+        this.db = new SupabaseDatabase(this.supabase);
         this.currentView = 'tables';
         this.currentTableId = null;
         this.pendingDelayedStartTableId = null;
@@ -16,11 +97,6 @@ class MekanApp {
 
     async init() {
         try {
-            // Check if IndexedDB is available
-            if (!window.indexedDB) {
-                throw new Error('IndexedDB is not supported in this browser.');
-            }
-
             await this.db.init();
             this.setupEventListeners();
             await this.loadInitialData();
@@ -89,14 +165,6 @@ class MekanApp {
                 this.switchView('tables');
             });
         }
-
-        // Navigation
-        document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const view = e.target.dataset.view;
-                this.switchView(view);
-            });
-        });
 
         // Add Table button
         const addTableBtn = document.getElementById('add-table-btn');
@@ -424,7 +492,7 @@ class MekanApp {
         const productSelect = document.getElementById('product-select');
         if (productSelect) {
             productSelect.addEventListener('change', async (e) => {
-            const productId = parseInt(e.target.value);
+            const productId = e.target.value;
             if (productId) {
                     try {
                 const product = await this.db.getProduct(productId);
@@ -1089,7 +1157,7 @@ class MekanApp {
 
         try {
             if (id) {
-                const existingTable = await this.db.getTable(parseInt(id));
+                const existingTable = await this.db.getTable(id);
                 tableData.id = existingTable.id;
                 tableData.isActive = existingTable.isActive;
                 tableData.openTime = existingTable.openTime;
@@ -1836,7 +1904,7 @@ class MekanApp {
         // Add click listeners to customer buttons
         container.querySelectorAll('.customer-selection-btn').forEach(btn => {
             btn.addEventListener('click', async () => {
-                const customerId = parseInt(btn.getAttribute('data-customer-id'));
+                const customerId = btn.getAttribute('data-customer-id');
                 const modal = document.getElementById('customer-selection-modal');
                 if (modal) {
                     modal.classList.remove('active');
@@ -1973,7 +2041,7 @@ class MekanApp {
         const timeInput = document.getElementById('delayed-start-time');
         if (!hidden || !timeInput) return;
 
-        const tableId = parseInt(hidden.value || String(this.pendingDelayedStartTableId || ''), 10);
+        const tableId = hidden.value || this.pendingDelayedStartTableId;
         if (!tableId) return;
 
         const timeStr = (timeInput.value || '').trim(); // HH:MM
@@ -2158,7 +2226,7 @@ class MekanApp {
             return;
         }
 
-        const tableId = parseInt(select.value, 10);
+        const tableId = select.value;
         if (!tableId) return;
         const table = await this.db.getTable(tableId);
         const tableName = table?.name || `Masa ${tableId}`;
@@ -2351,8 +2419,8 @@ class MekanApp {
         
         if (!tableIdInput || !productSelect || !amountInput) return;
         
-        const tableId = parseInt(tableIdInput.value);
-        const productId = parseInt(productSelect.value);
+        const tableId = tableIdInput.value;
+        const productId = productSelect.value;
         const amount = parseInt(amountInput.value);
 
         if (!tableId || !productId || !amount) {
@@ -2797,7 +2865,7 @@ class MekanApp {
         // Add click listeners to customer buttons
         container.querySelectorAll('.customer-selection-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const customerId = parseInt(btn.getAttribute('data-customer-id'));
+                const customerId = btn.getAttribute('data-customer-id');
                 this.processCreditTable(customerId);
             });
         });
@@ -2843,7 +2911,7 @@ class MekanApp {
         // Add click listeners to customer buttons
         container.querySelectorAll('.customer-selection-btn').forEach(btn => {
             btn.addEventListener('click', () => {
-                const customerId = parseInt(btn.getAttribute('data-customer-id'));
+                const customerId = btn.getAttribute('data-customer-id');
                 this.processCreditTable(customerId);
             });
         });
@@ -2973,11 +3041,11 @@ class MekanApp {
             const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
             if (!target) return;
             
-            const id = parseInt(target.id.split('-').pop());
-            if (isNaN(id)) return;
+            const id = target.id.split('-').pop();
+            if (!id) return;
             
             if (target.id.startsWith('edit-product-')) {
-                const product = products.find(p => p.id === id);
+                const product = products.find(p => String(p.id) === String(id));
                 if (product) {
                     this.openProductFormModal(product);
                 }
@@ -3097,7 +3165,7 @@ class MekanApp {
 
         try {
             if (id) {
-                productData.id = parseInt(id);
+                productData.id = id;
                 await this.db.updateProduct(productData);
             } else {
                 await this.db.addProduct(productData);
@@ -3126,15 +3194,6 @@ class MekanApp {
     // Customers Management
     async loadCustomers() {
         try {
-            // Check if customers store exists
-            if (!this.db.db || !this.db.db.objectStoreNames.contains('customers')) {
-                const container = document.getElementById('customers-container');
-                if (container) {
-                    container.innerHTML = '<div class="empty-state"><h3>Müşteri bulunamadı</h3><p>Başlamak için yeni bir müşteri ekleyin</p></div>';
-                }
-                return;
-            }
-
             const customers = await this.db.getAllCustomers();
             const container = document.getElementById('customers-container');
             
@@ -3235,13 +3294,13 @@ class MekanApp {
 
         try {
             if (id) {
-                const existingCustomer = await this.db.getCustomer(parseInt(id));
+                const existingCustomer = await this.db.getCustomer(id);
                 if (!existingCustomer) {
                     await this.appAlert('Müşteri bulunamadı. Lütfen tekrar deneyin.', 'Hata');
                     return;
                 }
                 const customerData = {
-                    id: parseInt(id),
+                    id: id,
                     name: name,
                     balance: existingCustomer.balance || 0
                 };
@@ -3303,7 +3362,7 @@ class MekanApp {
     }
 
     async processCustomerPayment() {
-        const customerId = parseInt(document.getElementById('payment-customer-id').value);
+        const customerId = document.getElementById('payment-customer-id').value;
         const paymentAmount = parseFloat(document.getElementById('payment-amount').value);
 
         if (!customerId || !paymentAmount || paymentAmount <= 0) {
@@ -3356,7 +3415,7 @@ class MekanApp {
     }
 
     async payFullCustomerBalance() {
-        const customerId = parseInt(document.getElementById('payment-customer-id').value);
+        const customerId = document.getElementById('payment-customer-id').value;
         if (!customerId) return;
 
         try {
@@ -3398,14 +3457,14 @@ class MekanApp {
     }
 
     async filterSales() {
-        const tableFilter = parseInt(document.getElementById('sales-table-filter').value) || null;
+        const tableFilter = document.getElementById('sales-table-filter').value || null;
         const statusFilter = document.getElementById('sales-status-filter').value;
         
         let sales = await this.db.getAllSales();
         
         // Filter by table
         if (tableFilter) {
-            sales = sales.filter(s => s.tableId === tableFilter);
+            sales = sales.filter(s => String(s.tableId) === String(tableFilter));
         }
         
         // Filter by status
@@ -3836,7 +3895,7 @@ class MekanApp {
             btn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const id = parseInt(btn.getAttribute('data-manual-id'), 10);
+                const id = btn.getAttribute('data-manual-id');
                 if (!id) return;
                 if (!(await this.appConfirm('Bu manuel oyun kaydını silmek istiyor musunuz?', { title: 'Manuel Kayıt Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' }))) return;
                 try {
@@ -4076,7 +4135,13 @@ if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.p
     });
 }
 
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
+// Bootstrap Supabase + Auth + App
+document.addEventListener('DOMContentLoaded', async () => {
+    // Create global supabase client (frontend-safe: anon key only)
+    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Require login before app boot (RLS will enforce anyway, but this improves UX)
+    await ensureSignedIn(window.supabase);
+
     window.app = new MekanApp();
 });
