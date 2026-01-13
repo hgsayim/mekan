@@ -40,8 +40,12 @@ async function ensureSignedIn(supabase) {
     showAuthModal(true);
 
     const loginBtn = document.getElementById('auth-login-btn');
+    const loginText = document.getElementById('auth-login-text');
+    const loginSpinner = document.getElementById('auth-login-spinner');
     const emailEl = document.getElementById('auth-email');
     const passEl = document.getElementById('auth-password');
+    const formEl = document.getElementById('auth-form');
+    const toggleBtn = document.getElementById('auth-toggle-password');
 
     return await new Promise((resolve) => {
         const handler = async () => {
@@ -53,11 +57,15 @@ async function ensureSignedIn(supabase) {
             }
             setAuthError('');
             loginBtn.disabled = true;
+            if (loginSpinner) loginSpinner.style.display = 'inline-block';
+            if (loginText) loginText.textContent = 'Giriş yapılıyor...';
             try {
                 const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
                 if (signInError) {
                     setAuthError(signInError.message || 'Giriş başarısız.');
                     loginBtn.disabled = false;
+                    if (loginSpinner) loginSpinner.style.display = 'none';
+                    if (loginText) loginText.textContent = 'Giriş Yap';
                     return;
                 }
                 showAuthModal(false);
@@ -65,9 +73,26 @@ async function ensureSignedIn(supabase) {
             } catch (e) {
                 setAuthError(e?.message || 'Giriş başarısız.');
                 loginBtn.disabled = false;
+                if (loginSpinner) loginSpinner.style.display = 'none';
+                if (loginText) loginText.textContent = 'Giriş Yap';
             }
         };
 
+        if (toggleBtn && passEl) {
+            toggleBtn.addEventListener('click', () => {
+                const isHidden = passEl.type === 'password';
+                passEl.type = isHidden ? 'text' : 'password';
+                toggleBtn.textContent = isHidden ? 'Gizle' : 'Göster';
+            });
+        }
+
+        if (formEl) {
+            formEl.addEventListener('submit', (e) => {
+                e.preventDefault();
+                handler();
+            });
+        }
+        // Keep click too (in case form is not found)
         if (loginBtn) loginBtn.addEventListener('click', handler);
 
         // Also allow Enter key
@@ -2095,19 +2120,24 @@ class MekanApp {
         table.hourlyTotal = 0; // live-calculated while active
         table.checkTotal = table.salesTotal || 0;
 
-        await this.db.updateTable(table);
+        try {
+            await this.db.updateTable(table);
 
-        this.closeDelayedStartModal();
+            this.closeDelayedStartModal();
 
-        await this.loadTables();
-        if (this.currentView === 'daily') {
-            await this.loadDailyDashboard();
-        }
+            await this.loadTables();
+            if (this.currentView === 'daily') {
+                await this.loadDailyDashboard();
+            }
 
-        // If table modal is open for this table, refresh it
-        const tableModal = document.getElementById('table-modal');
-        if (tableModal && tableModal.classList.contains('active') && this.currentTableId === tableId) {
-            await this.openTableModal(tableId);
+            // If table modal is open for this table, refresh it
+            const tableModal = document.getElementById('table-modal');
+            if (tableModal && tableModal.classList.contains('active') && this.currentTableId === tableId) {
+                await this.openTableModal(tableId);
+            }
+        } catch (error) {
+            console.error('Gecikmeli başlat uygulanırken hata:', error, error?.message, error?.details, error?.hint, error?.code);
+            await this.appAlert(`Gecikmeli başlat uygulanamadı: ${error?.message || 'Bilinmeyen hata'}`, 'Hata');
         }
     }
 
@@ -2358,6 +2388,7 @@ class MekanApp {
             // Reload tables (don't close modal if it's not open)
         await this.loadTables();
         } catch (error) {
+            console.error('Masayı açarken hata:', error, error?.message, error?.details, error?.hint, error?.code);
             await this.appAlert('Masayı açarken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }

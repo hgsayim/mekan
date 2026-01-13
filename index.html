@@ -516,24 +516,36 @@
 
     <!-- Auth Modal (Supabase) -->
     <div id="auth-modal" class="modal active" style="display:none;">
-        <div class="modal-content" style="max-width: 420px;">
-            <div class="table-modal-header">
-                <h2>Giriş Yap</h2>
-            </div>
-            <div style="margin-top: 10px;">
-                <label>
-                    Email:
-                    <input type="email" id="auth-email" autocomplete="email" required>
-                </label>
-                <label>
-                    Şifre:
-                    <input type="password" id="auth-password" autocomplete="current-password" required>
-                </label>
-                <div id="auth-error" style="margin-top: 10px; color: #e74c3c; font-weight: 600; display:none;"></div>
-                <div class="form-actions" style="margin-top: 12px;">
-                    <button type="button" class="btn btn-primary" id="auth-login-btn">Giriş Yap</button>
+        <div class="modal-content auth-modal-content" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <div class="auth-header">
+                <div class="auth-badge">🔐</div>
+                <div class="auth-title-wrap">
+                    <h2 id="auth-title">Giriş Yap</h2>
+                    <p class="auth-subtitle">Hesabınızla giriş yapın</p>
                 </div>
             </div>
+
+            <form id="auth-form" class="auth-form">
+                <label class="auth-label">
+                    <span>Email</span>
+                    <input type="email" id="auth-email" class="auth-input" placeholder="ornek@mail.com" autocomplete="email" required>
+                </label>
+
+                <label class="auth-label">
+                    <span>Şifre</span>
+                    <div class="auth-password-row">
+                        <input type="password" id="auth-password" class="auth-input" placeholder="••••••••" autocomplete="current-password" required>
+                        <button type="button" class="auth-toggle" id="auth-toggle-password">Göster</button>
+                    </div>
+                </label>
+
+                <div id="auth-error" class="auth-error" style="display:none;"></div>
+
+                <button type="submit" class="btn btn-primary auth-submit" id="auth-login-btn">
+                    <span id="auth-login-text">Giriş Yap</span>
+                    <span id="auth-login-spinner" class="auth-spinner" style="display:none;"></span>
+                </button>
+            </form>
         </div>
     </div>
 
