@@ -6,14 +6,16 @@ const DIST_DIR = 'dist';
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
-function required(name, value) {
-  if (!value) {
-    throw new Error(`Missing required env var: ${name}`);
-  }
+function warnMissing(name) {
+  console.warn(
+    `[build] Missing env var ${name}. ` +
+      `Build will continue and app will fall back to values in supabase-config.js. ` +
+      `For Cloudflare Pages, set ${name} in Project Settings -> Environment variables (Production/Preview as needed).`
+  );
 }
 
-required('SUPABASE_URL', SUPABASE_URL);
-required('SUPABASE_ANON_KEY', SUPABASE_ANON_KEY);
+if (!SUPABASE_URL) warnMissing('SUPABASE_URL');
+if (!SUPABASE_ANON_KEY) warnMissing('SUPABASE_ANON_KEY');
 
 await rm(DIST_DIR, { recursive: true, force: true });
 await mkdir(DIST_DIR, { recursive: true });
