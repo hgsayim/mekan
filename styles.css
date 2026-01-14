@@ -110,9 +110,18 @@ header::before {
     }
 
     .bottom-nav-icon {
-        font-size: 1.45rem;
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         line-height: 1;
-        transform: translateZ(0);
+    }
+
+    .bottom-nav-svg {
+        width: 26px;
+        height: 26px;
+        display: block;
     }
 
     /* Remove redundant view titles on mobile (header is hidden) */
@@ -531,6 +540,32 @@ header h1 {
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
+}
+
+.table-settle-overlay {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(46, 204, 113, 0.92);
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.95rem;
+    text-align: center;
+    letter-spacing: 0.2px;
+    box-shadow: 0 8px 18px rgba(46, 204, 113, 0.25), 0 2px 6px rgba(0,0,0,0.12);
+    animation: tableSettlePop 2.4s ease-in-out forwards;
+    z-index: 12;
+    pointer-events: none;
+}
+
+@keyframes tableSettlePop {
+    0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+    12% { opacity: 1; transform: translateY(0) scale(1); }
+    80% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(6px) scale(0.98); }
 }
 
 /* Hourly table delayed start button (top-right, red) */

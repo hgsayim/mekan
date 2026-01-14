@@ -113,6 +113,7 @@ class MekanApp {
         this.pendingDelayedStartTableId = null;
         this._dialog = null;
         this._dialogResolver = null;
+        this._settlingTables = new Map(); // tableId -> expiry timestamp (ms)
         this.hourlyUpdateInterval = null;
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
@@ -797,11 +798,14 @@ class MekanApp {
         for (const table of tables) {
             const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
             let tableUpdated = false;
+
+            // If a table was just settled (paid/credited), avoid "close -> reopen" flicker for a couple seconds
+            const isSettling = this._isTableSettling(table.id);
             
             if (unpaidSales.length > 0 && !table.isActive) {
                 // Table has products but is not active - activate it only for regular tables
                 // Hourly tables must be manually opened via "Open Table" button
-                if (table.type !== 'hourly') {
+                if (!isSettling && table.type !== 'hourly') {
                     table.isActive = true;
                     tableUpdated = true;
                 }
@@ -809,10 +813,15 @@ class MekanApp {
                 // Table has no unpaid sales - must be inactive
                 // BUT for hourly tables that were manually opened (have openTime), keep them active
                 if (table.type === 'hourly' && table.openTime) {
+                    if (isSettling) {
+                        // Recent settle: prefer showing as closed while DB catches up
+                        // (do not write to DB here; payment flow will persist state)
+                    } else {
                     // Manually opened hourly table - keep it active, just update totals
                     table.hourlyTotal = this.calculateHourlyTotal(table);
                     table.checkTotal = this.calculateCheckTotal(table);
                     tableUpdated = true;
+                    }
                 } else {
                     // Regular table or auto-activated table - deactivate
                     table.isActive = false;
@@ -1127,6 +1136,40 @@ class MekanApp {
             displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
         }
         priceEl.textContent = `${Math.round(displayTotal)} ₺`;
+    }
+
+    _markTableSettling(tableId, ms = 2600) {
+        if (tableId == null) return;
+        this._settlingTables.set(String(tableId), Date.now() + ms);
+    }
+
+    _isTableSettling(tableId) {
+        const key = String(tableId);
+        const until = this._settlingTables.get(key);
+        if (!until) return false;
+        if (Date.now() > until) {
+            this._settlingTables.delete(key);
+            return false;
+        }
+        return true;
+    }
+
+    showTableSettlementEffect(tableId, variant = 'Hesap Alındı') {
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+
+        // Remove any existing overlay
+        const existing = card.querySelector('.table-settle-overlay');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.className = 'table-settle-overlay';
+        overlay.textContent = variant;
+        card.appendChild(overlay);
+
+        window.setTimeout(() => {
+            overlay.remove();
+        }, 2400);
     }
 
     async getInstantTableDailyTotal(tableId) {
@@ -3031,7 +3074,9 @@ class MekanApp {
                 // Keep closeTime/openTime snapshot in DB, but UI should show inactive
                 optimisticClosed.openTime = null;
             }
+            this._markTableSettling(optimisticClosed.id);
             this.setTableCardState(optimisticClosed.id, optimisticClosed);
+            this.showTableSettlementEffect(optimisticClosed.id, 'Hesap Alındı');
 
             // Mark all unpaid sales as paid and record payment time
             const paymentTime = new Date().toISOString();
@@ -3069,6 +3114,7 @@ class MekanApp {
 
                 table.isActive = false;
                 table.closeTime = closeTimeISO;
+                table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
                 // Keep openTime/closeTime as last-session snapshot; detailed history is in hourlySessions
             }
 
@@ -3083,7 +3129,7 @@ class MekanApp {
                 const views = ['tables', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 0);
+            }, 650);
         } catch (error) {
             console.error('Ödeme işlenirken hata:', error);
             await this.appAlert('Ödeme işlenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
@@ -3226,7 +3272,9 @@ class MekanApp {
             this.closeTableModal();
             const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
             if (optimisticClosed.type === 'hourly') optimisticClosed.openTime = null;
+            this._markTableSettling(optimisticClosed.id);
             this.setTableCardState(optimisticClosed.id, optimisticClosed);
+            this.showTableSettlementEffect(optimisticClosed.id, 'Veresiye');
 
             // Mark all unpaid sales as credit (paid but on credit)
             const creditTime = new Date().toISOString();
@@ -3271,6 +3319,7 @@ class MekanApp {
                 
                 table.isActive = false;
                 table.closeTime = closeTimeISO;
+                table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
             }
 
             // Reset totals but keep hourlyTotal and closeTime for daily reporting
@@ -3283,7 +3332,7 @@ class MekanApp {
                 const views = ['tables', 'customers', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 0);
+            }, 650);
         } catch (error) {
             console.error('Veresiye yazılırken hata:', error);
             await this.appAlert('Veresiye yazılırken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
