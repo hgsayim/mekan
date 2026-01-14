@@ -3013,23 +3013,19 @@ form select:focus {
     }
 
     .table-modal-footer .table-info-grid span strong {
-        display: none;
+        display: inline;
+        font-weight: 800;
+        font-size: 0.72rem;
+        color: rgba(44, 62, 80, 0.72);
+    }
+
+    .table-modal-footer .table-info-grid span > span {
+        font-weight: 800;
+        color: rgba(44, 62, 80, 0.92);
     }
 
     /* Icons for compact hourly info chips */
-    #hourly-info span:nth-child(1)::before { content: '🕒'; }
-    #hourly-info span:nth-child(2)::before { content: '🎱'; }
-    #hourly-info span:nth-child(3)::before { content: '🛒'; }
-    #hourly-info span:nth-child(4)::before { content: '₺'; }
-    #regular-info span::before { content: '₺'; }
-
-    #hourly-info span::before,
-    #regular-info span::before {
-        display: inline-block;
-        font-size: 0.82rem;
-        line-height: 1;
-        transform: translateY(-0.5px);
-    }
+    /* Emoji icons removed for consistency across Android/iOS fonts */
 
     .table-modal-footer .table-footer-buttons {
         /* Bottom CTA row: left (veresiye) - center (nakit) - right (iptal) */
