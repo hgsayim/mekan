@@ -1630,6 +1630,7 @@ header h1 {
     justify-content: flex-end;
     margin-top: 25px;
     padding-top: 20px;
+    background: var(--light-bg);
     border-top: 2px solid rgba(236, 240, 241, 0.8);
     flex-wrap: wrap;
 }
@@ -1659,6 +1660,38 @@ header h1 {
     overflow-y: auto;
     min-height: 0;
     margin-bottom: 10px;
+}
+
+/* Table modal loading overlay (shown while content is being fetched/rendered) */
+#table-modal-body.is-loading {
+    position: relative;
+    pointer-events: none;
+}
+
+#table-modal-body.is-loading::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(236, 240, 241, 0.55);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    border-radius: 12px;
+    z-index: 60;
+}
+
+#table-modal-body.is-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 54px;
+    height: 54px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    border: 6px solid rgba(44, 62, 80, 0.16);
+    border-top-color: var(--secondary-color);
+    animation: spin 0.8s linear infinite;
+    z-index: 61;
 }
 
 .table-modal-header {
@@ -2991,12 +3024,11 @@ form select:focus {
 
     /* Hourly/regular info: single row, 4 items */
     #hourly-info.table-info-grid {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: nowrap;
-        justify-content: center;
+        /* 4 equal chips, perfectly aligned */
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 6px;
-        align-items: center;
+        align-items: stretch;
         width: 100%;
         overflow: hidden;
     }
@@ -3016,7 +3048,7 @@ form select:focus {
         padding: 6px 8px;
         background: rgba(52, 152, 219, 0.06);
         box-shadow: none;
-        border-radius: 999px;
+        border-radius: 14px;
         font-size: 0.74rem;
         gap: 5px;
         min-width: 0;
@@ -3042,9 +3074,10 @@ form select:focus {
 
     /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
     #hourly-info.table-info-grid > span {
-        flex: 1 1 0;
         min-width: 0;
         justify-content: center;
+        align-items: center;
+        font-variant-numeric: tabular-nums;
     }
 
     #hourly-info.table-info-grid > span strong {
@@ -3058,6 +3091,8 @@ form select:focus {
         color: rgba(44, 62, 80, 0.70);
         margin-right: 4px;
         line-height: 1;
+        width: 26px;
+        text-align: right;
     }
 
     #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }

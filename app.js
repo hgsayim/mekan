@@ -982,8 +982,11 @@ class MekanApp {
                     
                     e.preventDefault();
                     
-                    // If table is already open, open modal immediately on single tap (no DB wait)
-                    if (table && table.isActive && table.openTime) {
+                    // If table is already open (or UI shows it as open), open modal immediately on single tap.
+                    // This avoids "DB lag" after opening: the card can turn green before the update is persisted.
+                    const isCardGreen = card.classList.contains('active');
+                    const opening = this._getTableOpening?.(table?.id);
+                    if (isCardGreen || (table && table.isActive && table.openTime) || opening) {
                         clearTimeout(tapTimer);
                         tapCount = 0;
                     this.openTableModal(table.id);
@@ -1257,14 +1260,15 @@ class MekanApp {
     async getInstantTableDailyTotal(tableId) {
         try {
             const allSales = await this.db.getAllSales();
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            
-            const todaySales = allSales.filter(sale => {
+            // Business day: 08:00 -> next day 08:00
+            const start = this.getTodayStartTime();
+            const end = new Date(start);
+            end.setDate(end.getDate() + 1);
+
+            const todaySales = allSales.filter((sale) => {
                 if (sale.tableId !== tableId || !sale.isPaid) return false;
-                const saleDate = new Date(sale.paymentTime || sale.sellDateTime);
-                saleDate.setHours(0, 0, 0, 0);
-                return saleDate.getTime() === today.getTime();
+                const paymentDate = new Date(sale.paymentTime || sale.sellDateTime);
+                return paymentDate >= start && paymentDate < end;
             });
             
             return todaySales.reduce((total, sale) => total + sale.saleTotal, 0);
@@ -1406,10 +1410,49 @@ class MekanApp {
             this.hourlyUpdateInterval = null;
         }
 
-        let table = await this.db.getTable(tableId);
-        if (!table) return;
-
         this.currentTableId = tableId;
+
+        // Open the modal shell immediately and show a loading overlay while data is fetched/rendered.
+        const tableModalEl = document.getElementById('table-modal');
+        if (tableModalEl) tableModalEl.classList.add('active');
+        document.body.classList.add('table-modal-open');
+
+        const modalTitleEl = document.getElementById('table-modal-title');
+        if (modalTitleEl) modalTitleEl.textContent = 'Yükleniyor...';
+
+        const modalBodyEl = document.getElementById('table-modal-body');
+        if (modalBodyEl) modalBodyEl.classList.add('is-loading');
+
+        const footerBtns = [
+            document.getElementById('pay-table-btn'),
+            document.getElementById('credit-table-btn'),
+            document.getElementById('cancel-hourly-btn')
+        ].filter(Boolean);
+        footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
+
+        let table = await this.db.getTable(tableId);
+        if (!table) {
+            if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
+            footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
+            return;
+        }
+
+        // Optimistic open support: if the UI already shows the table as active (green) or an open is in progress,
+        // allow the modal (and product picker) to open immediately even if DB still reflects old state.
+        try {
+            const cardEl = this.getTableCardEl?.(tableId);
+            const isCardGreen = !!cardEl && cardEl.classList.contains('active');
+            const opening = this._getTableOpening?.(tableId);
+            if (table.type === 'hourly' && (opening || isCardGreen) && (!table.isActive || !table.openTime)) {
+                table.isActive = true;
+                table.openTime = table.openTime || opening?.openTime || new Date().toISOString();
+            } else if (isCardGreen && !table.isActive) {
+                // For non-hourly tables, a green card means "should be open" (e.g. unpaid products just added).
+                table.isActive = true;
+            }
+        } catch (e) {
+            // best-effort only
+        }
 
         // Get all unpaid sales for this table
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
@@ -1706,6 +1749,10 @@ class MekanApp {
             console.error('Süreli oyun iptal edilirken hata:', err);
             await this.appAlert('Oyunu iptal ederken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
+
+        // Done: remove loading overlay and re-enable footer buttons
+        if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
+        footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
     }
 
     // Clean up interval when modal is closed
@@ -1714,6 +1761,8 @@ class MekanApp {
             clearInterval(this.hourlyUpdateInterval);
             this.hourlyUpdateInterval = null;
         }
+        const modalBodyEl = document.getElementById('table-modal-body');
+        if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
         document.getElementById('table-modal').classList.remove('active');
         document.body.classList.remove('table-modal-open');
     }
@@ -4149,7 +4198,6 @@ class MekanApp {
         const endDateInput = document.getElementById('report-end-date');
         
         if (startDateInput && endDateInput) {
-            const today = new Date();
             const todayStart = this.getTodayStartTime();
             
             // Format dates as YYYY-MM-DD for input type="date"
@@ -4161,7 +4209,9 @@ class MekanApp {
             };
             
             startDateInput.value = formatDateForInput(todayStart);
-            endDateInput.value = formatDateForInput(today);
+            // For "business day" reporting, a single selected day means 08:00 -> next day 08:00
+            // so "Today" should be the same date on both inputs.
+            endDateInput.value = formatDateForInput(todayStart);
         }
     }
 
@@ -4170,8 +4220,11 @@ class MekanApp {
         const endDateInput = document.getElementById('report-end-date');
         
         if (startDateInput && endDateInput && startDateInput.value && endDateInput.value) {
-            const startDate = new Date(startDateInput.value + 'T08:00:00'); // Start at 08:00
-            const endDate = new Date(endDateInput.value + 'T23:59:59'); // End at end of day
+            // Business day range: Start 08:00, End next day 07:59:59.999 (inclusive)
+            const startDate = new Date(startDateInput.value + 'T08:00:00');
+            const endDate = new Date(endDateInput.value + 'T08:00:00');
+            endDate.setDate(endDate.getDate() + 1);
+            endDate.setMilliseconds(endDate.getMilliseconds() - 1);
             
             // Ensure end date is not in the future
             const now = new Date();
@@ -4191,19 +4244,13 @@ class MekanApp {
     isDateRangeToday(startDate, endDate) {
         const todayStart = this.getTodayStartTime();
         const now = new Date();
-        
-        // Check if start date is today's start and end date is today
-        const startDateStr = startDate.toDateString();
-        const endDateStr = endDate.toDateString();
-        const todayStartStr = todayStart.toDateString();
-        const todayStr = now.toDateString();
-        
-        // If both dates are on the same day (today), it's a daily report
-        // Also check if the date range is exactly one day
-        const isSameDay = startDateStr === endDateStr;
-        const isToday = startDateStr === todayStartStr && endDateStr === todayStr;
-        
-        return isSameDay && isToday;
+
+        const todayEnd = new Date(todayStart);
+        todayEnd.setDate(todayEnd.getDate() + 1);
+        todayEnd.setMilliseconds(todayEnd.getMilliseconds() - 1);
+        const effectiveEnd = todayEnd > now ? now : todayEnd;
+
+        return startDate.getTime() === todayStart.getTime() && endDate.getTime() === effectiveEnd.getTime();
     }
 
     async loadDailyDashboard() {
