@@ -3,7 +3,7 @@
 
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
-import { SupabaseDatabase } from './supabase-db.js';
+import { HybridDatabase } from './hybrid-db.js';
 
 function setAuthError(message) {
     const el = document.getElementById('auth-error');
@@ -110,7 +110,8 @@ async function ensureSignedIn(supabase) {
 class MekanApp {
     constructor() {
         this.supabase = window.supabase;
-        this.db = new SupabaseDatabase(this.supabase);
+        // Hybrid DB: Supabase + IndexedDB cache (instant reads + periodic sync)
+        this.db = new HybridDatabase(this.supabase);
         this.currentView = 'tables';
         this.currentTableId = null;
         this.pendingDelayedStartTableId = null;
@@ -126,6 +127,7 @@ class MekanApp {
         this._realtimeRefreshTimer = null;
         this._realtimePendingViews = new Set();
         this._productsDelegationBound = false;
+        this._pollSyncInterval = null;
         this.init();
     }
 
@@ -137,6 +139,7 @@ class MekanApp {
             await this.loadInitialData();
             this.startDailyReset();
             this.startRealtimeSubscriptions();
+            this.startPollSync();
             
             // Handle page visibility changes (screen lock/unlock on tablets)
             document.addEventListener('visibilitychange', () => {
@@ -154,6 +157,7 @@ class MekanApp {
             // Clean up intervals on page unload
             window.addEventListener('beforeunload', () => {
                 this.stopRealtimeSubscriptions();
+                this.stopPollSync();
                 this.stopTableCardPriceUpdates();
                 if (this.hourlyUpdateInterval) {
                     clearInterval(this.hourlyUpdateInterval);
@@ -170,6 +174,48 @@ class MekanApp {
         } catch (error) {
             console.error('Uygulama başlatılırken hata:', error);
             await this.appAlert('Uygulama başlatılırken hata oluştu: ' + error.message + '. Lütfen sayfayı yenileyin.', 'Hata');
+        }
+    }
+
+    startPollSync() {
+        // Keep local IndexedDB cache continuously up-to-date
+        if (this._pollSyncInterval) return;
+        const tick = async () => {
+            try {
+                if (typeof this.db?.syncNow !== 'function') return;
+                const changed = await this.db.syncNow();
+                if (!changed) return;
+
+                // Refresh UI only when needed (avoid unnecessary re-renders)
+                const views = [];
+                if (this.currentView === 'tables') views.push('tables');
+                if (this.currentView === 'sales') views.push('sales');
+
+                // If a table modal is open, refresh it (now served from local cache => fast)
+                const tableModal = document.getElementById('table-modal');
+                const isModalOpen = Boolean(tableModal && tableModal.classList.contains('active') && this.currentTableId);
+                if (isModalOpen) {
+                    // Best-effort lightweight refresh: just reopen to re-render
+                    await this.openTableModal(this.currentTableId);
+                }
+
+                if (views.length > 0) {
+                    await this.reloadViews(Array.from(new Set(views)));
+                }
+            } catch (e) {
+                // silent best-effort
+            }
+        };
+
+        // Run once immediately, then every 3s
+        tick();
+        this._pollSyncInterval = setInterval(tick, 3000);
+    }
+
+    stopPollSync() {
+        if (this._pollSyncInterval) {
+            clearInterval(this._pollSyncInterval);
+            this._pollSyncInterval = null;
         }
     }
 
@@ -1418,7 +1464,13 @@ class MekanApp {
         if (modalTitleEl) modalTitleEl.textContent = 'Yükleniyor...';
 
         const modalBodyEl = document.getElementById('table-modal-body');
-        if (modalBodyEl) modalBodyEl.classList.add('is-loading');
+        // Show loading overlay only if the work is actually slow (avoids spinner flash when using local cache)
+        let loadingTimer = null;
+        if (modalBodyEl) {
+            loadingTimer = setTimeout(() => {
+                modalBodyEl.classList.add('is-loading');
+            }, 180);
+        }
 
         const productsGridEl = document.getElementById('table-products-grid');
         if (productsGridEl) productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
@@ -1434,6 +1486,10 @@ class MekanApp {
         footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
 
         const unlockModal = () => {
+            if (loadingTimer) {
+                clearTimeout(loadingTimer);
+                loadingTimer = null;
+            }
             if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
             footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
         };
@@ -2575,10 +2631,14 @@ class MekanApp {
     }
 
     async refreshAllFromDb() {
-        // Background refresh: fetch latest data from Supabase and refresh UI.
+        // Background refresh: sync local cache from Supabase and refresh UI.
         try {
             // Update footer immediately (nice feedback)
             this.updateFooter?.();
+
+            if (typeof this.db?.syncNow === 'function') {
+                await this.db.syncNow({ force: true, forceFull: true });
+            }
 
             // Reload common data sets
             await this.reloadViews(['tables', 'products', 'customers', 'sales']);
@@ -2696,6 +2756,11 @@ class MekanApp {
             const modalRequested = pending.includes('__modal__');
 
             try {
+                // Keep local cache synced before repainting UI
+                if (typeof this.db?.syncNow === 'function') {
+                    await this.db.syncNow();
+                }
+
                 if (viewsToReload.length > 0) {
                     await this.reloadViews(viewsToReload);
                 }

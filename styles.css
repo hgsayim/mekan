@@ -3060,35 +3060,38 @@ form select:focus {
 
     /* Make info chips compact and distinct from action buttons */
     .table-modal-footer .table-info-grid span {
+        display: flex;
         justify-content: center;
+        align-items: center;
         padding: 6px 8px;
         background: rgba(52, 152, 219, 0.06);
         box-shadow: none;
         border-radius: 14px;
-        font-size: 0.74rem;
-        gap: 5px;
+        font-size: 0.72rem;
+        gap: 4px;
         min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         line-height: 1;
+        height: 38px;
     }
 
     .table-modal-footer .table-info-grid span strong {
         display: inline;
         font-weight: 800;
-        font-size: 0.72rem;
+        font-size: 0.70rem;
         color: rgba(44, 62, 80, 0.72);
     }
 
     .table-modal-footer .table-info-grid span > span {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
         max-width: 100%;
         overflow: hidden;
         text-overflow: ellipsis;
         font-weight: 800;
         color: rgba(44, 62, 80, 0.92);
         line-height: 1;
-        transform: translateY(0.5px);
     }
 
     /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
@@ -3112,7 +3115,6 @@ form select:focus {
         line-height: 1;
         width: 26px;
         text-align: right;
-        transform: translateY(0.5px);
     }
 
     #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
@@ -3131,7 +3133,6 @@ form select:focus {
         font-size: 0.72rem;
         opacity: 0.65;
         line-height: 1;
-        transform: translateY(0.5px);
         margin-left: 2px;
         flex: 0 0 auto;
     }
