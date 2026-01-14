@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#1a1a1a">
+    <meta name="theme-color" content="#ecf0f1">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="MekanApp">
     <title>MekanApp - Kafe Yönetimi</title>
     <link rel="manifest" href="manifest.json">
@@ -18,63 +18,76 @@
 </head>
 <body>
     <div class="app-container">
+        <header>
+            <div class="header-content">
+                <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span></h1>
+                <nav class="main-nav-compact">
+                    <button class="menu-toggle" id="menu-toggle">☰ Menü</button>
+                    <div class="menu-dropdown" id="menu-dropdown">
+                        <button class="nav-btn-compact active" data-view="tables">Masalar</button>
+                        <button class="nav-btn-compact" data-view="products">Ürünler</button>
+                        <button class="nav-btn-compact" data-view="customers">Müşteriler</button>
+                        <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
+                        <button class="nav-btn-compact" data-view="daily">Rapor</button>
+                    </div>
+                </nav>
+            </div>
+        </header>
+
         <main>
-            <!-- Swipe Pager -->
-            <div id="views-pager" class="views-pager">
-                <!-- Tables View -->
-                <section id="tables-view" class="view active">
-                    <div id="tables-container" class="tables-grid"></div>
-                </section>
+            <!-- Tables View -->
+            <section id="tables-view" class="view active">
+                <div id="tables-container" class="tables-grid"></div>
+            </section>
 
-                <!-- Products View -->
-                <section id="products-view" class="view">
-                    <div id="products-container" class="products-grid"></div>
-                </section>
+            <!-- Products View -->
+            <section id="products-view" class="view">
+                <div id="products-container" class="products-grid"></div>
+            </section>
 
-                <!-- Customers View -->
-                <section id="customers-view" class="view">
-                    <div id="customers-container" class="customers-grid"></div>
-                </section>
+            <!-- Customers View -->
+            <section id="customers-view" class="view">
+                <div id="customers-container" class="customers-grid"></div>
+            </section>
 
-                <!-- Sales History View -->
-                <section id="sales-view" class="view">
-                    <div class="view-header">
-                        <h2>Satış Geçmişi</h2>
-                        <div class="filter-controls">
-                            <select id="sales-table-filter">
-                                <option value="">Tüm Masalar</option>
-                            </select>
-                            <select id="sales-status-filter">
-                                <option value="">Tüm Durumlar</option>
-                                <option value="paid">Ödendi</option>
-                                <option value="unpaid">Ödenmedi</option>
-                            </select>
+            <!-- Sales History View -->
+            <section id="sales-view" class="view">
+                <div class="view-header">
+                    <h2>Satış Geçmişi</h2>
+                    <div class="filter-controls">
+                        <select id="sales-table-filter">
+                            <option value="">Tüm Masalar</option>
+                        </select>
+                        <select id="sales-status-filter">
+                            <option value="">Tüm Durumlar</option>
+                            <option value="paid">Ödendi</option>
+                            <option value="unpaid">Ödenmedi</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="sales-container" class="sales-list"></div>
+            </section>
+
+            <!-- Daily Dashboard View -->
+            <section id="daily-view" class="view">
+                <div class="view-header">
+                    <h2>Rapor ve Analiz</h2>
+                    <div class="report-controls">
+                        <div class="report-date-controls">
+                            <label class="report-date-label">
+                                <strong>Başlangıç Tarihi:</strong>
+                                <input type="date" id="report-start-date" class="report-date-input">
+                            </label>
+                            <label class="report-date-label">
+                                <strong>Bitiş Tarihi:</strong>
+                                <input type="date" id="report-end-date" class="report-date-input">
+                            </label>
+                            <button class="btn btn-primary report-btn" id="report-apply-btn">Uygula</button>
+                            <button class="btn btn-secondary report-btn" id="report-today-btn">Bugün</button>
                         </div>
                     </div>
-                    <div id="sales-container" class="sales-list"></div>
-                </section>
-
-                <!-- Daily Dashboard View -->
-                <section id="daily-view" class="view">
-                    <div class="view-header">
-                        <h2>Rapor ve Analiz</h2>
-                        <div class="report-controls">
-                            <div class="report-date-controls">
-                                <label class="report-date-label">
-                                    <strong>Başlangıç Tarihi:</strong>
-                                    <input type="date" id="report-start-date" class="report-date-input">
-                                </label>
-                                <label class="report-date-label">
-                                    <strong>Bitiş Tarihi:</strong>
-                                    <input type="date" id="report-end-date" class="report-date-input">
-                                </label>
-                                <button class="btn btn-primary report-btn" id="report-apply-btn">Uygula</button>
-                                <button class="btn btn-secondary report-btn" id="report-today-btn">Bugün</button>
-                                <button class="btn btn-danger report-btn" id="add-manual-session-btn">+ Manuel Oyun</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="daily-container">
+                </div>
+                <div id="daily-container">
                     <!-- Stats Cards -->
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -183,16 +196,31 @@
                         <h3>Manuel Oyun Kayıtları</h3>
                         <div id="manual-sessions-list"></div>
                     </div>
-                    </div>
-                </section>
-            </div>
+                </div>
+            </section>
         </main>
+
+        <!-- Mobile bottom navigation (icons only) -->
+        <nav class="bottom-nav" aria-label="Alt Menü">
+            <button class="nav-btn-compact bottom-nav-btn" data-view="products" aria-label="Ürünler">
+                <span class="bottom-nav-icon" aria-hidden="true">🧃</span>
+            </button>
+            <button class="nav-btn-compact bottom-nav-btn" data-view="customers" aria-label="Müşteriler">
+                <span class="bottom-nav-icon" aria-hidden="true">👤</span>
+            </button>
+            <button class="nav-btn-compact bottom-nav-btn active" data-view="tables" aria-label="Masalar">
+                <span class="bottom-nav-icon" aria-hidden="true">🪑</span>
+            </button>
+            <button class="nav-btn-compact bottom-nav-btn" data-view="sales" aria-label="Satış Geçmişi">
+                <span class="bottom-nav-icon" aria-hidden="true">🧾</span>
+            </button>
+            <button class="nav-btn-compact bottom-nav-btn" data-view="daily" aria-label="Rapor">
+                <span class="bottom-nav-icon" aria-hidden="true">📊</span>
+            </button>
+        </nav>
 
         <!-- Footer removed -->
     </div>
-
-    <!-- Floating refresh button -->
-    <button id="refresh-fab" class="fab-refresh" type="button" aria-label="DB Yenile">⟳</button>
 
     <!-- Table Detail Modal -->
     <div id="table-modal" class="modal">
@@ -249,41 +277,7 @@
         </div>
     </div>
 
-    <!-- Manual Session Modal (Report Backfill) -->
-    <div id="manual-session-modal" class="modal">
-        <div class="modal-content manual-session-modal-content">
-            <span class="close">&times;</span>
-            <h2>Manuel Oyun Girişi</h2>
-            <form id="manual-session-form">
-                <label>
-                    Masa:
-                    <select id="manual-session-table" required></select>
-                </label>
-                <label>
-                    Başlangıç:
-                    <input type="time" id="manual-session-start" required>
-                </label>
-                <label>
-                    Bitiş:
-                    <input type="time" id="manual-session-end" required>
-                </label>
-                <label class="stock-control-label" style="margin-top: 6px;">
-                    <div class="stock-checkbox-group">
-                        <input type="checkbox" id="manual-session-auto-amount" checked>
-                        <span>Tutarı otomatik hesapla (Masanın saatlik ücretine göre)</span>
-                    </div>
-                </label>
-                <label>
-                    Alınan Tutar (₺):
-                    <input type="number" id="manual-session-amount" step="0.01" min="0" required>
-                </label>
-                <div class="form-actions">
-                    <button type="submit" class="btn btn-primary">Kaydet</button>
-                    <button type="button" class="btn btn-secondary" id="manual-session-cancel-btn">İptal</button>
-                </div>
-            </form>
-        </div>
-    </div>
+    <!-- Manual Session input removed (still displaying manual sessions list in reports) -->
 
     <!-- Add/Edit Product Modal -->
     <div id="product-modal" class="modal">

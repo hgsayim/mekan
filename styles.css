@@ -39,35 +39,86 @@ header {
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
     border-radius: 0 0 12px 12px;
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 50%, #1a1a1a 100%);
-    color: var(--light-text);
+    background: transparent;
+    color: var(--dark-text);
     padding: 18px 25px;
     margin-bottom: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.25), 0 2px 6px rgba(0,0,0,0.15);
-    border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: none;
+    border: none;
     z-index: 3000;
     /* iOS safe-area */
     padding-top: calc(18px + env(safe-area-inset-top));
 }
 
 header::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-    opacity: 0.5;
-    pointer-events: none;
+    content: none;
 }
 
 /* Keep main content clear of full-bleed header on very small screens */
 @media (max-width: 540px) {
+    /* Move navigation to bottom on mobile */
     header {
-        border-radius: 0 0 14px 14px;
-        padding: 14px 16px;
-        padding-top: calc(14px + env(safe-area-inset-top));
+        display: none;
+    }
+
+    .app-container {
+        padding: 14px 16px calc(84px + env(safe-area-inset-bottom)) 16px;
+    }
+
+    .bottom-nav {
+        display: flex;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 72px;
+        padding: 10px 8px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        gap: 8px;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(236, 240, 241, 0.92);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(0,0,0,0.08);
+        z-index: 5000;
+    }
+
+    .bottom-nav .nav-btn-compact {
+        flex: 1 1 20%;
+        width: auto;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        border-radius: 16px;
+        background: transparent;
+        color: rgba(44, 62, 80, 0.70);
+        text-align: center;
+        box-shadow: none;
+    }
+
+    .bottom-nav .nav-btn-compact:hover {
+        background: rgba(0,0,0,0.04);
+    }
+
+    .bottom-nav .nav-btn-compact.active {
+        background: rgba(52, 152, 219, 0.14);
+        color: var(--primary-color);
+    }
+
+    .bottom-nav-icon {
+        font-size: 1.45rem;
+        line-height: 1;
+        transform: translateZ(0);
+    }
+
+    /* Remove redundant view titles on mobile (header is hidden) */
+    #sales-view .view-header h2,
+    #daily-view .view-header h2 {
+        display: none;
     }
 }
 
@@ -153,8 +204,8 @@ header h1 {
 
 .menu-toggle {
     padding: 8px 15px;
-    background: rgba(255,255,255,0.2);
-    color: var(--light-text);
+    background: rgba(0,0,0,0.08);
+    color: var(--dark-text);
     border: none;
     border-radius: 5px;
     cursor: pointer;
@@ -164,7 +215,7 @@ header h1 {
 }
 
 .menu-toggle:hover {
-    background: rgba(255,255,255,0.3);
+    background: rgba(0,0,0,0.12);
 }
 
 .menu-dropdown {
@@ -212,53 +263,16 @@ header h1 {
     color: white;
 }
 
-/* Swipe pager (android home-like) */
-.views-pager {
-    display: flex;
-    flex-direction: row;
-    width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scroll-snap-type: x mandatory;
-    scroll-behavior: smooth;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    gap: 0;
-    scrollbar-width: none; /* Firefox */
-}
-
-.views-pager::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
+.bottom-nav {
+    display: none; /* enabled on mobile */
 }
 
 .view {
-    display: block;
-    flex: 0 0 100%;
-    min-width: 100%;
-    scroll-snap-align: start;
-    scroll-snap-stop: always;
-    padding-bottom: 10px;
-}
-/* Floating refresh FAB */
-.fab-refresh {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    width: 54px;
-    height: 54px;
-    border-radius: 18px;
-    border: none;
-    cursor: pointer;
-    background: rgba(26, 26, 26, 0.92);
-    color: #fff;
-    font-size: 1.6rem;
-    font-weight: 900;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.18);
-    z-index: 6000;
+    display: none;
 }
 
-.fab-refresh:active {
-    transform: translateY(1px) scale(0.98);
+.view.active {
+    display: block;
 }
 
 
@@ -574,19 +588,11 @@ header h1 {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.18);
 }
 
-.manual-session-modal-content {
-    max-width: 520px;
-}
-
 #manual-sessions-list .usage-item {
     align-items: flex-start;
 }
 
-.manual-session-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
+/* Manual session input UI removed */
 
 .manual-delete-btn {
     background: var(--danger-color);

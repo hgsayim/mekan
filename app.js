@@ -132,7 +132,6 @@ class MekanApp {
             await this.loadInitialData();
             this.startDailyReset();
             this.startRealtimeSubscriptions();
-            this.initViewPager();
             
             // Handle page visibility changes (screen lock/unlock on tablets)
             document.addEventListener('visibilitychange', () => {
@@ -189,10 +188,16 @@ class MekanApp {
     setupEventListeners() {
         this.initAppDialog();
 
-        // Floating refresh button
-        const refreshFab = document.getElementById('refresh-fab');
-        if (refreshFab) {
-            refreshFab.addEventListener('click', () => this.refreshAllFromDb());
+        // Header logo/title click - go to tables view
+        const headerTitle = document.querySelector('header h1');
+        if (headerTitle) {
+            headerTitle.style.cursor = 'pointer';
+            headerTitle.addEventListener('click', () => {
+                this.switchView('tables');
+                // Also force a DB refresh (background) so other-device changes appear immediately
+                // without requiring the user to do another action.
+                this.refreshAllFromDb();
+            });
         }
 
         // Add Table button
@@ -211,7 +216,36 @@ class MekanApp {
         });
         }
 
-        // (Header/menu navigation removed; swipe pager handles navigation)
+        // Menu toggle
+        const menuToggle = document.getElementById('menu-toggle');
+        const menuDropdown = document.getElementById('menu-dropdown');
+        if (menuToggle && menuDropdown) {
+            menuToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menuDropdown.classList.toggle('show');
+            });
+            
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!menuToggle.contains(e.target) && !menuDropdown.contains(e.target)) {
+                    menuDropdown.classList.remove('show');
+                }
+            });
+        }
+
+        // Navigation buttons (compact menu)
+        document.querySelectorAll('.nav-btn-compact').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const viewName = e.target.getAttribute('data-view');
+                if (viewName) {
+                    // Close menu after selection
+                    if (menuDropdown) {
+                        menuDropdown.classList.remove('show');
+                    }
+                    this.switchView(viewName);
+                }
+            });
+        });
 
         // Add Customer button
         const addCustomerBtn = document.getElementById('add-customer-btn');
@@ -312,44 +346,7 @@ class MekanApp {
             });
         }
 
-        // Manual session (report backfill)
-        const addManualSessionBtn = document.getElementById('add-manual-session-btn');
-        if (addManualSessionBtn) {
-            addManualSessionBtn.addEventListener('click', async () => {
-                await this.openManualSessionModal();
-            });
-        }
-
-        const manualSessionCancelBtn = document.getElementById('manual-session-cancel-btn');
-        if (manualSessionCancelBtn) {
-            manualSessionCancelBtn.addEventListener('click', () => {
-                this.closeManualSessionModal();
-            });
-        }
-
-        const manualSessionForm = document.getElementById('manual-session-form');
-        if (manualSessionForm) {
-            manualSessionForm.addEventListener('submit', async (e) => {
-                e.preventDefault();
-                await this.saveManualSession();
-            });
-        }
-
-        const manualSessionTableSelect = document.getElementById('manual-session-table');
-        if (manualSessionTableSelect) {
-            manualSessionTableSelect.addEventListener('change', async () => {
-                await this.onManualSessionTableChanged();
-            });
-        }
-
-        ['manual-session-start', 'manual-session-end', 'manual-session-auto-amount']
-            .forEach((id) => {
-                const el = document.getElementById(id);
-                if (el) {
-                    el.addEventListener('change', () => this.recalculateManualAmount());
-                    el.addEventListener('input', () => this.recalculateManualAmount());
-                }
-            });
+        // Manual session (report backfill) UI removed
 
         const cancelTableFormBtn = document.getElementById('cancel-table-form-btn');
         if (cancelTableFormBtn) {
@@ -701,77 +698,49 @@ class MekanApp {
         }
     }
 
-    switchView(viewName, { scroll = true } = {}) {
-        if (!viewName) return;
-        if (viewName === this.currentView && scroll === false) return;
+    switchView(viewName) {
+        this.updateHeaderViewTitle(viewName);
 
-        // Mark active view for styling
-        document.querySelectorAll('.view').forEach(view => view.classList.remove('active'));
+        // Update navigation (compact menu + bottom nav)
+        document.querySelectorAll('.nav-btn-compact').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document
+            .querySelectorAll(`.nav-btn-compact[data-view="${viewName}"]`)
+            .forEach((btn) => btn.classList.add('active'));
+
+        // Update views
+        document.querySelectorAll('.view').forEach(view => {
+            view.classList.remove('active');
+        });
         const viewElement = document.getElementById(`${viewName}-view`);
-        if (viewElement) viewElement.classList.add('active');
-
-        // Scroll pager to the target view (unless change came from swipe)
-        if (scroll) {
-            try {
-                viewElement?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest', inline: 'start' });
-            } catch (e) {
-                // ignore
-            }
+        if (viewElement) {
+            viewElement.classList.add('active');
         }
 
         this.currentView = viewName;
 
-        // Load data for the view (same behavior as before)
+        // Load data for the view
         if (viewName === 'tables') {
             this.loadTables();
+            // Start auto-update for table cards when on tables view
             this.startTableCardPriceUpdates();
         } else if (viewName === 'customers') {
             this.loadCustomers();
+            // Stop auto-update when not on tables view
             this.stopTableCardPriceUpdates();
         } else if (viewName === 'sales') {
             this.loadSales();
+            // Stop auto-update when not on tables view
             this.stopTableCardPriceUpdates();
         } else if (viewName === 'daily') {
             this.loadDailyDashboard();
-            this.stopTableCardPriceUpdates();
-        } else if (viewName === 'products') {
-            this.loadProducts();
+            // Stop auto-update when not on tables view
             this.stopTableCardPriceUpdates();
         } else {
+            // Stop auto-update for other views
             this.stopTableCardPriceUpdates();
         }
-    }
-
-    initViewPager() {
-        const pager = document.getElementById('views-pager');
-        if (!pager) return;
-
-        const ids = ['tables', 'products', 'customers', 'sales', 'daily'];
-        const sections = ids
-            .map((k) => document.getElementById(`${k}-view`))
-            .filter(Boolean);
-
-        const io = new IntersectionObserver(
-            (entries) => {
-                // Find the most visible entry
-                const visible = entries
-                    .filter((e) => e.isIntersecting)
-                    .sort((a, b) => (b.intersectionRatio || 0) - (a.intersectionRatio || 0))[0];
-                if (!visible) return;
-                const id = visible.target.id || '';
-                const viewName = id.replace(/-view$/, '');
-                if (viewName && viewName !== this.currentView) {
-                    this.switchView(viewName, { scroll: false });
-                }
-            },
-            { root: pager, threshold: [0.55, 0.7] }
-        );
-
-        sections.forEach((s) => io.observe(s));
-
-        // Ensure initial view is aligned
-        const current = document.getElementById(`${this.currentView}-view`) || document.getElementById('tables-view');
-        current?.scrollIntoView?.({ behavior: 'auto', block: 'nearest', inline: 'start' });
     }
 
     updateHeaderViewTitle(viewName) {

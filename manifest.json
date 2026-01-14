@@ -8,7 +8,7 @@
   "display": "standalone",
   "display_override": ["standalone"],
   "background_color": "#ecf0f1",
-  "theme_color": "#1a1a1a",
+  "theme_color": "#ecf0f1",
   "orientation": "any",
   "categories": ["business", "productivity"],
   "icons": [
