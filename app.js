@@ -1562,6 +1562,15 @@ class MekanApp {
         // Update modal title with table name only
         const modalTitle = document.getElementById('table-modal-title');
         modalTitle.textContent = table.name;
+
+        // Header total chip (move "Genel Toplam" here to free footer space)
+        const totalChip = document.getElementById('table-modal-total-chip');
+        const headerTotalEl = document.getElementById('modal-header-total');
+        if (totalChip && headerTotalEl) {
+            totalChip.style.display = 'inline-flex';
+            const headerTotal = Math.round(checkTotal || 0);
+            headerTotalEl.textContent = String(headerTotal);
+        }
         
         // Update modal content
         // Hourly table info
@@ -1589,6 +1598,7 @@ class MekanApp {
                 // Update check total with real-time hourly calculation
                 table.checkTotal = hourlyTotal + table.salesTotal;
                 document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
+                if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.checkTotal));
                 
                 // Update hourly total in real-time every minute
                 if (this.hourlyUpdateInterval) {
@@ -1603,6 +1613,7 @@ class MekanApp {
                         document.getElementById('modal-sales-total').textContent = Math.round(updatedTable.salesTotal);
                         updatedTable.checkTotal = hourlyTotal + updatedTable.salesTotal;
                         document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
+                        if (headerTotalEl) headerTotalEl.textContent = String(Math.round(updatedTable.checkTotal));
                     }
                 }, 60000); // Update every minute
                 
@@ -1625,6 +1636,7 @@ class MekanApp {
                 document.getElementById('modal-sales-total').textContent = Math.round(table.salesTotal);
                 table.checkTotal = table.salesTotal;
                 document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
+                if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.checkTotal));
                 
                 // Table is not open - hide products section
                 if (productsSection) {
@@ -1644,9 +1656,11 @@ class MekanApp {
             }
         } else {
             hourlyInfo.style.display = 'none';
-            regularInfo.style.display = 'flex';
+            // Total moved to header; hide footer info for regular tables to free space.
+            regularInfo.style.display = 'none';
             table.checkTotal = table.salesTotal;
             document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
+            if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.checkTotal));
             if (openBtn) {
             openBtn.style.display = 'none';
             }

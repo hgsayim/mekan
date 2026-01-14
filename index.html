@@ -212,7 +212,14 @@
     <div id="table-modal" class="modal">
         <div class="modal-content">
             <div class="table-modal-header">
-                <h2 id="table-modal-title">Masa</h2>
+                <div class="table-modal-titlebar">
+                    <h2 id="table-modal-title">Masa</h2>
+                    <div id="table-modal-total-chip" class="table-modal-total-chip" style="display:none;">
+                        <span class="table-modal-total-label">Genel Toplam:</span>
+                        <span id="modal-header-total" class="table-modal-total-value">0</span>
+                        <span class="table-modal-total-currency" aria-hidden="true">₺</span>
+                    </div>
+                </div>
                 <span class="close close-header">&times;</span>
             </div>
             <div id="table-modal-body">

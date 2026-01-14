@@ -1727,6 +1727,46 @@ header h1 {
     min-height: 44px;
 }
 
+.table-modal-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.table-modal-total-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    padding: 6px 10px;
+    border-radius: 8px;
+    /* Match table card price bubble */
+    background: rgba(52, 152, 219, 0.10);
+    color: var(--secondary-color);
+    font-weight: 800;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.table-modal-total-label {
+    color: rgba(44, 62, 80, 0.70);
+    font-weight: 800;
+    font-size: 0.86rem;
+}
+
+.table-modal-total-value {
+    color: var(--secondary-color);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+.table-modal-total-currency {
+    opacity: 0.7;
+    font-weight: 900;
+}
+
 .table-modal-header h2 {
     margin: 0;
     /* Keep perfectly aligned with the close button */
@@ -3040,9 +3080,9 @@ form select:focus {
 
     /* Hourly/regular info: single row, 4 items */
     #hourly-info.table-info-grid {
-        /* 4 equal chips, perfectly aligned */
+        /* 3 equal chips (Aç/Oyn/Ür). Total moved to header. */
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
         align-items: stretch;
         width: 100%;
@@ -3120,12 +3160,10 @@ form select:focus {
     #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
     #hourly-info.table-info-grid > span:nth-child(2)::before { content: 'Oyn:'; }
     #hourly-info.table-info-grid > span:nth-child(3)::before { content: 'Ür:'; }
-    #hourly-info.table-info-grid > span:nth-child(4)::before { content: 'Top:'; }
 
     /* Add currency via CSS so baseline is consistent across chips */
     #hourly-info.table-info-grid > span:nth-child(2)::after,
     #hourly-info.table-info-grid > span:nth-child(3)::after,
-    #hourly-info.table-info-grid > span:nth-child(4)::after,
     #regular-info.table-info-grid > span::after {
         content: ' ₺';
         display: inline-block;
@@ -3135,6 +3173,22 @@ form select:focus {
         line-height: 1;
         margin-left: 2px;
         flex: 0 0 auto;
+    }
+
+    /* Hide footer "Toplam" chip; it is shown in header now */
+    #hourly-info .table-info-total,
+    #regular-info .table-info-total {
+        display: none !important;
+    }
+
+    /* Header total chip more compact on phones */
+    .table-modal-total-chip {
+        padding: 6px 8px;
+        border-radius: 10px;
+        gap: 6px;
+    }
+    .table-modal-total-label {
+        font-size: 0.78rem;
     }
 
     /* Icons for compact hourly info chips */
