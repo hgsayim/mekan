@@ -1518,7 +1518,8 @@ class MekanApp {
         const productsSection = document.getElementById('table-products-section');
 
         if (table.type === 'hourly') {
-            hourlyInfo.style.display = 'flex';
+            // Use grid so mobile stays single-row (CSS sets the grid template)
+            hourlyInfo.style.display = 'grid';
             regularInfo.style.display = 'none';
             
             if (table.isActive && table.openTime) {
