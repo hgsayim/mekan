@@ -212,12 +212,53 @@ header h1 {
     color: white;
 }
 
-.view {
-    display: none;
+/* Swipe pager (android home-like) */
+.views-pager {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    gap: 0;
+    scrollbar-width: none; /* Firefox */
 }
 
-.view.active {
+.views-pager::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+}
+
+.view {
     display: block;
+    flex: 0 0 100%;
+    min-width: 100%;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    padding-bottom: 10px;
+}
+/* Floating refresh FAB */
+.fab-refresh {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    width: 54px;
+    height: 54px;
+    border-radius: 18px;
+    border: none;
+    cursor: pointer;
+    background: rgba(26, 26, 26, 0.92);
+    color: #fff;
+    font-size: 1.6rem;
+    font-weight: 900;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.18);
+    z-index: 6000;
+}
+
+.fab-refresh:active {
+    transform: translateY(1px) scale(0.98);
 }
 
 
