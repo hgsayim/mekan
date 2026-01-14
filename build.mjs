@@ -25,6 +25,8 @@ const FILES = [
   'index.html',
   'styles.css',
   'app.js',
+  'database.js',
+  'hybrid-db.js',
   'supabase-db.js',
   'supabase-config.js',
   'service-worker.js',
