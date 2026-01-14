@@ -126,6 +126,8 @@ class MekanApp {
         this._realtimeRefreshTimer = null;
         this._realtimePendingViews = new Set();
         this._productsDelegationBound = false;
+        this._productsCache = null;
+        this._productsCacheDirty = true;
         this.init();
     }
 
@@ -1430,32 +1432,37 @@ class MekanApp {
         ].filter(Boolean);
         footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
 
-        let table = await this.db.getTable(tableId);
-        if (!table) {
+        let unlocked = false;
+        const unlockModal = () => {
+            if (unlocked) return;
+            unlocked = true;
             if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
             footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
-            return;
-        }
+        };
 
-        // Optimistic open support: if the UI already shows the table as active (green) or an open is in progress,
-        // allow the modal (and product picker) to open immediately even if DB still reflects old state.
         try {
-            const cardEl = this.getTableCardEl?.(tableId);
-            const isCardGreen = !!cardEl && cardEl.classList.contains('active');
-            const opening = this._getTableOpening?.(tableId);
-            if (table.type === 'hourly' && (opening || isCardGreen) && (!table.isActive || !table.openTime)) {
-                table.isActive = true;
-                table.openTime = table.openTime || opening?.openTime || new Date().toISOString();
-            } else if (isCardGreen && !table.isActive) {
-                // For non-hourly tables, a green card means "should be open" (e.g. unpaid products just added).
-                table.isActive = true;
-            }
-        } catch (e) {
-            // best-effort only
-        }
+            let table = await this.db.getTable(tableId);
+            if (!table) return;
 
-        // Get all unpaid sales for this table
-        const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            // Optimistic open support: if the UI already shows the table as active (green) or an open is in progress,
+            // allow the modal (and product picker) to open immediately even if DB still reflects old state.
+            try {
+                const cardEl = this.getTableCardEl?.(tableId);
+                const isCardGreen = !!cardEl && cardEl.classList.contains('active');
+                const opening = this._getTableOpening?.(tableId);
+                if (table.type === 'hourly' && (opening || isCardGreen) && (!table.isActive || !table.openTime)) {
+                    table.isActive = true;
+                    table.openTime = table.openTime || opening?.openTime || new Date().toISOString();
+                } else if (isCardGreen && !table.isActive) {
+                    // For non-hourly tables, a green card means "should be open" (e.g. unpaid products just added).
+                    table.isActive = true;
+                }
+            } catch (e) {
+                // best-effort only
+            }
+
+            // Get all unpaid sales for this table
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
 
         // Sync table active status with unpaid sales - but hourly tables must be manually opened
         let tableUpdated = false;
@@ -1632,14 +1639,21 @@ class MekanApp {
             }
         }
 
-        // Load products for selection
-        await this.loadTableProducts(tableId);
+            // Load products for selection (cached; no DB hit on every open)
+            await this.loadTableProducts(tableId);
 
-        // Load sales for this table
-        await this.loadTableSales(tableId);
+            // Products are ready: remove overlay now (sales can arrive later)
+            unlockModal();
 
-        document.getElementById('table-modal').classList.add('active');
-        document.body.classList.add('table-modal-open');
+            // Load sales for this table in the background (don't block UI / don't keep spinner forever)
+            Promise.resolve()
+                .then(() => this.loadTableSales(tableId))
+                .catch((e) => console.error('loadTableSales error:', e));
+        } catch (err) {
+            console.error('openTableModal error:', err);
+        } finally {
+            unlockModal();
+        }
     }
 
     async cancelHourlyGame() {
@@ -1693,6 +1707,7 @@ class MekanApp {
                         if (product && this.tracksStock(product)) {
                             product.stock += item.amount;
                             await this.db.updateProduct(product);
+                            this._updateCachedProduct(product);
                         }
                     }
                 }
@@ -1767,8 +1782,31 @@ class MekanApp {
         document.body.classList.remove('table-modal-open');
     }
 
-    async loadTableProducts(tableId) {
+    invalidateProductsCache() {
+        this._productsCache = null;
+        this._productsCacheDirty = true;
+    }
+
+    _setProductsCache(products) {
+        this._productsCache = Array.isArray(products) ? products : [];
+        this._productsCacheDirty = false;
+    }
+
+    _updateCachedProduct(product) {
+        if (!product || !product.id || !this._productsCache) return;
+        const idx = this._productsCache.findIndex((p) => String(p.id) === String(product.id));
+        if (idx >= 0) this._productsCache[idx] = product;
+    }
+
+    async getAllProductsCached() {
+        if (this._productsCache && !this._productsCacheDirty) return this._productsCache;
         const products = await this.db.getAllProducts();
+        this._setProductsCache(products);
+        return this._productsCache;
+    }
+
+    async loadTableProducts(tableId) {
+        const products = await this.getAllProductsCached();
         const container = document.getElementById('table-products-grid');
         if (!container) return;
 
@@ -2012,6 +2050,7 @@ class MekanApp {
                 if (this.tracksStock(product)) {
                     product.stock += item.amount;
                     await this.db.updateProduct(product);
+                    this._updateCachedProduct(product);
                 }
             }
 
@@ -2653,6 +2692,8 @@ class MekanApp {
             // Daily uses tables for hourly aggregation
             if (current === 'daily') views.add('daily');
         } else if (tableName === 'products') {
+            // Products can be changed from another device: invalidate local picker cache.
+            this.invalidateProductsCache?.();
             if (current === 'products') views.add('products');
             // Table modal product stock/price can be impacted; simplest is refresh tables if viewing
             if (current === 'tables') views.add('tables');
@@ -2671,8 +2712,10 @@ class MekanApp {
             if (current === 'daily') views.add('daily');
         }
 
-        // If a table modal is open and the changed row matches, refresh it too.
         const tableModal = document.getElementById('table-modal');
+        const isModalOpen = Boolean(tableModal && tableModal.classList.contains('active') && this.currentTableId);
+
+        // If a table modal is open and the changed row matches, refresh it too.
         const changedTableId = payload?.new?.id || payload?.old?.id || null;
         const shouldRefreshModal = Boolean(
             tableModal &&
@@ -2682,12 +2725,16 @@ class MekanApp {
             String(changedTableId) === String(this.currentTableId)
         );
 
-        this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
+        // Product changes should refresh the open table's product grid even if tableId doesn't match.
+        const shouldRefreshModalProducts = tableName === 'products' && isModalOpen;
+
+        this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal, shouldRefreshModalProducts);
     }
 
-    scheduleRealtimeRefresh(views, refreshModal) {
+    scheduleRealtimeRefresh(views, refreshModal, refreshModalProducts) {
         (views || []).forEach((v) => this._realtimePendingViews.add(v));
         if (refreshModal) this._realtimePendingViews.add('__modal__');
+        if (refreshModalProducts) this._realtimePendingViews.add('__modal_products__');
 
         // Debounce bursts (multiple rows changes)
         if (this._realtimeRefreshTimer) return;
@@ -2696,8 +2743,9 @@ class MekanApp {
             const pending = Array.from(this._realtimePendingViews);
             this._realtimePendingViews.clear();
 
-            const viewsToReload = pending.filter((v) => v !== '__modal__');
+            const viewsToReload = pending.filter((v) => v !== '__modal__' && v !== '__modal_products__');
             const modalRequested = pending.includes('__modal__');
+            const modalProductsRequested = pending.includes('__modal_products__');
 
             try {
                 if (viewsToReload.length > 0) {
@@ -2705,6 +2753,10 @@ class MekanApp {
                 }
                 if (modalRequested && this.currentTableId) {
                     await this.openTableModal(this.currentTableId);
+                }
+                if (modalProductsRequested && this.currentTableId) {
+                    // Lightweight refresh: only re-render product grid, keep modal responsive.
+                    await this.loadTableProducts(this.currentTableId);
                 }
             } catch (e) {
                 console.error('Realtime refresh failed:', e);
@@ -2818,7 +2870,7 @@ class MekanApp {
     }
 
     async openAddProductToTableModal() {
-        const products = await this.db.getAllProducts();
+        const products = await this.getAllProductsCached();
         const select = document.getElementById('product-select');
         const currentTableId = this.currentTableId;
         
@@ -2915,6 +2967,7 @@ class MekanApp {
             if (this.tracksStock(product)) {
             product.stock -= amount;
             await this.db.updateProduct(product);
+            this._updateCachedProduct(product);
             }
 
             // Handle instant sale table
@@ -2996,6 +3049,7 @@ class MekanApp {
                 if (product) {
                     product.stock += item.amount;
                     await this.db.updateProduct(product);
+                    this._updateCachedProduct(product);
                 }
             }
 
@@ -3483,6 +3537,8 @@ class MekanApp {
     // Products Management
     async loadProducts() {
         const products = await this.db.getAllProducts();
+        // Keep table product picker cache warm and up-to-date
+        this._setProductsCache(products);
         const container = document.getElementById('products-container');
         
         if (!container) {
@@ -3663,6 +3719,7 @@ class MekanApp {
             } else {
                 await this.db.addProduct(productData);
             }
+            this.invalidateProductsCache();
             
             document.getElementById('product-modal').classList.remove('active');
             await this.loadProducts();
@@ -3677,6 +3734,7 @@ class MekanApp {
 
         try {
             await this.db.deleteProduct(id);
+            this.invalidateProductsCache();
             await this.loadProducts();
         } catch (error) {
             console.error('Ürün silinirken hata:', error);

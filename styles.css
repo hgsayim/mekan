@@ -3045,12 +3045,12 @@ form select:focus {
     /* Make info chips compact and distinct from action buttons */
     .table-modal-footer .table-info-grid span {
         justify-content: center;
-        padding: 6px 8px;
+        padding: 5px 6px;
         background: rgba(52, 152, 219, 0.06);
         box-shadow: none;
         border-radius: 14px;
-        font-size: 0.74rem;
-        gap: 5px;
+        font-size: 0.68rem;
+        gap: 4px;
         min-width: 0;
         white-space: nowrap;
         overflow: hidden;
@@ -3059,7 +3059,7 @@ form select:focus {
     .table-modal-footer .table-info-grid span strong {
         display: inline;
         font-weight: 800;
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         color: rgba(44, 62, 80, 0.72);
     }
 
@@ -3070,6 +3070,14 @@ form select:focus {
         text-overflow: ellipsis;
         font-weight: 800;
         color: rgba(44, 62, 80, 0.92);
+    }
+
+    .table-modal-footer .table-info-grid .currency {
+        flex: 0 0 auto;
+        font-weight: 900;
+        font-size: 0.68rem;
+        opacity: 0.65;
+        margin-left: 1px;
     }
 
     /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
@@ -3087,11 +3095,11 @@ form select:focus {
     #hourly-info.table-info-grid > span::before {
         display: inline-block;
         font-weight: 900;
-        font-size: 0.72rem;
+        font-size: 0.68rem;
         color: rgba(44, 62, 80, 0.70);
         margin-right: 4px;
         line-height: 1;
-        width: 26px;
+        width: 18px;
         text-align: right;
     }
 
