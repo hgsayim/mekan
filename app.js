@@ -2622,6 +2622,8 @@ class MekanApp {
 
     // Helper: Update modal totals (reduces DOM queries)
     updateModalTotals(table) {
+        // Header total chip should be kept in sync
+        const headerTotalEl = document.getElementById('modal-header-total');
         if (table.type === 'hourly') {
             const modalSalesTotal = document.getElementById('modal-sales-total');
             const modalCheckTotal = document.getElementById('modal-check-total');
@@ -2629,10 +2631,12 @@ class MekanApp {
             if (modalCheckTotal) {
                 const checkTotal = this.calculateCheckTotal(table);
                 modalCheckTotal.textContent = Math.round(checkTotal);
+                if (headerTotalEl) headerTotalEl.textContent = String(Math.round(checkTotal));
             }
         } else {
             const modalCheckTotalRegular = document.getElementById('modal-check-total-regular');
             if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(table.salesTotal);
+            if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.salesTotal));
         }
     }
 
@@ -4034,17 +4038,21 @@ class MekanApp {
         
         title.textContent = `${customer.name} - Ödeme`;
         customerName.textContent = customer.name;
-        customerBalance.textContent = `${Math.round(customer.balance || 0)} ₺`;
+        // Use whole ₺ amounts to avoid floating point leftovers in UI/validation
+        const roundedBalance = Math.round(customer.balance || 0);
+        customerBalance.textContent = `${roundedBalance} ₺`;
         customerIdInput.value = customer.id;
         paymentAmount.value = '';
-        paymentAmount.max = customer.balance || 0;
+        paymentAmount.max = roundedBalance;
+        paymentAmount.step = '1';
         
         modal.classList.add('active');
     }
 
     async processCustomerPayment() {
         const customerId = document.getElementById('payment-customer-id').value;
-        const paymentAmount = parseFloat(document.getElementById('payment-amount').value);
+        const rawPayment = parseFloat(document.getElementById('payment-amount').value);
+        const paymentAmount = Math.round(rawPayment);
 
         if (!customerId || !paymentAmount || paymentAmount <= 0) {
             await this.appAlert('Lütfen geçerli bir ödeme miktarı girin', 'Uyarı');
@@ -4058,7 +4066,7 @@ class MekanApp {
                 return;
             }
 
-            const currentBalance = customer.balance || 0;
+            const currentBalance = Math.round(customer.balance || 0);
             if (paymentAmount > currentBalance) {
                 await this.appAlert(`Ödeme miktarı veresiye bakiyesinden fazla olamaz. Bakiye: ${Math.round(currentBalance)} ₺`, 'Uyarı');
                 return;
@@ -4106,15 +4114,14 @@ class MekanApp {
                 return;
             }
 
-            const fullBalance = customer.balance || 0;
+            const fullBalance = Math.round(customer.balance || 0);
             if (fullBalance <= 0) {
                 await this.appAlert('Veresiye bakiyesi yok', 'Uyarı');
                 return;
             }
 
             // Set payment amount to full balance (rounded)
-            const roundedBalance = Math.round(fullBalance * 100) / 100;
-            document.getElementById('payment-amount').value = roundedBalance;
+            document.getElementById('payment-amount').value = String(fullBalance);
             
             // Process payment
             await this.processCustomerPayment();
