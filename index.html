@@ -9,6 +9,7 @@
     <meta name="apple-mobile-web-app-title" content="MekanApp">
     <title>MekanApp - Kafe Yönetimi</title>
     <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- Generated in dist/ by build.mjs on Cloudflare Pages -->
@@ -469,6 +470,29 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- Customer Credit Add Modal (manual credit without products) -->
+    <div id="customer-credit-add-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="customer-credit-add-title">Veresiye Ekle</h2>
+            <div style="margin-bottom: 16px;">
+                <p><strong>Müşteri:</strong> <span id="credit-add-customer-name"></span></p>
+                <p><strong>Mevcut Veresiye:</strong> <span id="credit-add-customer-balance" style="font-size: 1.2rem; font-weight: bold; color: #e67e22;"></span></p>
+            </div>
+            <form id="customer-credit-add-form">
+                <input type="hidden" id="credit-add-customer-id">
+                <label>
+                    Eklenecek Tutar (₺):
+                    <input type="number" id="credit-add-amount" step="0.01" min="0.01" required>
+                </label>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-warning">+ Veresiye Ekle</button>
+                    <button type="button" class="btn btn-secondary" id="cancel-customer-credit-add-btn">İptal</button>
+                </div>
+            </form>
         </div>
     </div>
 

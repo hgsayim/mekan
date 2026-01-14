@@ -1,5 +1,5 @@
 // Service Worker for MekanApp
-const CACHE_NAME = 'mekanapp-v3';
+const CACHE_NAME = 'mekanapp-v5';
 
 // Get base URL from service worker location
 const BASE_URL = self.location.href.replace(/\/service-worker\.js$/, '/');
@@ -8,6 +8,7 @@ const urlsToCache = [
   BASE_URL,
   BASE_URL + 'index.html',
   BASE_URL + 'styles.css',
+  BASE_URL + 'icon.svg',
   BASE_URL + 'env.js',
   BASE_URL + 'app.js',
   BASE_URL + 'supabase-config.js',
