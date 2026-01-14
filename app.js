@@ -117,6 +117,7 @@ class MekanApp {
         this._dialog = null;
         this._dialogResolver = null;
         this._settlingTables = new Map(); // tableId -> expiry timestamp (ms)
+        this._openingTables = new Map(); // tableId -> { until: ms, openTime: iso }
         this.hourlyUpdateInterval = null;
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
@@ -1101,38 +1102,45 @@ class MekanApp {
     }
 
     async createTableCard(table) {
+        // If user just opened an hourly table, keep it visually open for a couple seconds
+        // to avoid "green -> red -> green" flicker while DB/realtime catches up.
+        const opening = (table?.type === 'hourly') ? this._getTableOpening(table.id) : null;
+        const effectiveTable = opening
+            ? { ...table, isActive: true, openTime: opening.openTime || table.openTime }
+            : table;
+
         // Instant sale table is always active
-        const statusClass = (table.type === 'instant' || table.isActive) ? 'active' : 'inactive';
+        const statusClass = (effectiveTable.type === 'instant' || effectiveTable.isActive) ? 'active' : 'inactive';
         
         // Calculate check total for display
-        let displayTotal = table.checkTotal;
+        let displayTotal = effectiveTable.checkTotal;
         
-        if (table.type === 'hourly' && table.isActive && table.openTime) {
+        if (effectiveTable.type === 'hourly' && effectiveTable.isActive && effectiveTable.openTime) {
             // For hourly tables, include hourly total
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
-            const hourlyTotal = hoursUsed * table.hourlyRate;
-            displayTotal = hourlyTotal + table.salesTotal;
-        } else if (table.type === 'instant') {
+            const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
+            const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
+            displayTotal = hourlyTotal + effectiveTable.salesTotal;
+        } else if (effectiveTable.type === 'instant') {
             // For instant sale table, show today's paid sales total
-            displayTotal = await this.getInstantTableDailyTotal(table.id);
+            displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
         }
 
         // Get icon from table data, or use default
-        let icon = table.icon || (table.type === 'hourly' ? '🎱' : '🪑'); // Use stored icon or default based on type
+        let icon = effectiveTable.icon || (effectiveTable.type === 'hourly' ? '🎱' : '🪑'); // Use stored icon or default based on type
 
         // Add instant class for instant sale table
-        const instantClass = table.type === 'instant' ? 'instant-table' : '';
+        const instantClass = effectiveTable.type === 'instant' ? 'instant-table' : '';
 
         // Show delayed-start button only when hourly table is CLOSED (not active/open)
-        const delayedStartBtn = (table.type === 'hourly' && !(table.isActive && table.openTime))
-            ? `<button class="table-delay-btn" data-table-id="${table.id}" title="Gecikmeli Başlat">⏱</button>`
+        const delayedStartBtn = (effectiveTable.type === 'hourly' && !(effectiveTable.isActive && effectiveTable.openTime))
+            ? `<button class="table-delay-btn" data-table-id="${effectiveTable.id}" title="Gecikmeli Başlat">⏱</button>`
             : '';
 
         return `
-            <div class="table-card ${statusClass} ${instantClass}" id="table-${table.id}">
+            <div class="table-card ${statusClass} ${instantClass}" id="table-${effectiveTable.id}">
                 ${delayedStartBtn}
                 <div class="table-icon">${icon}</div>
-                    <h3>${table.name}</h3>
+                    <h3>${effectiveTable.name}</h3>
                 <div class="table-price">${Math.round(displayTotal)} ₺</div>
             </div>
         `;
@@ -1210,6 +1218,22 @@ class MekanApp {
             return false;
         }
         return true;
+    }
+
+    _markTableOpening(tableId, openTimeISO, ms = 3200) {
+        if (tableId == null) return;
+        this._openingTables.set(String(tableId), { until: Date.now() + ms, openTime: openTimeISO });
+    }
+
+    _getTableOpening(tableId) {
+        const key = String(tableId);
+        const entry = this._openingTables.get(key);
+        if (!entry) return null;
+        if (Date.now() > entry.until) {
+            this._openingTables.delete(key);
+            return null;
+        }
+        return entry;
     }
 
     showTableSettlementEffect(tableId, variant = 'Hesap Alındı') {
@@ -2652,7 +2676,9 @@ class MekanApp {
         }
 
         // Optimistic UI: show as opening immediately (avoid perceived lag)
-        this.setTableCardState(targetTableId, { isActive: true, type: 'hourly', openTime: new Date().toISOString(), hourlyRate: 0, salesTotal: 0, checkTotal: 0 });
+        const optimisticOpenTime = new Date().toISOString();
+        this._markTableOpening(targetTableId, optimisticOpenTime);
+        this.setTableCardState(targetTableId, { isActive: true, type: 'hourly', openTime: optimisticOpenTime, hourlyRate: 0, salesTotal: 0, checkTotal: 0 });
 
         const table = await this.db.getTable(targetTableId);
         if (!table) {
@@ -2704,6 +2730,8 @@ class MekanApp {
 
             // Write to DB in foreground, but do NOT block UI with expensive reloads
             await this.db.updateTable(table);
+            // DB confirmed; opening flicker guard no longer needed
+            this._openingTables.delete(String(table.id));
 
             // Background refresh (keep other screens eventually consistent)
             setTimeout(() => {

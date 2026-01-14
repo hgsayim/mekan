@@ -2968,6 +2968,61 @@ form select:focus {
         padding-top: 10px;
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
         box-shadow: 0 -1px 0 rgba(0,0,0,0.08);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .table-info-footer {
+        width: 100%;
+    }
+
+    /* Hourly/regular info: single row, 4 items */
+    #hourly-info.table-info-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        align-items: stretch;
+        width: 100%;
+    }
+
+    #regular-info.table-info-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 6px;
+        width: 100%;
+    }
+
+    /* Make info chips compact and distinct from action buttons */
+    .table-modal-footer .table-info-grid span {
+        justify-content: center;
+        padding: 6px 6px;
+        background: rgba(52, 152, 219, 0.06);
+        box-shadow: none;
+        border-radius: 12px;
+        font-size: 0.74rem;
+        gap: 5px;
+        min-width: 0;
+    }
+
+    .table-modal-footer .table-info-grid span strong {
+        display: none;
+    }
+
+    /* Icons for compact hourly info chips */
+    #hourly-info span:nth-child(1)::before { content: '🕒'; }
+    #hourly-info span:nth-child(2)::before { content: '🎱'; }
+    #hourly-info span:nth-child(3)::before { content: '🛒'; }
+    #hourly-info span:nth-child(4)::before { content: '₺'; }
+    #regular-info span::before { content: '₺'; }
+
+    #hourly-info span::before,
+    #regular-info span::before {
+        display: inline-block;
+        font-size: 0.82rem;
+        line-height: 1;
+        transform: translateY(-0.5px);
     }
 
     .table-modal-footer .table-footer-buttons {
@@ -2977,6 +3032,9 @@ form select:focus {
         width: 100%;
         gap: 10px;
         align-items: stretch;
+        justify-content: center;
+        max-width: 360px;
+        margin: 0 auto;
     }
 
     /* Icon-only buttons on mobile */
@@ -3142,20 +3200,6 @@ form select:focus {
         font-size: 0.95rem !important;
     }
 
-    /* Make hourly/regular info chips more minimal than action buttons */
-    .table-modal-footer .table-info-grid span {
-        padding: 6px 10px;
-        height: auto;
-        background: rgba(52, 152, 219, 0.06);
-        box-shadow: none;
-        border-radius: 10px;
-        font-size: 0.78rem;
-        gap: 6px;
-    }
-    .table-modal-footer .table-info-grid span strong,
-    .table-modal-footer .table-info-grid span > span {
-        font-size: 0.82rem;
-    }
     .table-modal-footer .table-info-total {
         background: rgba(39, 174, 96, 0.10) !important;
         box-shadow: none !important;
