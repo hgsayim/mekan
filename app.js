@@ -1461,7 +1461,12 @@ class MekanApp {
         document.body.classList.add('table-modal-open');
 
         const modalTitleEl = document.getElementById('table-modal-title');
-        if (modalTitleEl) modalTitleEl.textContent = 'Yükleniyor...';
+        if (modalTitleEl) {
+            // Table names are stable; show immediately (avoid "Yükleniyor..." in title)
+            const card = this.getTableCardEl?.(tableId);
+            const cardName = card?.querySelector?.('h3')?.textContent?.trim?.() || null;
+            modalTitleEl.textContent = cardName || modalTitleEl.textContent || 'Masa';
+        }
 
         const modalBodyEl = document.getElementById('table-modal-body');
         // Show loading overlay only if the work is actually slow (avoids spinner flash when using local cache)

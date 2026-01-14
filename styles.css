@@ -1931,27 +1931,39 @@ header h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(231, 76, 60, 0.15);
-    color: #e74c3c;
-    font-size: 1.8rem;
-    font-weight: bold;
-    border: 2px solid rgba(231, 76, 60, 0.3);
+    background: rgba(243, 156, 18, 0.22);
+    color: #8a5a00;
+    font-size: 1rem;
+    font-weight: 900;
+    border: 2px solid rgba(243, 156, 18, 0.35);
     border-radius: 8px;
     cursor: pointer;
     transition: all 0.2s;
     box-sizing: border-box;
-    padding: 0;
+    padding: 0 12px;
     margin: 0;
     margin-left: auto;
     line-height: 1;
-    box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
+    box-shadow: 0 2px 6px rgba(243, 156, 18, 0.22);
+    gap: 8px;
 }
 
 .close-header:hover {
-    background: rgba(231, 76, 60, 0.25);
-    border-color: rgba(231, 76, 60, 0.5);
+    background: rgba(243, 156, 18, 0.32);
+    border-color: rgba(243, 156, 18, 0.55);
     transform: scale(1.1);
-    box-shadow: 0 3px 6px rgba(231, 76, 60, 0.3);
+    box-shadow: 0 3px 10px rgba(243, 156, 18, 0.28);
+}
+
+.close-header .close-ico {
+    font-size: 1.1rem;
+    line-height: 1;
+}
+
+.close-header .close-txt {
+    font-size: 0.95rem;
+    font-weight: 900;
+    line-height: 1;
 }
 
 .btn-header {
@@ -3044,13 +3056,13 @@ form select:focus {
     }
 
     .close-header {
-        width: 40px;
+        width: auto;
         height: 40px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         line-height: 1;
-        padding: 0;
+        padding: 0 12px;
         /* Override generic `.close` (absolute positioning) to prevent clipping on scroll */
         position: static;
         top: auto;
@@ -3107,13 +3119,13 @@ form select:focus {
         background: rgba(52, 152, 219, 0.06);
         box-shadow: none;
         border-radius: 14px;
-        font-size: 0.72rem;
+        font-size: 0.78rem;
         gap: 4px;
         min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         line-height: 1;
-        height: 38px;
+        height: 42px;
     }
 
     .table-modal-footer .table-info-grid span strong {
@@ -3149,11 +3161,11 @@ form select:focus {
     #hourly-info.table-info-grid > span::before {
         display: inline-block;
         font-weight: 900;
-        font-size: 0.72rem;
-        color: rgba(44, 62, 80, 0.70);
+        font-size: 0.78rem;
+        color: rgba(44, 62, 80, 0.85);
         margin-right: 4px;
         line-height: 1;
-        width: 26px;
+        width: 32px;
         text-align: right;
     }
 
