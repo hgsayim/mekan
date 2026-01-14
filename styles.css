@@ -2942,6 +2942,11 @@ form select:focus {
         align-items: center;
         gap: 10px;
         padding-bottom: 8px;
+        position: sticky;
+        top: 0;
+        z-index: 6;
+        background: #fff;
+        padding-top: 6px;
     }
 
     .table-modal-header h2 {
@@ -2957,6 +2962,11 @@ form select:focus {
         justify-content: center;
         line-height: 1;
         padding: 0;
+        /* Override generic `.close` (absolute positioning) to prevent clipping on scroll */
+        position: static;
+        top: auto;
+        right: auto;
+        margin-left: auto;
     }
 
     /* Footer actions: fixed at bottom of modal */
@@ -2964,7 +2974,8 @@ form select:focus {
         flex: 0 0 auto;
         position: sticky;
         bottom: 0;
-        background: var(--light-bg);
+        /* Match modal theme (same as modal-content) */
+        background: #fff;
         padding-top: 10px;
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
         box-shadow: 0 -1px 0 rgba(0,0,0,0.08);
@@ -3010,6 +3021,7 @@ form select:focus {
         gap: 5px;
         min-width: 0;
         white-space: nowrap;
+        overflow: hidden;
     }
 
     .table-modal-footer .table-info-grid span strong {
@@ -3020,9 +3032,38 @@ form select:focus {
     }
 
     .table-modal-footer .table-info-grid span > span {
+        display: inline-block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
         font-weight: 800;
         color: rgba(44, 62, 80, 0.92);
     }
+
+    /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
+    #hourly-info.table-info-grid > span {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+    }
+
+    #hourly-info.table-info-grid > span strong {
+        display: none;
+    }
+
+    #hourly-info.table-info-grid > span::before {
+        display: inline-block;
+        font-weight: 900;
+        font-size: 0.72rem;
+        color: rgba(44, 62, 80, 0.70);
+        margin-right: 4px;
+        line-height: 1;
+    }
+
+    #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
+    #hourly-info.table-info-grid > span:nth-child(2)::before { content: 'Oyn:'; }
+    #hourly-info.table-info-grid > span:nth-child(3)::before { content: 'Ür:'; }
+    #hourly-info.table-info-grid > span:nth-child(4)::before { content: 'Top:'; }
 
     /* Icons for compact hourly info chips */
     /* Emoji icons removed for consistency across Android/iOS fonts */
