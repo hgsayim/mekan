@@ -17,25 +17,6 @@
     --border-color: #bdc3c7;
     --shadow: 0 2px 10px rgba(0,0,0,0.1);
     --header-gap: 12px;
-    --surface: #ffffff;
-    --surface-2: #f8f9fa;
-}
-
-/* Dark mode (applied via html[data-theme="dark"]) */
-html[data-theme="dark"] {
-    --primary-color: #e5e7eb;
-    --secondary-color: #60a5fa;
-    --success-color: #22c55e;
-    --danger-color: #ef4444;
-    --warning-color: #f59e0b;
-    --info-color: #fb923c;
-    --light-bg: #0b1220;
-    --dark-text: #e5e7eb;
-    --light-text: #0b1220;
-    --border-color: rgba(255,255,255,0.14);
-    --shadow: 0 10px 30px rgba(0,0,0,0.45);
-    --surface: rgba(255,255,255,0.06);
-    --surface-2: rgba(255,255,255,0.04);
 }
 
 body {
@@ -202,7 +183,7 @@ header h1 {
     top: 100%;
     right: 0;
     margin-top: 8px;
-    background: var(--surface);
+    background: white;
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15);
     min-width: 160px;
@@ -218,7 +199,7 @@ header h1 {
     display: block;
     width: 100%;
     padding: 10px 15px;
-    background: transparent;
+    background: white;
     color: var(--primary-color);
     border: none;
     border-bottom: 1px solid #eee;
@@ -233,7 +214,7 @@ header h1 {
 }
 
 .nav-btn-compact:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: #f5f5f5;
 }
 
 .nav-btn-compact.active {
@@ -319,7 +300,7 @@ header h1 {
     border: 2px solid rgba(52, 152, 219, 0.2);
     border-radius: 8px;
     font-size: 1rem;
-    background: var(--surface);
+    background: white;
     color: var(--dark-text);
     min-width: 160px;
     transition: all 0.3s ease;
@@ -504,10 +485,6 @@ header h1 {
     z-index: 40;
 }
 
-html[data-theme="dark"] .tables-grid.is-loading::before {
-    background: rgba(11, 18, 32, 0.55);
-}
-
 .tables-grid.is-loading::after {
     content: '';
     position: absolute;
@@ -545,7 +522,7 @@ html[data-theme="dark"] .tables-grid.is-loading::before {
 }
 
 .table-card {
-    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
     padding: 12px;
     border-radius: 12px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
@@ -833,7 +810,7 @@ html[data-theme="dark"] .tables-grid.is-loading::before {
 }
 
 .product-card {
-    background: var(--surface);
+    background: white;
     padding: 12px 20px;
     border-radius: 8px;
     box-shadow: var(--shadow);
@@ -1001,7 +978,7 @@ html[data-theme="dark"] .tables-grid.is-loading::before {
 }
 
 .customer-card {
-    background: var(--surface);
+    background: white;
     padding: 12px 20px;
     border-radius: 8px;
     box-shadow: var(--shadow);
@@ -1190,7 +1167,7 @@ html[data-theme="dark"] .tables-grid.is-loading::before {
 }
 
 .sale-card {
-    background: var(--surface);
+    background: white;
     padding: 12px 20px;
     border-radius: 8px;
     box-shadow: var(--shadow);
@@ -1340,7 +1317,7 @@ html[data-theme="dark"] .tables-grid.is-loading::before {
 }
 
 .modal-content {
-    background-color: var(--surface);
+    background-color: white;
     margin: auto;
     padding: 30px;
     border-radius: 15px;
@@ -1714,10 +1691,6 @@ html[data-theme="dark"] .tables-grid.is-loading::before {
     z-index: 60;
 }
 
-html[data-theme="dark"] #table-modal-body.is-loading::before {
-    background: rgba(11, 18, 32, 0.55);
-}
-
 #table-modal-body.is-loading::after {
     content: '';
     position: absolute;
@@ -1752,35 +1725,6 @@ html[data-theme="dark"] #table-modal-body.is-loading::before {
     position: relative;
     width: 100%;
     min-height: 44px;
-}
-
-.table-modal-title-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-}
-
-.table-modal-total-chip {
-    height: 48px;
-    padding: 0 14px;
-    border-radius: 6px;
-    background: rgba(52, 152, 219, 0.1);
-    color: var(--secondary-color);
-    font-weight: 900;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-    box-shadow: none;
-    border: none;
-    font-variant-numeric: tabular-nums;
-}
-
-html[data-theme="dark"] .table-modal-total-chip {
-    /* Keep the exact same chip style, just with dark-mode variables */
-    background: rgba(96, 165, 250, 0.14);
-    color: var(--secondary-color);
 }
 
 .table-modal-header h2 {
@@ -3050,7 +2994,7 @@ form select:focus {
         position: sticky;
         top: 0;
         z-index: 6;
-        background: var(--surface);
+        background: #fff;
         padding-top: 6px;
     }
 
@@ -3080,7 +3024,7 @@ form select:focus {
         position: sticky;
         bottom: 0;
         /* Match modal theme (same as modal-content) */
-        background: var(--surface);
+        background: #fff;
         padding-top: 10px;
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
         box-shadow: 0 -1px 0 rgba(0,0,0,0.08);
@@ -3094,10 +3038,11 @@ form select:focus {
         width: 100%;
     }
 
-    /* Hourly info: 3 items (Açılış / Oyun / Ürün) */
+    /* Hourly/regular info: single row, 4 items */
     #hourly-info.table-info-grid {
+        /* 4 equal chips, perfectly aligned */
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 6px;
         align-items: stretch;
         width: 100%;
@@ -3149,7 +3094,7 @@ form select:focus {
         line-height: 1;
     }
 
-    /* Hourly chips: show full labels now that there are only 3 */
+    /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
     #hourly-info.table-info-grid > span {
         min-width: 0;
         justify-content: center;
@@ -3158,15 +3103,29 @@ form select:focus {
     }
 
     #hourly-info.table-info-grid > span strong {
-        display: inline;
+        display: none;
+    }
+
+    #hourly-info.table-info-grid > span::before {
+        display: inline-block;
         font-weight: 900;
         font-size: 0.72rem;
-        color: rgba(44, 62, 80, 0.72);
+        color: rgba(44, 62, 80, 0.70);
+        margin-right: 4px;
+        line-height: 1;
+        width: 26px;
+        text-align: right;
     }
+
+    #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
+    #hourly-info.table-info-grid > span:nth-child(2)::before { content: 'Oyn:'; }
+    #hourly-info.table-info-grid > span:nth-child(3)::before { content: 'Ür:'; }
+    #hourly-info.table-info-grid > span:nth-child(4)::before { content: 'Top:'; }
 
     /* Add currency via CSS so baseline is consistent across chips */
     #hourly-info.table-info-grid > span:nth-child(2)::after,
     #hourly-info.table-info-grid > span:nth-child(3)::after,
+    #hourly-info.table-info-grid > span:nth-child(4)::after,
     #regular-info.table-info-grid > span::after {
         content: ' ₺';
         display: inline-block;

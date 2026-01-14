@@ -134,7 +134,6 @@ class MekanApp {
     async init() {
         try {
             await this.db.init();
-            this.initTheme();
             this.setupEventListeners();
             this.updateHeaderViewTitle(this.currentView);
             await this.loadInitialData();
@@ -176,57 +175,6 @@ class MekanApp {
             console.error('Uygulama başlatılırken hata:', error);
             await this.appAlert('Uygulama başlatılırken hata oluştu: ' + error.message + '. Lütfen sayfayı yenileyin.', 'Hata');
         }
-    }
-
-    initTheme() {
-        // Preference: 'system' | 'light' | 'dark'
-        const saved = (() => {
-            try { return localStorage.getItem('themePref') || 'system'; } catch (_) { return 'system'; }
-        })();
-        this._themePref = saved;
-
-        const apply = () => {
-            const systemDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
-            const effective = this._themePref === 'system' ? (systemDark ? 'dark' : 'light') : this._themePref;
-
-            document.documentElement.dataset.theme = effective;
-
-            // Helps Android (Chrome + installed PWA) match system bars with the app
-            const themeColor = effective === 'dark' ? '#0b1220' : '#ecf0f1';
-            document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
-                try { m.setAttribute('content', themeColor); } catch (_) {}
-            });
-
-            const btn = document.getElementById('theme-toggle-btn');
-            if (btn) {
-                btn.textContent =
-                    this._themePref === 'system'
-                        ? `Tema: Otomatik (${effective === 'dark' ? 'Koyu' : 'Açık'})`
-                        : `Tema: ${effective === 'dark' ? 'Koyu' : 'Açık'}`;
-            }
-        };
-
-        this._themeApply = apply;
-        this._themeToggle = () => {
-            const next =
-                this._themePref === 'system' ? 'light' :
-                this._themePref === 'light' ? 'dark' :
-                'system';
-            this._themePref = next;
-            try { localStorage.setItem('themePref', next); } catch (_) {}
-            apply();
-        };
-
-        apply();
-
-        try {
-            if (window.matchMedia) {
-                const mq = window.matchMedia('(prefers-color-scheme: dark)');
-                mq.addEventListener?.('change', () => {
-                    if (this._themePref === 'system') apply();
-                });
-            }
-        } catch (_) {}
     }
 
     startPollSync() {
@@ -349,17 +297,6 @@ class MekanApp {
                 }
             });
         });
-
-        // Theme toggle (menu button without data-view)
-        const themeBtn = document.getElementById('theme-toggle-btn');
-        if (themeBtn && this._themeToggle && !this._themeBtnBound) {
-            this._themeBtnBound = true;
-            themeBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                this._themeToggle();
-            });
-        }
 
         // Add Customer button
         const addCustomerBtn = document.getElementById('add-customer-btn');
@@ -1630,7 +1567,6 @@ class MekanApp {
         // Hourly table info
         const hourlyInfo = document.getElementById('hourly-info');
         const regularInfo = document.getElementById('regular-info');
-        const totalChip = document.getElementById('table-modal-total-chip');
         const openBtn = document.getElementById('open-table-btn');
         const payBtn = document.getElementById('pay-table-btn');
         const creditBtn = document.getElementById('credit-table-btn');
@@ -1641,7 +1577,6 @@ class MekanApp {
             // Use grid so mobile stays single-row (CSS sets the grid template)
             hourlyInfo.style.display = 'grid';
             regularInfo.style.display = 'none';
-            if (totalChip) totalChip.style.display = 'inline-flex';
             
             if (table.isActive && table.openTime) {
                 document.getElementById('modal-open-time').textContent = this.formatTimeOnly(table.openTime);
@@ -1653,7 +1588,7 @@ class MekanApp {
                 
                 // Update check total with real-time hourly calculation
                 table.checkTotal = hourlyTotal + table.salesTotal;
-                if (totalChip) totalChip.textContent = `${Math.round(table.checkTotal)} ₺`;
+                document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
                 
                 // Update hourly total in real-time every minute
                 if (this.hourlyUpdateInterval) {
@@ -1667,7 +1602,7 @@ class MekanApp {
                         document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
                         document.getElementById('modal-sales-total').textContent = Math.round(updatedTable.salesTotal);
                         updatedTable.checkTotal = hourlyTotal + updatedTable.salesTotal;
-                        if (totalChip) totalChip.textContent = `${Math.round(updatedTable.checkTotal)} ₺`;
+                        document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
                     }
                 }, 60000); // Update every minute
                 
@@ -1689,7 +1624,7 @@ class MekanApp {
                 document.getElementById('modal-hourly-total').textContent = '0';
                 document.getElementById('modal-sales-total').textContent = Math.round(table.salesTotal);
                 table.checkTotal = table.salesTotal;
-                if (totalChip) totalChip.textContent = `${Math.round(table.checkTotal)} ₺`;
+                document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
                 
                 // Table is not open - hide products section
                 if (productsSection) {
@@ -1709,13 +1644,9 @@ class MekanApp {
             }
         } else {
             hourlyInfo.style.display = 'none';
-            // Total is shown next to the title; hide footer info to save space
-            regularInfo.style.display = 'none';
+            regularInfo.style.display = 'flex';
             table.checkTotal = table.salesTotal;
-            if (totalChip) {
-                totalChip.style.display = 'inline-flex';
-                totalChip.textContent = `${Math.round(table.checkTotal)} ₺`;
-            }
+            document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
             if (openBtn) {
             openBtn.style.display = 'none';
             }
@@ -2672,19 +2603,17 @@ class MekanApp {
 
     // Helper: Update modal totals (reduces DOM queries)
     updateModalTotals(table) {
-        const totalChip = document.getElementById('table-modal-total-chip');
-        const showChip = (value) => {
-            if (!totalChip) return;
-            totalChip.style.display = 'inline-flex';
-            totalChip.textContent = `${Math.round(value || 0)} ₺`;
-        };
-
         if (table.type === 'hourly') {
             const modalSalesTotal = document.getElementById('modal-sales-total');
+            const modalCheckTotal = document.getElementById('modal-check-total');
             if (modalSalesTotal) modalSalesTotal.textContent = Math.round(table.salesTotal);
-            showChip(this.calculateCheckTotal(table));
+            if (modalCheckTotal) {
+                const checkTotal = this.calculateCheckTotal(table);
+                modalCheckTotal.textContent = Math.round(checkTotal);
+            }
         } else {
-            showChip(table.salesTotal || 0);
+            const modalCheckTotalRegular = document.getElementById('modal-check-total-regular');
+            if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(table.salesTotal);
         }
     }
 
