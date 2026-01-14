@@ -504,6 +504,10 @@ header h1 {
     z-index: 40;
 }
 
+html[data-theme="dark"] .tables-grid.is-loading::before {
+    background: rgba(11, 18, 32, 0.55);
+}
+
 .tables-grid.is-loading::after {
     content: '';
     position: absolute;
@@ -1708,6 +1712,10 @@ header h1 {
     -webkit-backdrop-filter: blur(2px);
     border-radius: 12px;
     z-index: 60;
+}
+
+html[data-theme="dark"] #table-modal-body.is-loading::before {
+    background: rgba(11, 18, 32, 0.55);
 }
 
 #table-modal-body.is-loading::after {
@@ -3042,7 +3050,7 @@ form select:focus {
         position: sticky;
         top: 0;
         z-index: 6;
-        background: #fff;
+        background: var(--surface);
         padding-top: 6px;
     }
 
@@ -3072,7 +3080,7 @@ form select:focus {
         position: sticky;
         bottom: 0;
         /* Match modal theme (same as modal-content) */
-        background: #fff;
+        background: var(--surface);
         padding-top: 10px;
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
         box-shadow: 0 -1px 0 rgba(0,0,0,0.08);
@@ -3086,11 +3094,10 @@ form select:focus {
         width: 100%;
     }
 
-    /* Hourly/regular info: single row, 4 items */
+    /* Hourly info: 3 items (Açılış / Oyun / Ürün) */
     #hourly-info.table-info-grid {
-        /* 4 equal chips, perfectly aligned */
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 6px;
         align-items: stretch;
         width: 100%;
@@ -3142,7 +3149,7 @@ form select:focus {
         line-height: 1;
     }
 
-    /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
+    /* Hourly chips: show full labels now that there are only 3 */
     #hourly-info.table-info-grid > span {
         min-width: 0;
         justify-content: center;
@@ -3151,29 +3158,15 @@ form select:focus {
     }
 
     #hourly-info.table-info-grid > span strong {
-        display: none;
-    }
-
-    #hourly-info.table-info-grid > span::before {
-        display: inline-block;
+        display: inline;
         font-weight: 900;
         font-size: 0.72rem;
-        color: rgba(44, 62, 80, 0.70);
-        margin-right: 4px;
-        line-height: 1;
-        width: 26px;
-        text-align: right;
+        color: rgba(44, 62, 80, 0.72);
     }
-
-    #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
-    #hourly-info.table-info-grid > span:nth-child(2)::before { content: 'Oyn:'; }
-    #hourly-info.table-info-grid > span:nth-child(3)::before { content: 'Ür:'; }
-    #hourly-info.table-info-grid > span:nth-child(4)::before { content: 'Top:'; }
 
     /* Add currency via CSS so baseline is consistent across chips */
     #hourly-info.table-info-grid > span:nth-child(2)::after,
     #hourly-info.table-info-grid > span:nth-child(3)::after,
-    #hourly-info.table-info-grid > span:nth-child(4)::after,
     #regular-info.table-info-grid > span::after {
         content: ' ₺';
         display: inline-block;
