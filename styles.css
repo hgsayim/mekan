@@ -66,6 +66,65 @@ header h1 {
     margin: 0;
     font-size: 1.5rem;
     white-space: nowrap;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.header-view-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    opacity: 0.75;
+    letter-spacing: 0.2px;
+}
+
+/* Make lists breathe a bit now that section headers are removed */
+#tables-container,
+#products-container,
+#customers-container {
+    margin-top: 8px;
+}
+
+/* Add cards (tables/products/customers) */
+.add-card {
+    border: 2px dashed rgba(52, 152, 219, 0.45) !important;
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.08) 0%, rgba(52, 152, 219, 0.03) 100%) !important;
+    box-shadow: none !important;
+    cursor: pointer;
+}
+
+.add-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(52, 152, 219, 0.75) !important;
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.12) 0%, rgba(52, 152, 219, 0.05) 100%) !important;
+}
+
+.add-card-icon {
+    font-weight: 900;
+    color: rgba(52, 152, 219, 0.95);
+}
+
+.add-card-sub {
+    opacity: 0.75;
+    font-weight: 700;
+}
+
+/* Tables add card layout */
+.table-card.add-card .add-card-icon {
+    font-size: 2.4rem;
+    line-height: 1;
+    margin-bottom: 6px;
+}
+
+.table-card.add-card .add-card-sub {
+    font-size: 0.85rem;
+    color: rgba(44, 62, 80, 0.75);
+}
+
+/* Products/Customers add icon bubble */
+.product-card.add-card .product-card-icon,
+.customer-card.add-card .customer-card-icon {
+    background: rgba(52, 152, 219, 0.10);
 }
 
 footer {

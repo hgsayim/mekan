@@ -120,6 +120,7 @@ class MekanApp {
         this._realtimeChannel = null;
         this._realtimeRefreshTimer = null;
         this._realtimePendingViews = new Set();
+        this._productsDelegationBound = false;
         this.init();
     }
 
@@ -127,6 +128,7 @@ class MekanApp {
         try {
             await this.db.init();
             this.setupEventListeners();
+            this.updateHeaderViewTitle(this.currentView);
             await this.loadInitialData();
             this.startFooterUpdates();
             this.startDailyReset();
@@ -735,6 +737,8 @@ class MekanApp {
     }
 
     switchView(viewName) {
+        this.updateHeaderViewTitle(viewName);
+
         // Update navigation (compact menu)
         document.querySelectorAll('.nav-btn-compact').forEach(btn => {
             btn.classList.remove('active');
@@ -778,6 +782,20 @@ class MekanApp {
         }
     }
 
+    updateHeaderViewTitle(viewName) {
+        const el = document.getElementById('header-view-title');
+        if (!el) return;
+        const map = {
+            tables: 'Masalar',
+            products: 'Ürünler',
+            customers: 'Müşteriler',
+            sales: 'Satış Geçmişi',
+            daily: 'Rapor'
+        };
+        const label = map[viewName] || 'Masalar';
+        el.textContent = `- ${label}`;
+    }
+
     // Tables Management
     async loadTables() {
         let tables = await this.db.getAllTables();
@@ -789,7 +807,9 @@ class MekanApp {
         }
         
         if (tables.length === 0) {
-            container.innerHTML = '<div class="empty-state"><h3>No tables found</h3><p>Add a new table to get started</p></div>';
+            container.innerHTML = this.createAddTableCard();
+            const addCard = document.getElementById('add-table-card');
+            if (addCard) addCard.onclick = () => this.openTableFormModal();
             return;
         }
 
@@ -865,7 +885,10 @@ class MekanApp {
 
         // Create table cards - need to await async createTableCard
         const tableCards = await Promise.all(tables.map(table => this.createTableCard(table)));
-        container.innerHTML = tableCards.join('');
+        container.innerHTML = tableCards.join('') + this.createAddTableCard();
+
+        const addCard = document.getElementById('add-table-card');
+        if (addCard) addCard.onclick = () => this.openTableFormModal();
         
         // Add click listeners - special handling for hourly tables
         tables.forEach(table => {
@@ -994,6 +1017,16 @@ class MekanApp {
         if (this.currentView === 'tables') {
             this.updateTableCardPrices();
         }
+    }
+
+    createAddTableCard() {
+        return `
+            <div class="table-card add-card" id="add-table-card" title="Masa Ekle">
+                <div class="add-card-icon">＋</div>
+                <h3>Masa Ekle</h3>
+                <div class="add-card-sub">Yeni masa</div>
+            </div>
+        `;
     }
 
     async updateTableCardPrices() {
@@ -2353,8 +2386,7 @@ class MekanApp {
             closeTime: end.toISOString(),
             hoursUsed,
             hourlyRate: rate,
-            amount,
-            createdAt: new Date().toISOString()
+            amount
         };
 
         try {
@@ -3308,14 +3340,21 @@ class MekanApp {
         }
         
         if (products.length === 0) {
-            container.innerHTML = '<div class="empty-state"><h3>Ürün bulunamadı</h3><p>Başlamak için yeni bir ürün ekleyin</p></div>';
+            container.innerHTML = this.createAddProductCard();
+            const addCard = document.getElementById('add-product-card');
+            if (addCard) addCard.onclick = () => this.openProductFormModal();
             return;
         }
 
-        container.innerHTML = products.map(product => this.createProductCard(product)).join('');
+        container.innerHTML = products.map(product => this.createProductCard(product)).join('') + this.createAddProductCard();
+
+        const addCard = document.getElementById('add-product-card');
+        if (addCard) addCard.onclick = () => this.openProductFormModal();
         
-        // Use event delegation for better reliability
-        container.addEventListener('click', (e) => {
+        // Use event delegation for edit/delete buttons (bind once)
+        if (!this._productsDelegationBound) {
+            this._productsDelegationBound = true;
+            container.addEventListener('click', (e) => {
             const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
             if (!target) return;
 
@@ -3340,7 +3379,22 @@ class MekanApp {
                 if (!id) return;
                 this.deleteProduct(id);
             }
-        });
+            });
+        }
+    }
+
+    createAddProductCard() {
+        return `
+            <div class="product-card add-card" id="add-product-card" title="Ürün Ekle">
+                <div class="product-card-icon add-card-icon">＋</div>
+                <div class="product-card-content">
+                    <h3>Ürün Ekle</h3>
+                    <div class="product-card-details">
+                        <span class="add-card-sub">Yeni ürün</span>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     createProductCard(product) {
@@ -3491,11 +3545,16 @@ class MekanApp {
             }
             
             if (customers.length === 0) {
-                container.innerHTML = '<div class="empty-state"><h3>Müşteri bulunamadı</h3><p>Başlamak için yeni bir müşteri ekleyin</p></div>';
+                container.innerHTML = this.createAddCustomerCard();
+                const addCard = document.getElementById('add-customer-card');
+                if (addCard) addCard.onclick = () => this.openCustomerFormModal();
                 return;
             }
 
-            container.innerHTML = customers.map(customer => this.createCustomerCard(customer)).join('');
+            container.innerHTML = customers.map(customer => this.createCustomerCard(customer)).join('') + this.createAddCustomerCard();
+
+            const addCard = document.getElementById('add-customer-card');
+            if (addCard) addCard.onclick = () => this.openCustomerFormModal();
             
             // Add event listeners
             customers.forEach(customer => {
@@ -3535,6 +3594,18 @@ class MekanApp {
                 container.innerHTML = '<div class="empty-state"><h3>Müşteriler yüklenirken hata oluştu</h3><p>Lütfen sayfayı yenileyin</p></div>';
             }
         }
+    }
+
+    createAddCustomerCard() {
+        return `
+            <div class="customer-card add-card" id="add-customer-card" title="Müşteri Ekle">
+                <div class="customer-card-icon add-card-icon">＋</div>
+                <div class="customer-card-content">
+                    <h3>Müşteri Ekle</h3>
+                    <div class="customer-card-balance balance-positive add-card-sub">Yeni müşteri</div>
+                </div>
+            </div>
+        `;
     }
 
     createCustomerCard(customer) {
