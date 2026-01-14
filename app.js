@@ -130,7 +130,6 @@ class MekanApp {
             this.setupEventListeners();
             this.updateHeaderViewTitle(this.currentView);
             await this.loadInitialData();
-            this.startFooterUpdates();
             this.startDailyReset();
             this.startRealtimeSubscriptions();
             
@@ -4107,6 +4106,12 @@ class MekanApp {
     async loadDailyDashboard() {
         const { startDate, endDate } = this.getReportDateRange();
 
+        const parseDateSafe = (v) => {
+            if (!v) return null;
+            const d = new Date(v);
+            return Number.isNaN(d.getTime()) ? null : d;
+        };
+
         // Get all paid sales in date range - use paymentTime if available, otherwise use sellDateTime
         const allSales = await this.db.getAllSales();
         const periodPaidSales = allSales.filter(sale => {
@@ -4121,8 +4126,11 @@ class MekanApp {
         // Manual sessions (report backfill)
         const allManualSessions = await this.db.getAllManualSessions();
         const periodManualSessions = (allManualSessions || []).filter((s) => {
-            if (!s || s.type !== 'hourly' || !s.closeTime) return false;
-            const closeTime = new Date(s.closeTime);
+            if (!s || s.type !== 'hourly') return false;
+            // Prefer closeTime (actual session end). If it is not parseable (e.g. DB column is TIME),
+            // fall back to createdAt/openTime so the record still shows in reports.
+            const closeTime = parseDateSafe(s.closeTime) || parseDateSafe(s.createdAt) || parseDateSafe(s.openTime);
+            if (!closeTime) return false;
             return closeTime >= startDate && closeTime <= endDate;
         });
 
@@ -4204,8 +4212,8 @@ class MekanApp {
         // Apply manual sessions into totals and usage list (these are already-paid game income)
         for (const s of periodManualSessions) {
             const name = s.tableName || 'Manuel';
-            const hours = typeof s.hoursUsed === 'number' ? s.hoursUsed : 0;
-            const income = typeof s.amount === 'number' ? s.amount : 0;
+            const hours = (typeof s.hoursUsed === 'number' ? s.hoursUsed : parseFloat(s.hoursUsed)) || 0;
+            const income = (typeof s.amount === 'number' ? s.amount : parseFloat(s.amount)) || 0;
             totalTableHours += hours;
             totalHourlyIncome += income;
             upsertManualAgg(name, hours, income);
@@ -4320,7 +4328,11 @@ class MekanApp {
             return;
         }
 
-        const sorted = [...sessions].sort((a, b) => new Date(b.closeTime) - new Date(a.closeTime));
+        const toSortDate = (s) => {
+            const d = new Date(s.closeTime || s.createdAt || s.openTime || 0);
+            return Number.isNaN(d.getTime()) ? new Date(0) : d;
+        };
+        const sorted = [...sessions].sort((a, b) => toSortDate(b) - toSortDate(a));
         container.innerHTML = sorted.map((s) => {
             const name = s.tableName || 'Manuel';
             const startStr = s.openTime ? this.formatDateTimeWithoutSeconds(s.openTime) : '--';
@@ -4499,39 +4511,16 @@ class MekanApp {
     }
 
     updateFooter() {
-        try {
-            // Update date and time
-            const now = new Date();
-            const day = String(now.getDate()).padStart(2, '0');
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const year = now.getFullYear();
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            
-            const dateTimeEl = document.getElementById('footer-date-time');
-            if (dateTimeEl) {
-                dateTimeEl.textContent = `${day}.${month}.${year} ${hours}:${minutes}`;
-            }
-        } catch (error) {
-            console.error('Footer güncellenirken hata:', error);
-        }
+        // Footer removed
     }
 
     startFooterUpdates() {
-        // Update immediately
-        this.updateFooter();
-        // Update time every minute
-        this.footerTimeUpdateInterval = setInterval(() => {
-            this.updateFooter();
-        }, 60000); // 60 seconds = 1 minute
+        // Footer removed
     }
 
     async handlePageVisible() {
         // Page is now visible - refresh all data
         try {
-            // Update footer immediately
-            this.updateFooter();
-            
             // Reload current view
             if (this.currentView === 'tables') {
                 await this.loadTables();
@@ -4552,11 +4541,6 @@ class MekanApp {
                 await this.openTableModal(this.currentTableId);
             }
             
-            // Restart footer updates (in case interval was stopped)
-            if (!this.footerTimeUpdateInterval) {
-                this.startFooterUpdates();
-            }
-            
             // Restart table card updates if on tables view
             if (this.currentView === 'tables') {
                 if (!this.tableCardUpdateInterval) {
@@ -4574,7 +4558,7 @@ class MekanApp {
 if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.protocol === 'https:')) {
     window.addEventListener('load', () => {
         // Try to register service worker, but don't fail if it doesn't work
-        navigator.serviceWorker.register('service-worker.js', { scope: './' })
+        navigator.serviceWorker.register('service-worker.js', { scope: '/' })
             .then((registration) => {
                 console.log('ServiceWorker registered successfully');
             })

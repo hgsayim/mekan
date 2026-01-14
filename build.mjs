@@ -29,6 +29,7 @@ const FILES = [
   'supabase-config.js',
   'service-worker.js',
   'manifest.json',
+  'icon.svg',
 ];
 
 for (const f of FILES) {

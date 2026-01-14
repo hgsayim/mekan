@@ -113,6 +113,15 @@ export class SupabaseDatabase {
         'updated_at',
       ]),
     };
+
+    // Supabase/PostgREST often returns numeric columns as strings. Normalize them here so app.js math works.
+    this.numericFields = {
+      products: new Set(['price', 'arrivalPrice', 'stock']),
+      tables: new Set(['hourlyRate', 'salesTotal', 'checkTotal', 'hourlyTotal']),
+      sales: new Set(['saleTotal']),
+      customers: new Set(['balance']),
+      manualSessions: new Set(['amount', 'hoursUsed', 'hourlyRate']),
+    };
   }
 
   // Keep parity with old Database.init()
@@ -151,7 +160,12 @@ export class SupabaseDatabase {
     const out = {};
     Object.keys(row).forEach((k) => {
       const appKey = reverse[k] || k;
-      out[appKey] = row[k];
+      let v = row[k];
+      if (v != null && typeof v === 'string' && this.numericFields?.[tableKey]?.has?.(appKey)) {
+        const n = Number(v);
+        v = Number.isNaN(n) ? v : n;
+      }
+      out[appKey] = v;
     });
     return out;
   }
