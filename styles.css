@@ -26,6 +26,11 @@ body {
     line-height: 1.6;
 }
 
+/* Ensure any browser/OS gaps (overscroll / PWA chrome) match the app theme */
+html {
+    background: var(--light-bg);
+}
+
 .app-container {
     max-width: 1400px;
     margin: 0 auto;
@@ -3115,6 +3120,22 @@ form select:focus {
     #hourly-info.table-info-grid > span:nth-child(3)::before { content: 'Ür:'; }
     #hourly-info.table-info-grid > span:nth-child(4)::before { content: 'Top:'; }
 
+    /* Add currency via CSS so baseline is consistent across chips */
+    #hourly-info.table-info-grid > span:nth-child(2)::after,
+    #hourly-info.table-info-grid > span:nth-child(3)::after,
+    #hourly-info.table-info-grid > span:nth-child(4)::after,
+    #regular-info.table-info-grid > span::after {
+        content: ' ₺';
+        display: inline-block;
+        font-weight: 900;
+        font-size: 0.72rem;
+        opacity: 0.65;
+        line-height: 1;
+        transform: translateY(0.5px);
+        margin-left: 2px;
+        flex: 0 0 auto;
+    }
+
     /* Icons for compact hourly info chips */
     /* Emoji icons removed for consistency across Android/iOS fonts */
 
@@ -3195,6 +3216,11 @@ form select:focus {
     /* İptal: keep strong red but compact */
     #cancel-hourly-btn {
         box-shadow: 0 2px 6px rgba(231, 76, 60, 0.28) !important;
+    }
+
+    /* Cancel should be icon-only (X) on mobile */
+    #cancel-hourly-btn .btn-txt {
+        display: none !important;
     }
 
     /* "Ürün Seçin" başlığını küçült */
