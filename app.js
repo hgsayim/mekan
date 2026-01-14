@@ -117,6 +117,9 @@ class MekanApp {
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
         this.dailyResetInterval = null;
+        this._realtimeChannel = null;
+        this._realtimeRefreshTimer = null;
+        this._realtimePendingViews = new Set();
         this.init();
     }
 
@@ -127,6 +130,7 @@ class MekanApp {
             await this.loadInitialData();
             this.startFooterUpdates();
             this.startDailyReset();
+            this.startRealtimeSubscriptions();
             
             // Handle page visibility changes (screen lock/unlock on tablets)
             document.addEventListener('visibilitychange', () => {
@@ -143,6 +147,7 @@ class MekanApp {
             
             // Clean up intervals on page unload
             window.addEventListener('beforeunload', () => {
+                this.stopRealtimeSubscriptions();
                 this.stopTableCardPriceUpdates();
                 if (this.hourlyUpdateInterval) {
                     clearInterval(this.hourlyUpdateInterval);
@@ -2333,6 +2338,120 @@ class MekanApp {
             promises.push(this.loadDailyDashboard());
         }
         await Promise.all(promises);
+    }
+
+    startRealtimeSubscriptions() {
+        // Supabase Realtime (Postgres changes). Makes multi-device updates visible without refresh.
+        if (!this.supabase || this._realtimeChannel) return;
+
+        const onChange = (tableName, payload) => {
+            try {
+                this.handleRealtimeChange(tableName, payload);
+            } catch (e) {
+                console.error('Realtime handler error:', e);
+            }
+        };
+
+        this._realtimeChannel = this.supabase
+            .channel('mekanapp-realtime')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (p) => onChange('tables', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (p) => onChange('products', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, (p) => onChange('sales', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (p) => onChange('customers', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_sessions' }, (p) => onChange('manual_sessions', p))
+            .subscribe((status) => {
+                // statuses: SUBSCRIBED, TIMED_OUT, CLOSED, CHANNEL_ERROR
+                if (status !== 'SUBSCRIBED') {
+                    // keep quiet; network may be flaky on tablets
+                }
+            });
+    }
+
+    stopRealtimeSubscriptions() {
+        if (this._realtimeRefreshTimer) {
+            clearTimeout(this._realtimeRefreshTimer);
+            this._realtimeRefreshTimer = null;
+        }
+        this._realtimePendingViews?.clear?.();
+        if (this._realtimeChannel && this.supabase) {
+            try {
+                this.supabase.removeChannel(this._realtimeChannel);
+            } catch (e) {
+                // ignore
+            }
+        }
+        this._realtimeChannel = null;
+    }
+
+    handleRealtimeChange(tableName, payload) {
+        // Decide which screens to refresh (debounced)
+        const views = new Set();
+        const current = this.currentView;
+
+        if (tableName === 'tables') {
+            views.add('tables');
+            // Sales view uses table names mapping
+            if (current === 'sales') views.add('sales');
+            // Daily uses tables for hourly aggregation
+            if (current === 'daily') views.add('daily');
+        } else if (tableName === 'products') {
+            if (current === 'products') views.add('products');
+            // Table modal product stock/price can be impacted; simplest is refresh tables if viewing
+            if (current === 'tables') views.add('tables');
+            if (current === 'daily') views.add('daily');
+        } else if (tableName === 'sales') {
+            // Sales affect tables, sales history, and reports
+            views.add('tables');
+            views.add('sales');
+            if (current === 'daily') views.add('daily');
+            if (current === 'customers') views.add('customers');
+        } else if (tableName === 'customers') {
+            if (current === 'customers') views.add('customers');
+            if (current === 'sales') views.add('sales');
+            if (current === 'daily') views.add('daily');
+        } else if (tableName === 'manual_sessions') {
+            if (current === 'daily') views.add('daily');
+        }
+
+        // If a table modal is open and the changed row matches, refresh it too.
+        const tableModal = document.getElementById('table-modal');
+        const changedTableId = payload?.new?.id || payload?.old?.id || null;
+        const shouldRefreshModal = Boolean(
+            tableModal &&
+            tableModal.classList.contains('active') &&
+            this.currentTableId &&
+            changedTableId &&
+            String(changedTableId) === String(this.currentTableId)
+        );
+
+        this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
+    }
+
+    scheduleRealtimeRefresh(views, refreshModal) {
+        (views || []).forEach((v) => this._realtimePendingViews.add(v));
+        if (refreshModal) this._realtimePendingViews.add('__modal__');
+
+        // Debounce bursts (multiple rows changes)
+        if (this._realtimeRefreshTimer) return;
+        this._realtimeRefreshTimer = setTimeout(async () => {
+            this._realtimeRefreshTimer = null;
+            const pending = Array.from(this._realtimePendingViews);
+            this._realtimePendingViews.clear();
+
+            const viewsToReload = pending.filter((v) => v !== '__modal__');
+            const modalRequested = pending.includes('__modal__');
+
+            try {
+                if (viewsToReload.length > 0) {
+                    await this.reloadViews(viewsToReload);
+                }
+                if (modalRequested && this.currentTableId) {
+                    await this.openTableModal(this.currentTableId);
+                }
+            } catch (e) {
+                console.error('Realtime refresh failed:', e);
+            }
+        }, 350);
     }
 
     // Helper: Check if product tracks stock
