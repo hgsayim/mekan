@@ -1933,7 +1933,8 @@ header h1 {
     justify-content: center;
     /* Match footer CTA feel */
     background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
-    color: #fff;
+    color: rgba(255, 255, 255, 0.98);
+    text-shadow: 0 1px 1px rgba(0,0,0,0.12);
     font-size: 1rem;
     font-weight: 900;
     border: 2px solid rgba(243, 156, 18, 0.25);
@@ -1960,12 +1961,14 @@ header h1 {
     font-size: 1.25rem;
     line-height: 1;
     transform: translateY(-0.5px);
+    color: rgba(255, 255, 255, 0.98);
 }
 
 .close-header .close-txt {
     font-size: 0.95rem;
     font-weight: 900;
     line-height: 1;
+    color: rgba(255, 255, 255, 0.98);
 }
 
 .btn-header {
