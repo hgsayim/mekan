@@ -2980,16 +2980,21 @@ form select:focus {
 
     /* Hourly/regular info: single row, 4 items */
     #hourly-info.table-info-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: center;
         gap: 6px;
-        align-items: stretch;
+        align-items: center;
         width: 100%;
+        overflow: hidden;
     }
 
     #regular-info.table-info-grid {
-        display: grid;
-        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: center;
         gap: 6px;
         width: 100%;
     }
@@ -2997,13 +3002,14 @@ form select:focus {
     /* Make info chips compact and distinct from action buttons */
     .table-modal-footer .table-info-grid span {
         justify-content: center;
-        padding: 6px 6px;
+        padding: 6px 8px;
         background: rgba(52, 152, 219, 0.06);
         box-shadow: none;
-        border-radius: 12px;
+        border-radius: 999px;
         font-size: 0.74rem;
         gap: 5px;
         min-width: 0;
+        white-space: nowrap;
     }
 
     .table-modal-footer .table-info-grid span strong {
@@ -3026,26 +3032,27 @@ form select:focus {
     }
 
     .table-modal-footer .table-footer-buttons {
+        /* Bottom CTA row: left (veresiye) - center (nakit) - right (iptal) */
         display: flex !important;
         flex-direction: row;
         flex-wrap: nowrap !important;
         width: 100%;
-        gap: 10px;
+        gap: 8px;
         align-items: stretch;
-        justify-content: center;
-        max-width: 360px;
-        margin: 0 auto;
+        justify-content: space-between;
+        max-width: none;
+        margin: 0;
     }
 
     /* Icon-only buttons on mobile */
     .btn-footer {
-        flex: 1 1 0;
+        /* Base: pill */
         min-width: 0;
         height: 52px;
-        font-size: 1.35rem;
-        padding: 0;
+        padding: 0 14px;
         justify-content: center;
-        border-radius: 18px;
+        border-radius: 999px;
+        font-size: 1.25rem;
     }
 
     .btn-footer .btn-txt {
@@ -3062,6 +3069,46 @@ form select:focus {
     #credit-table-btn { order: 1; }
     #pay-table-btn { order: 2; }
     #cancel-hourly-btn { order: 3; }
+
+    /* Side CTAs: small oval like "+" affordance; Center CTA: fill remaining width */
+    #credit-table-btn,
+    #cancel-hourly-btn {
+        flex: 0 0 74px;
+        padding: 0;
+        border-radius: 999px;
+    }
+
+    #pay-table-btn {
+        flex: 1 1 auto;
+        min-width: 0;
+        border-radius: 999px;
+        gap: 10px;
+        font-size: 1.05rem;
+        letter-spacing: 0.2px;
+    }
+
+    /* Show text only on the center (Nakit) button */
+    #pay-table-btn .btn-txt {
+        display: inline;
+        font-weight: 800;
+    }
+
+    #pay-table-btn .btn-ico {
+        font-size: 1.2rem;
+    }
+
+    /* Veresiye: lighter, "action chip" feel */
+    #credit-table-btn {
+        background: rgba(52, 152, 219, 0.14) !important;
+        color: rgba(44, 62, 80, 0.92) !important;
+        border: 2px solid rgba(52, 152, 219, 0.25) !important;
+        box-shadow: 0 2px 6px rgba(52, 152, 219, 0.18) !important;
+    }
+
+    /* İptal: keep strong red but compact */
+    #cancel-hourly-btn {
+        box-shadow: 0 2px 6px rgba(231, 76, 60, 0.28) !important;
+    }
 
     /* "Ürün Seçin" başlığını küçült */
     #table-products-section h3 {
