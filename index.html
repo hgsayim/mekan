@@ -6,9 +6,9 @@
     <!-- Keep browser UI (Android Chrome URL/status bar) aligned with the app theme, even in dark-mode -->
     <meta name="theme-color" content="#ecf0f1">
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ecf0f1">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#ecf0f1">
-    <meta name="color-scheme" content="light">
-    <meta name="supported-color-schemes" content="light">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b1220">
+    <meta name="color-scheme" content="light dark">
+    <meta name="supported-color-schemes" content="light dark">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -34,6 +34,7 @@
                         <button class="nav-btn-compact" data-view="customers">Müşteriler</button>
                         <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
                         <button class="nav-btn-compact" data-view="daily">Rapor</button>
+                        <button class="nav-btn-compact" id="theme-toggle-btn" type="button">Tema: Açık</button>
                     </div>
                 </nav>
             </div>
@@ -212,7 +213,10 @@
     <div id="table-modal" class="modal">
         <div class="modal-content">
             <div class="table-modal-header">
-                <h2 id="table-modal-title">Masa</h2>
+                <div class="table-modal-title-wrap">
+                    <h2 id="table-modal-title">Masa</h2>
+                    <span id="table-modal-total-chip" class="table-modal-total-chip" style="display:none;">0 ₺</span>
+                </div>
                 <span class="close close-header">&times;</span>
             </div>
             <div id="table-modal-body">
@@ -230,10 +234,9 @@
                         <span><strong>Açılış:</strong> <span id="modal-open-time"></span></span>
                         <span><strong>Oyun:</strong> <span id="modal-hourly-total"></span></span>
                         <span><strong>Ürün:</strong> <span id="modal-sales-total"></span></span>
-                        <span class="table-info-total"><strong>Toplam:</strong> <span id="modal-check-total"></span></span>
                     </div>
                     <div id="regular-info" class="table-info-grid" style="display: none;">
-                        <span class="table-info-total"><strong>Toplam:</strong> <span id="modal-check-total-regular"></span></span>
+                        <!-- Total is shown next to the title now -->
                     </div>
                 </div>
                 <div class="table-footer-buttons">

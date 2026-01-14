@@ -17,6 +17,25 @@
     --border-color: #bdc3c7;
     --shadow: 0 2px 10px rgba(0,0,0,0.1);
     --header-gap: 12px;
+    --surface: #ffffff;
+    --surface-2: #f8f9fa;
+}
+
+/* Dark mode (applied via html[data-theme="dark"]) */
+html[data-theme="dark"] {
+    --primary-color: #e5e7eb;
+    --secondary-color: #60a5fa;
+    --success-color: #22c55e;
+    --danger-color: #ef4444;
+    --warning-color: #f59e0b;
+    --info-color: #fb923c;
+    --light-bg: #0b1220;
+    --dark-text: #e5e7eb;
+    --light-text: #0b1220;
+    --border-color: rgba(255,255,255,0.14);
+    --shadow: 0 10px 30px rgba(0,0,0,0.45);
+    --surface: rgba(255,255,255,0.06);
+    --surface-2: rgba(255,255,255,0.04);
 }
 
 body {
@@ -183,7 +202,7 @@ header h1 {
     top: 100%;
     right: 0;
     margin-top: 8px;
-    background: white;
+    background: var(--surface);
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.15);
     min-width: 160px;
@@ -199,7 +218,7 @@ header h1 {
     display: block;
     width: 100%;
     padding: 10px 15px;
-    background: white;
+    background: transparent;
     color: var(--primary-color);
     border: none;
     border-bottom: 1px solid #eee;
@@ -214,7 +233,7 @@ header h1 {
 }
 
 .nav-btn-compact:hover {
-    background: #f5f5f5;
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .nav-btn-compact.active {
@@ -300,7 +319,7 @@ header h1 {
     border: 2px solid rgba(52, 152, 219, 0.2);
     border-radius: 8px;
     font-size: 1rem;
-    background: white;
+    background: var(--surface);
     color: var(--dark-text);
     min-width: 160px;
     transition: all 0.3s ease;
@@ -522,7 +541,7 @@ header h1 {
 }
 
 .table-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
     padding: 12px;
     border-radius: 12px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
@@ -810,7 +829,7 @@ header h1 {
 }
 
 .product-card {
-    background: white;
+    background: var(--surface);
     padding: 12px 20px;
     border-radius: 8px;
     box-shadow: var(--shadow);
@@ -978,7 +997,7 @@ header h1 {
 }
 
 .customer-card {
-    background: white;
+    background: var(--surface);
     padding: 12px 20px;
     border-radius: 8px;
     box-shadow: var(--shadow);
@@ -1167,7 +1186,7 @@ header h1 {
 }
 
 .sale-card {
-    background: white;
+    background: var(--surface);
     padding: 12px 20px;
     border-radius: 8px;
     box-shadow: var(--shadow);
@@ -1317,7 +1336,7 @@ header h1 {
 }
 
 .modal-content {
-    background-color: white;
+    background-color: var(--surface);
     margin: auto;
     padding: 30px;
     border-radius: 15px;
@@ -1725,6 +1744,35 @@ header h1 {
     position: relative;
     width: 100%;
     min-height: 44px;
+}
+
+.table-modal-title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.table-modal-total-chip {
+    height: 48px;
+    padding: 0 14px;
+    border-radius: 6px;
+    background: rgba(52, 152, 219, 0.1);
+    color: var(--secondary-color);
+    font-weight: 900;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    box-shadow: none;
+    border: none;
+    font-variant-numeric: tabular-nums;
+}
+
+html[data-theme="dark"] .table-modal-total-chip {
+    /* Keep the exact same chip style, just with dark-mode variables */
+    background: rgba(96, 165, 250, 0.14);
+    color: var(--secondary-color);
 }
 
 .table-modal-header h2 {
