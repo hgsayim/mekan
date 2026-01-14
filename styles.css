@@ -1931,12 +1931,13 @@ header h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(243, 156, 18, 0.22);
-    color: #8a5a00;
+    /* Match footer CTA feel */
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    color: #fff;
     font-size: 1rem;
     font-weight: 900;
-    border: 2px solid rgba(243, 156, 18, 0.35);
-    border-radius: 8px;
+    border: 2px solid rgba(243, 156, 18, 0.25);
+    border-radius: 14px;
     cursor: pointer;
     transition: all 0.2s;
     box-sizing: border-box;
@@ -1944,20 +1945,21 @@ header h1 {
     margin: 0;
     margin-left: auto;
     line-height: 1;
-    box-shadow: 0 2px 6px rgba(243, 156, 18, 0.22);
+    box-shadow: 0 6px 14px rgba(243, 156, 18, 0.25), 0 2px 6px rgba(0,0,0,0.08);
     gap: 8px;
 }
 
 .close-header:hover {
-    background: rgba(243, 156, 18, 0.32);
-    border-color: rgba(243, 156, 18, 0.55);
+    background: linear-gradient(135deg, #e67e22 0%, #f39c12 100%);
+    border-color: rgba(243, 156, 18, 0.35);
     transform: scale(1.1);
-    box-shadow: 0 3px 10px rgba(243, 156, 18, 0.28);
+    box-shadow: 0 8px 18px rgba(243, 156, 18, 0.32), 0 3px 8px rgba(0,0,0,0.10);
 }
 
 .close-header .close-ico {
-    font-size: 1.1rem;
+    font-size: 1.25rem;
     line-height: 1;
+    transform: translateY(-0.5px);
 }
 
 .close-header .close-txt {
@@ -3149,29 +3151,27 @@ form select:focus {
     /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
     #hourly-info.table-info-grid > span {
         min-width: 0;
-        justify-content: center;
+        justify-content: space-between;
         align-items: center;
         font-variant-numeric: tabular-nums;
     }
 
-    #hourly-info.table-info-grid > span strong {
-        display: none;
-    }
-
+    /* Use full labels (Açılış/Oyun/Ürün) from HTML (no abbreviations) */
     #hourly-info.table-info-grid > span::before {
-        display: inline-block;
-        font-weight: 900;
-        font-size: 0.78rem;
-        color: rgba(44, 62, 80, 0.85);
-        margin-right: 4px;
-        line-height: 1;
-        width: 32px;
-        text-align: right;
+        content: none !important;
+        display: none !important;
+    }
+    #hourly-info.table-info-grid > span strong {
+        display: inline !important;
+        font-size: 0.76rem;
+        color: rgba(44, 62, 80, 0.78);
     }
 
-    #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
-    #hourly-info.table-info-grid > span:nth-child(2)::before { content: 'Oyn:'; }
-    #hourly-info.table-info-grid > span:nth-child(3)::before { content: 'Ür:'; }
+    #hourly-info.table-info-grid > span > span {
+        font-size: 0.90rem;
+        font-weight: 900;
+        color: rgba(44, 62, 80, 0.92);
+    }
 
     /* Add currency via CSS so baseline is consistent across chips */
     #hourly-info.table-info-grid > span:nth-child(2)::after,
@@ -3272,12 +3272,12 @@ form select:focus {
         font-size: 1.2rem;
     }
 
-    /* Veresiye: lighter, "action chip" feel */
+    /* Veresiye: match CTA feel (solid + shadow) */
     #credit-table-btn {
-        background: rgba(52, 152, 219, 0.14) !important;
-        color: rgba(44, 62, 80, 0.92) !important;
-        border: 2px solid rgba(52, 152, 219, 0.25) !important;
-        box-shadow: 0 2px 6px rgba(52, 152, 219, 0.18) !important;
+        background: linear-gradient(135deg, #ff8c00 0%, #f39c12 100%) !important;
+        color: #fff !important;
+        border: 2px solid rgba(255, 140, 0, 0.22) !important;
+        box-shadow: 0 6px 14px rgba(255, 140, 0, 0.22), 0 2px 6px rgba(0,0,0,0.08) !important;
     }
 
     /* İptal: keep strong red but compact */
