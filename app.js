@@ -758,22 +758,53 @@ class MekanApp {
         el.textContent = `- ${label}`;
     }
 
+    setTablesLoading(isLoading) {
+        const container = document.getElementById('tables-container');
+        if (!container) return;
+        container.classList.toggle('is-loading', Boolean(isLoading));
+
+        // If we're loading and there is nothing rendered yet, show skeletons to avoid a blank screen
+        if (isLoading && container.children.length === 0) {
+            container.innerHTML = this.createTableSkeletonCards(12);
+        }
+    }
+
+    createTableSkeletonCards(count = 12) {
+        const n = Math.max(6, Number(count) || 12);
+        return Array.from({ length: n })
+            .map(
+                () => `
+                <div class="table-card skeleton" aria-hidden="true">
+                    <div class="table-icon" style="opacity:0;">🪑</div>
+                    <h3 style="opacity:0;">&nbsp;</h3>
+                    <div class="table-price" style="opacity:0;">&nbsp;</div>
+                </div>
+            `
+            )
+            .join('');
+    }
+
     // Tables Management
     async loadTables() {
-        let tables = await this.db.getAllTables();
         const container = document.getElementById('tables-container');
         
         if (!container) {
             console.error('Tables container not found');
             return;
         }
-        
-        if (tables.length === 0) {
-            container.innerHTML = this.createAddTableCard();
-            const addCard = document.getElementById('add-table-card');
-            if (addCard) addCard.onclick = () => this.openTableFormModal();
-            return;
-        }
+
+        this.setTablesLoading(true);
+
+        let tables = [];
+        try {
+            tables = await this.db.getAllTables();
+            
+            if (tables.length === 0) {
+                container.innerHTML = this.createAddTableCard();
+                const addCard = document.getElementById('add-table-card');
+                if (addCard) addCard.onclick = () => this.openTableFormModal();
+                return;
+            }
 
         // Sort tables: instant table first, then hourly tables, then regular tables
         tables.sort((a, b) => {
@@ -986,6 +1017,9 @@ class MekanApp {
         // Update prices immediately (the interval will handle ongoing updates)
         if (this.currentView === 'tables') {
             this.updateTableCardPrices();
+        }
+        } finally {
+            this.setTablesLoading(false);
         }
     }
 
@@ -1646,8 +1680,8 @@ class MekanApp {
 
         container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
         
-            // Add event listeners for product cards
-            products.forEach(product => {
+        // Add event listeners for product cards
+        products.forEach(product => {
                 const card = document.getElementById(`table-product-card-${product.id}`);
                 const addBtn = document.getElementById(`add-product-btn-${product.id}`);
                 const quantityInput = document.getElementById(`product-quantity-${product.id}`);
