@@ -140,6 +140,7 @@ class MekanApp {
             this.startDailyReset();
             this.startRealtimeSubscriptions();
             this.startPollSync();
+            this.setupOrientationLock();
             
             // Handle page visibility changes (screen lock/unlock on tablets)
             document.addEventListener('visibilitychange', () => {
@@ -175,6 +176,29 @@ class MekanApp {
             console.error('Uygulama başlatılırken hata:', error);
             await this.appAlert('Uygulama başlatılırken hata oluştu: ' + error.message + '. Lütfen sayfayı yenileyin.', 'Hata');
         }
+    }
+
+    setupOrientationLock() {
+        // Best-effort: keep app in portrait (especially for "Add to Home Screen" standalone).
+        // Some browsers require a user gesture to lock; we try on init and on first interaction.
+        const tryLock = async () => {
+            try {
+                if (screen?.orientation?.lock) {
+                    await screen.orientation.lock('portrait');
+                }
+            } catch (e) {
+                // ignore (not supported / not allowed)
+            }
+        };
+
+        tryLock();
+        const once = () => {
+            document.removeEventListener('click', once, true);
+            document.removeEventListener('touchstart', once, true);
+            tryLock();
+        };
+        document.addEventListener('click', once, true);
+        document.addEventListener('touchstart', once, true);
     }
 
     startPollSync() {
