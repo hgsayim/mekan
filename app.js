@@ -20,11 +20,14 @@ function setAuthError(message) {
 function showAuthModal(show) {
     const modal = document.getElementById('auth-modal');
     if (!modal) return;
-    modal.style.display = show ? 'block' : 'none';
+    // Use flex so modal content is truly centered (block breaks .modal.active layout)
+    modal.style.display = show ? 'flex' : 'none';
     if (show) {
         modal.classList.add('active');
+        document.body.classList.add('auth-open');
     } else {
         modal.classList.remove('active');
+        document.body.classList.remove('auth-open');
         setAuthError('');
     }
 }

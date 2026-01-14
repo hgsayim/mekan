@@ -1320,6 +1320,28 @@ header h1 {
 }
 
 /* Auth modal */
+.auth-open header {
+    display: none !important;
+}
+
+#auth-modal.modal {
+    /* Look like an app screen (not a dark overlay modal) */
+    background: var(--light-bg);
+}
+
+#auth-modal.modal.active {
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-modal-content {
+    /* Override generic modal-content centering/margins */
+    margin: 0;
+    max-height: none;
+    overflow: visible;
+}
+
 .auth-modal-content {
     max-width: 460px;
     padding: 26px 26px 22px 26px;
@@ -1435,6 +1457,22 @@ header h1 {
     justify-content: center;
     gap: 10px;
     width: 100%;
+    min-height: 56px;
+    padding: 16px 18px;
+    font-size: 1.08rem;
+    border-radius: 16px;
+}
+
+@media (max-width: 540px) {
+    #auth-modal.modal.active {
+        padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)) 16px;
+    }
+
+    .auth-modal-content {
+        width: 100%;
+        max-width: 440px;
+        border-radius: 18px;
+    }
 }
 
 .auth-spinner {
@@ -2712,35 +2750,35 @@ form select:focus {
     /* Tables grid: 3 columns on phones (as requested) */
     .tables-grid {
         grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
+        gap: 7px;
     }
 
     .table-card {
-        padding: 8px;
-        border-radius: 14px;
+        padding: 7px;
+        border-radius: 12px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.05);
     }
 
     .table-card .table-delay-btn {
-        width: 40px;
-        height: 40px;
-        border-radius: 0 14px 0 26px;
-        font-size: 1.2rem;
+        width: 34px;
+        height: 34px;
+        border-radius: 0 12px 0 22px;
+        font-size: 1.05rem;
     }
 
     .table-icon {
-        font-size: 1.9rem;
-        margin-bottom: 3px;
+        font-size: 1.6rem;
+        margin-bottom: 2px;
     }
 
     .table-card h3 {
-        font-size: 0.75rem;
-        margin-bottom: 3px;
+        font-size: 0.64rem;
+        margin-bottom: 2px;
     }
 
     .table-price {
-        font-size: 0.88rem;
-        padding: 3px 7px;
+        font-size: 0.76rem;
+        padding: 2px 6px;
     }
 
     /* View header spacing on small screens */
@@ -2876,7 +2914,7 @@ form select:focus {
 
     /* Table modal: rounded like cards on mobile */
     #table-modal.modal.active {
-        padding: 8px;
+        padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)) 8px;
         align-items: center;
         justify-content: center;
     }
@@ -2884,12 +2922,14 @@ form select:focus {
     #table-modal .modal-content {
         width: calc(100vw - 16px);
         max-width: calc(100vw - 16px);
-        height: calc(100vh - 16px);
-        max-height: calc(100vh - 16px);
+        /* Use dynamic viewport height to avoid iOS top/bottom bar clipping */
+        height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
         border-radius: 14px;
         padding: 14px 14px 12px 14px;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
     }
 
     #table-modal-body {
@@ -2926,21 +2966,28 @@ form select:focus {
         bottom: 0;
         background: var(--light-bg);
         padding-top: 10px;
-        padding-bottom: 10px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
         box-shadow: 0 -1px 0 rgba(0,0,0,0.08);
     }
 
     .table-modal-footer .table-footer-buttons {
-        grid-template-columns: repeat(3, 1fr);
+        display: flex !important;
+        flex-direction: row;
+        flex-wrap: nowrap !important;
         width: 100%;
         gap: 10px;
+        align-items: stretch;
     }
 
     /* Icon-only buttons on mobile */
     .btn-footer {
-        font-size: 1.25rem;
-        padding: 12px 0;
+        flex: 1 1 0;
+        min-width: 0;
+        height: 52px;
+        font-size: 1.35rem;
+        padding: 0;
         justify-content: center;
+        border-radius: 18px;
     }
 
     .btn-footer .btn-txt {
@@ -2950,13 +2997,128 @@ form select:focus {
     .btn-footer .btn-ico {
         display: inline-block;
         line-height: 1;
+        font-size: 1.35rem;
     }
+
+    /* Ensure single-row order: Veresiye - Nakit - İptal (Nakit centered) */
+    #credit-table-btn { order: 1; }
+    #pay-table-btn { order: 2; }
+    #cancel-hourly-btn { order: 3; }
 
     /* "Ürün Seçin" başlığını küçült */
     #table-products-section h3 {
         font-size: 1rem !important;
         margin-top: 8px !important;
         margin-bottom: 8px !important;
+    }
+
+    /* Receipt (Adisyon) modal: fit to phone screen */
+    #receipt-modal.modal.active {
+        padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)) 8px;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #receipt-modal .receipt-modal-content {
+        width: calc(100vw - 16px);
+        max-width: calc(100vw - 16px);
+        height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        padding: 12px;
+        border-radius: 14px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .receipt-header {
+        padding: 12px;
+        margin-bottom: 10px;
+        border-radius: 12px;
+    }
+
+    .receipt-header h2 {
+        font-size: 1.25rem;
+        letter-spacing: 2px;
+        margin: 0 0 4px 0;
+    }
+
+    .receipt-date-time {
+        font-size: 0.82rem;
+        margin-top: 0;
+    }
+
+    .receipt-body {
+        margin-bottom: 0;
+        padding: 0;
+        overflow: auto;
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+
+    .receipt-section {
+        margin-bottom: 10px;
+        padding: 10px 12px;
+        border-radius: 12px;
+    }
+
+    .receipt-section-title {
+        font-size: 0.95rem;
+        margin-bottom: 8px;
+        padding-bottom: 6px;
+    }
+
+    .receipt-item {
+        padding: 6px 6px;
+        margin-bottom: 4px;
+    }
+
+    .receipt-item-name {
+        font-size: 0.86rem;
+    }
+
+    .receipt-item-details {
+        font-size: 0.78rem;
+    }
+
+    .receipt-item-price {
+        font-size: 0.86rem;
+        min-width: 72px;
+    }
+
+    .receipt-total {
+        margin-top: 12px;
+        padding: 12px;
+        border-radius: 12px;
+    }
+
+    .receipt-total-row {
+        padding: 6px 0;
+        font-size: 0.92rem;
+    }
+
+    .receipt-total-row.final {
+        font-size: 1.15rem;
+        padding-top: 8px;
+    }
+
+    .receipt-actions {
+        margin-top: 10px;
+        padding-top: 10px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        border-top: 1px solid rgba(0,0,0,0.08);
+        position: sticky;
+        bottom: 0;
+        background: var(--light-bg);
+        flex: 0 0 auto;
+    }
+
+    .receipt-actions .btn {
+        min-height: 48px;
+        padding: 12px 14px;
+        font-size: 0.95rem;
+        border-radius: 14px;
+        min-width: 0;
     }
 
     /* Satış satırları daha kompakt */
@@ -2980,26 +3142,23 @@ form select:focus {
         font-size: 0.95rem !important;
     }
 
-    /* Alt butonlar: daha küçük ve tam genişlik */
-    .table-modal-footer {
-        margin-top: 10px;
-        padding-top: 10px;
-        gap: 10px;
-        flex-wrap: wrap;
+    /* Make hourly/regular info chips more minimal than action buttons */
+    .table-modal-footer .table-info-grid span {
+        padding: 6px 10px;
+        height: auto;
+        background: rgba(52, 152, 219, 0.06);
+        box-shadow: none;
+        border-radius: 10px;
+        font-size: 0.78rem;
+        gap: 6px;
     }
-
-    .table-modal-footer .table-footer-buttons {
-        grid-template-columns: 1fr;
-        max-width: none;
-        width: 100%;
-        gap: 10px;
+    .table-modal-footer .table-info-grid span strong,
+    .table-modal-footer .table-info-grid span > span {
+        font-size: 0.82rem;
     }
-
-    .btn-footer {
-        height: 48px;
-        font-size: 1.05rem;
-        padding: 12px 18px;
-        border-radius: 24px;
+    .table-modal-footer .table-info-total {
+        background: rgba(39, 174, 96, 0.10) !important;
+        box-shadow: none !important;
     }
 
     /* Nakit (yeşil) */
