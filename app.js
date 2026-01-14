@@ -761,11 +761,18 @@ class MekanApp {
     setTablesLoading(isLoading) {
         const container = document.getElementById('tables-container');
         if (!container) return;
-        container.classList.toggle('is-loading', Boolean(isLoading));
-
-        // If we're loading and there is nothing rendered yet, show skeletons to avoid a blank screen
-        if (isLoading && container.children.length === 0) {
-            container.innerHTML = this.createTableSkeletonCards(12);
+        if (isLoading) {
+            // Only show the big overlay spinner on cold start / empty state.
+            // During small refreshes (e.g. adding a product) we keep the grid interactive and use per-card loading.
+            const hasAnyCard = container.querySelector('.table-card');
+            if (!hasAnyCard) {
+                container.classList.add('is-loading');
+                if (container.children.length === 0) {
+                    container.innerHTML = this.createTableSkeletonCards(12);
+                }
+            }
+        } else {
+            container.classList.remove('is-loading');
         }
     }
 
@@ -1131,6 +1138,20 @@ class MekanApp {
     // Optimistic UI helpers (avoid waiting for DB before updating the screen)
     getTableCardEl(tableId) {
         return document.getElementById(`table-${tableId}`);
+    }
+
+    setTableCardLoading(tableId, isLoading) {
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+        if (isLoading) {
+            if (card.querySelector('.table-card-loading')) return;
+            const overlay = document.createElement('div');
+            overlay.className = 'table-card-loading';
+            overlay.innerHTML = `<div class="table-card-loading-spinner" aria-hidden="true"></div>`;
+            card.appendChild(overlay);
+        } else {
+            card.querySelectorAll('.table-card-loading').forEach((el) => el.remove());
+        }
     }
 
     setTableCardState(tableId, { isActive, type = null, openTime = null, hourlyRate = 0, salesTotal = 0, checkTotal = 0 } = {}) {
@@ -2772,6 +2793,8 @@ class MekanApp {
     async addProductToTableFromModal(tableId, productId, amount) {
         if (!tableId || !productId || !amount) return;
 
+        // Card-level loading so the whole tables grid doesn't get blurred
+        this.setTableCardLoading(tableId, true);
         try {
             const table = await this.db.getTable(tableId);
             const product = await this.db.getProduct(productId);
@@ -2872,6 +2895,8 @@ class MekanApp {
             console.error('Ürün eklenirken hata:', error);
             await this.appAlert('Ürün eklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
             this.closeAddProductModal();
+        } finally {
+            this.setTableCardLoading(tableId, false);
         }
     }
 
