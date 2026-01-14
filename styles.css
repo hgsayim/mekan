@@ -39,11 +39,11 @@ header {
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
     border-radius: 0;
-    background: var(--light-bg);
-    color: var(--dark-text);
+    background: var(--light-bg) !important;
+    color: var(--dark-text) !important;
     padding: 18px 25px;
     margin-bottom: 15px;
-    box-shadow: 0 1px 0 rgba(0,0,0,0.08);
+    box-shadow: 0 1px 0 rgba(0,0,0,0.10);
     border: none;
     z-index: 3000;
     /* iOS safe-area */
@@ -2661,7 +2661,12 @@ form select:focus {
 
     header {
         padding: 14px 16px;
-        border-radius: 14px;
+        border-radius: 0;
+    }
+
+    /* When table (product add) modal is open, hide main header so it doesn't cover title/close */
+    body.table-modal-open header {
+        display: none !important;
     }
 
     header h1 {

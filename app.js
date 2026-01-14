@@ -1548,6 +1548,7 @@ class MekanApp {
         await this.loadTableSales(tableId);
 
         document.getElementById('table-modal').classList.add('active');
+        document.body.classList.add('table-modal-open');
     }
 
     async cancelHourlyGame() {
@@ -1666,6 +1667,7 @@ class MekanApp {
             this.hourlyUpdateInterval = null;
         }
         document.getElementById('table-modal').classList.remove('active');
+        document.body.classList.remove('table-modal-open');
     }
 
     async loadTableProducts(tableId) {
