@@ -491,12 +491,17 @@ header h1 {
     border-radius: 50%;
     border: 6px solid rgba(44, 62, 80, 0.16);
     border-top-color: var(--secondary-color);
-    animation: spin 0.8s linear infinite;
+    animation: spinCentered 0.8s linear infinite;
     z-index: 41;
 }
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* Keep centered spinners centered while rotating (avoid translate being overwritten by keyframes) */
+@keyframes spinCentered {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
 .table-card.skeleton {
@@ -1696,7 +1701,7 @@ header h1 {
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 10px 22px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.08);
-    animation: spin 0.9s linear infinite;
+    animation: spinCentered 0.9s linear infinite;
     z-index: 61;
 }
 
@@ -3060,6 +3065,7 @@ form select:focus {
         min-width: 0;
         white-space: nowrap;
         overflow: hidden;
+        line-height: 1;
     }
 
     .table-modal-footer .table-info-grid span strong {
@@ -3076,6 +3082,8 @@ form select:focus {
         text-overflow: ellipsis;
         font-weight: 800;
         color: rgba(44, 62, 80, 0.92);
+        line-height: 1;
+        transform: translateY(0.5px);
     }
 
     /* Make hourly chips always fit in one line: equal widths + short labels (no emoji) */
@@ -3099,6 +3107,7 @@ form select:focus {
         line-height: 1;
         width: 26px;
         text-align: right;
+        transform: translateY(0.5px);
     }
 
     #hourly-info.table-info-grid > span:nth-child(1)::before { content: 'Aç:'; }
