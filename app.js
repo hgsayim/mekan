@@ -906,11 +906,13 @@ class MekanApp {
             return a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' });
         });
 
-        // Sync each table's status with unpaid sales - but hourly tables must be manually opened
+        // IMPORTANT: Do NOT write derived state (totals/active flags) back to DB here.
+        // In multi-device usage, one device's partial/stale local cache can otherwise overwrite the truth,
+        // causing "old items missing", "totals mismatch", or tables flickering open/closed.
         for (const table of tables) {
             const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
             // Always derive sales totals from unpaid sales (multi-device safe)
-            const unpaidTotal = (unpaidSales || []).reduce((sum, s) => sum + (s?.saleTotal || 0), 0);
+            const unpaidTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
             table.salesTotal = unpaidTotal;
 
             if (table.type === 'hourly' && table.isActive && table.openTime) {
@@ -921,60 +923,6 @@ class MekanApp {
             table.checkTotal = (table.type === 'hourly' && table.isActive && table.openTime)
                 ? (table.hourlyTotal + table.salesTotal)
                 : table.salesTotal;
-            let tableUpdated = false;
-
-            // If a table was just settled (paid/credited), avoid "close -> reopen" flicker for a couple seconds
-            const isSettling = this._isTableSettling(table.id);
-            
-            if (unpaidSales.length > 0 && !table.isActive) {
-                // Table has products but is not active - activate it only for regular tables
-                // Hourly tables must be manually opened via "Open Table" button
-                if (!isSettling && table.type !== 'hourly') {
-                    table.isActive = true;
-                    tableUpdated = true;
-                }
-            } else if (unpaidSales.length === 0 && table.isActive) {
-                // Table has no unpaid sales - must be inactive
-                // BUT for hourly tables that were manually opened (have openTime), keep them active
-                if (table.type === 'hourly' && table.openTime) {
-                    if (isSettling) {
-                        // Recent settle: prefer showing as closed while DB catches up
-                        // (do not write to DB here; payment flow will persist state)
-                    } else {
-                    // Manually opened hourly table - keep it active, just update totals
-                    table.hourlyTotal = this.calculateHourlyTotal(table);
-                    table.checkTotal = this.calculateCheckTotal(table);
-                    tableUpdated = true;
-                    }
-                } else {
-                    // Regular table or auto-activated table - deactivate
-                    table.isActive = false;
-                    table.salesTotal = 0;
-                    if (table.type === 'hourly') {
-                        table.hourlyTotal = 0;
-                        table.openTime = null;
-                    }
-                    table.checkTotal = 0;
-                    tableUpdated = true;
-                }
-            } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0)) {
-                // Table is inactive but has totals - reset them
-                // BUT don't reset if it's a manually opened hourly table (shouldn't happen but safety check)
-                if (table.type !== 'hourly' || !table.openTime) {
-                    table.salesTotal = 0;
-                    table.hourlyTotal = 0;
-                    table.checkTotal = 0;
-                    table.openTime = null;
-                    tableUpdated = true;
-                }
-            }
-            
-            if (tableUpdated) {
-                await this.db.updateTable(table);
-                // Reload table to get updated data
-                const updatedTable = await this.db.getTable(table.id);
-                Object.assign(table, updatedTable);
-            }
         }
 
         // Create table cards - need to await async createTableCard
@@ -1134,19 +1082,13 @@ class MekanApp {
 
         const tables = await this.db.getAllTables();
         
-        // Only update if there are active tables
-        const hasActiveTables = tables.some(table => table.isActive);
-        if (!hasActiveTables) {
-            return;
-        }
-        
         // Update each table card's price
         for (const table of tables) {
             const card = document.getElementById(`table-${table.id}`);
             if (!card) continue;
 
-            // Calculate current price
-            let displayTotal = table.checkTotal;
+            // Calculate current price (derive from unpaid sales; do not trust denormalized totals on table row)
+            let displayTotal = 0;
             
             if (table.type === 'hourly' && table.isActive && table.openTime) {
                 // For hourly tables, include hourly total
@@ -1154,6 +1096,9 @@ class MekanApp {
             } else if (table.type === 'instant') {
                 // For instant sale table, show today's paid sales total
                 displayTotal = await this.getInstantTableDailyTotal(table.id);
+            } else {
+                const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
+                displayTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
             }
 
             // Update the price element
@@ -1548,56 +1493,7 @@ class MekanApp {
         // Get all unpaid sales for this table
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
         // Multi-device safe totals: derive product total from unpaid sales (not from denormalized table row)
-        const unpaidSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (s?.saleTotal || 0), 0);
-
-        // Sync table active status with unpaid sales - but hourly tables must be manually opened
-        let tableUpdated = false;
-        
-        if (unpaidSales.length > 0 && !table.isActive) {
-            // Table has products but is not active - activate it only for regular tables
-            // Hourly tables must be manually opened via "Open Table" button
-            if (table.type !== 'hourly') {
-                table.isActive = true;
-                tableUpdated = true;
-            }
-        } else if (unpaidSales.length === 0 && table.isActive) {
-            // Table has no unpaid sales - must be inactive (deactivate it)
-            // BUT for hourly tables that were manually opened (have openTime), keep them active until manually closed
-            if (table.type === 'hourly' && table.openTime) {
-                // Hourly table is manually opened - keep it active even without unpaid sales
-                // Don't deactivate it, just update the check total
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
-                table.hourlyTotal = hoursUsed * table.hourlyRate;
-                table.checkTotal = table.hourlyTotal + table.salesTotal;
-                tableUpdated = true;
-            } else {
-                // Regular table or hourly table without openTime (auto-activated) - deactivate
-                table.isActive = false;
-                table.salesTotal = 0;
-                if (table.type === 'hourly') {
-                    table.hourlyTotal = 0;
-                    table.openTime = null;
-                }
-                table.checkTotal = 0;
-                tableUpdated = true;
-            }
-        } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || (table.hourlyTotal > 0 && (!table.openTime || table.type !== 'hourly')))) {
-            // Table is inactive but has totals - reset them (this handles cases where payment was processed)
-            // BUT don't reset if it's a manually opened hourly table (with openTime)
-            if (table.type !== 'hourly' || !table.openTime) {
-                table.salesTotal = 0;
-                table.hourlyTotal = 0;
-                table.checkTotal = 0;
-                table.openTime = null;
-                tableUpdated = true;
-            }
-        }
-        
-        if (tableUpdated) {
-            await this.db.updateTable(table);
-            // Reload table to get updated data
-            table = await this.db.getTable(tableId);
-        }
+        const unpaidSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
 
         // Calculate check total (for hourly tables, include real-time hourly calculation)
         // Keep table instance consistent for UI calculations
@@ -1653,7 +1549,7 @@ class MekanApp {
                         const hourlyTotal = hoursUsed * updatedTable.hourlyRate;
                         document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
                         const updatedUnpaid = await this.db.getUnpaidSalesByTable(tableId);
-                        const updatedSalesTotal = (updatedUnpaid || []).reduce((sum, s) => sum + (s?.saleTotal || 0), 0);
+                        const updatedSalesTotal = (updatedUnpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                         document.getElementById('modal-sales-total').textContent = Math.round(updatedSalesTotal);
                         updatedTable.checkTotal = hourlyTotal + updatedSalesTotal;
                         document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
@@ -2189,7 +2085,7 @@ class MekanApp {
             if (table) {
                 // Recalculate table totals
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
+                table.salesTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                 table.checkTotal = table.hourlyTotal + table.salesTotal;
                 await this.db.updateTable(table);
             }
@@ -2274,7 +2170,7 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
+                table.salesTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                 table.checkTotal = table.hourlyTotal + table.salesTotal;
                 await this.db.updateTable(table);
             }
@@ -2400,7 +2296,7 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
+                table.salesTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                 table.checkTotal = table.hourlyTotal + table.salesTotal;
                 await this.db.updateTable(table);
             }

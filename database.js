@@ -328,7 +328,9 @@ class Database {
         return new Promise((resolve, reject) => {
             const request = index.getAll(tableId);
             request.onsuccess = () => {
-                const sales = request.result.filter(sale => !sale.isPaid);
+                // Be robust to legacy data where isPaid might be stored as string/int.
+                const isPaid = (v) => (v === true || v === 1 || v === '1' || v === 'true' || v === 't' || v === 'paid');
+                const sales = request.result.filter((sale) => !isPaid(sale?.isPaid));
                 resolve(sales);
             };
             request.onerror = () => {
