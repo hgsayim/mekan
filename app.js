@@ -2745,6 +2745,14 @@ class MekanApp {
     }
 
     handleRealtimeChange(tableName, payload) {
+        // Apply change to local cache immediately (so multi-device updates are instant)
+        // This avoids relying on updated_at filters for delta sync.
+        try {
+            this.db?.applyRealtimeChange?.(tableName, payload);
+        } catch (e) {
+            // ignore (best-effort)
+        }
+
         // Decide which screens to refresh (debounced)
         const views = new Set();
         const current = this.currentView;

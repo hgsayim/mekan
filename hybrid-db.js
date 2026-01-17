@@ -31,6 +31,16 @@ export class HybridDatabase {
     this._lsPrefix = 'mekanapp:lastSync:';
     this._fullSyncEveryMs = 15 * 60 * 1000; // safety net for deletes / missed updates
     this._lastFullSyncAt = 0;
+
+    // Which timestamp columns exist per table for delta sync.
+    // Some schemas may not have updated_at on every table (e.g. manual_sessions).
+    this._deltaTsCols = {
+      products: ['updated_at', 'created_at'],
+      tables: ['updated_at', 'created_at'],
+      sales: ['updated_at', 'created_at'],
+      customers: ['updated_at', 'created_at'],
+      manualSessions: ['created_at'],
+    };
   }
 
   async init() {
@@ -101,14 +111,79 @@ export class HybridDatabase {
     });
   }
 
+  async _deleteFromStore(storeName, id) {
+    if (id == null) return false;
+    if (!this.local?.db?.objectStoreNames?.contains?.(storeName)) return false;
+    const db = this.local.db;
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([storeName], 'readwrite');
+      const store = tx.objectStore(storeName);
+      const req = store.delete(id);
+      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
+  /**
+   * Apply Supabase realtime payload directly to local IndexedDB cache.
+   * This makes multi-device updates appear instantly without waiting for polling/delta filters.
+   *
+   * @param {'tables'|'products'|'sales'|'customers'|'manual_sessions'|'manualSessions'} tableName
+   * @param {any} payload
+   */
+  async applyRealtimeChange(tableName, payload) {
+    const map = {
+      tables: { key: 'tables', store: 'tables' },
+      products: { key: 'products', store: 'products' },
+      sales: { key: 'sales', store: 'sales' },
+      customers: { key: 'customers', store: 'customers' },
+      manual_sessions: { key: 'manualSessions', store: 'manualSessions' },
+      manualSessions: { key: 'manualSessions', store: 'manualSessions' },
+    };
+    const entry = map[tableName];
+    if (!entry) return false;
+
+    const eventType = payload?.eventType || payload?.event_type || payload?.type || '';
+    const isDelete = String(eventType).toUpperCase() === 'DELETE';
+    const rowRaw = isDelete ? payload?.old : payload?.new;
+    const id = rowRaw?.id ?? payload?.old?.id ?? payload?.new?.id ?? null;
+
+    try {
+      if (isDelete) {
+        await this._deleteFromStore(entry.store, id);
+        return true;
+      }
+
+      if (!rowRaw) return false;
+      const row = this.remote._snakeToCamel(entry.key, rowRaw);
+      await this._upsertStore(entry.store, [row]);
+
+      // Move lastSync forward based on server timestamps, so delta sync stays cheap.
+      const prev = this._getLastSyncISO(entry.key);
+      const next = this._maxTimestampISO([row], prev);
+      const bump = new Date(new Date(next).getTime() + 1).toISOString();
+      this._setLastSyncISO(entry.key, bump);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async _fetchSince(tableKey, sinceISO) {
-    // Fetch rows where updated_at or created_at is >= sinceISO.
-    // NOTE: relies on DB columns existing; if not, fallback to full sync.
+    // Fetch rows where one of the timestamp columns is >= sinceISO.
+    // NOTE: relies on DB columns existing; we keep a per-table mapping above.
     const tableName = this.remote.tables?.[tableKey] || tableKey;
-    const res = await this.remote.supabase
-      .from(tableName)
-      .select('*')
-      .or(`updated_at.gte.${sinceISO},created_at.gte.${sinceISO}`);
+    const cols = this._deltaTsCols?.[tableKey] || ['updated_at', 'created_at'];
+    let query = this.remote.supabase.from(tableName).select('*');
+    if (cols.length === 1) {
+      query = query.gte(cols[0], sinceISO);
+    } else {
+      // PostgREST "or" filter
+      query = query.or(cols.map((c) => `${c}.gte.${sinceISO}`).join(','));
+    }
+    const res = await query;
     this.remote._throwIfError(res);
     return (res.data || []).map((r) => this.remote._snakeToCamel(tableKey, r));
   }
