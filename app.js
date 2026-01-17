@@ -119,6 +119,9 @@ class MekanApp {
         this._dialogResolver = null;
         this._settlingTables = new Map(); // tableId -> expiry timestamp (ms)
         this._openingTables = new Map(); // tableId -> { until: ms, openTime: iso }
+        // Prevent race conditions on fast-tap product adds (stock decrement must be accurate).
+        // key: `${tableId}:${productId}` -> { pending: number, timer: any, chain: Promise }
+        this._quickAddState = new Map();
         this.hourlyUpdateInterval = null;
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
@@ -129,6 +132,40 @@ class MekanApp {
         this._productsDelegationBound = false;
         this._pollSyncInterval = null;
         this.init();
+    }
+
+    // Batch + serialize product additions per table/product to avoid stock races on rapid taps.
+    queueQuickAddToTable(tableId, productId, deltaAmount = 1) {
+        if (!tableId || !productId) return;
+        const key = `${String(tableId)}:${String(productId)}`;
+        const state = this._quickAddState.get(key) || { pending: 0, timer: null, chain: Promise.resolve() };
+        state.pending += (Number(deltaAmount) || 0);
+        if (state.pending <= 0) {
+            this._quickAddState.set(key, state);
+            return;
+        }
+
+        const scheduleFlush = (delayMs = 120) => {
+            if (state.timer) return;
+            state.timer = setTimeout(() => {
+                state.timer = null;
+                const amount = state.pending;
+                state.pending = 0;
+                if (amount <= 0) return;
+
+                // Serialize remote writes (Supabase) + local cache updates (IDB)
+                state.chain = state.chain
+                    .then(() => this.addProductToTableFromModal(tableId, productId, amount))
+                    .catch(() => { /* keep chain alive */ })
+                    .finally(() => {
+                        // If more clicks came in while in-flight, flush again soon
+                        if (state.pending > 0) scheduleFlush(80);
+                    });
+            }, delayMs);
+        };
+
+        scheduleFlush(120);
+        this._quickAddState.set(key, state);
     }
 
     async init() {
@@ -1967,7 +2004,8 @@ class MekanApp {
                 const pid = card.getAttribute('data-product-id');
                 const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                 if (!pid || !tid) return;
-                await this.addProductToTableFromModal(tid, pid, 1);
+                // Fast taps should stack and be processed serially so stock decrements correctly.
+                this.queueQuickAddToTable(tid, pid, 1);
             });
         }
     }

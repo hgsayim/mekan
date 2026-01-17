@@ -39,7 +39,9 @@ export class HybridDatabase {
       // We default to created_at to avoid 400s; realtime + periodic full sync covers updates/deletes.
       products: ['created_at'],
       tables: ['updated_at', 'created_at'], // tables usually has updated_at; if not, it will be caught by full sync/realtime
-      sales: ['created_at'],
+      // IMPORTANT: sales "payment/credit" is an UPDATE (is_paid + payment_time),
+      // so created_at-only delta sync will miss it. Include payment_time to catch closures across devices.
+      sales: ['created_at', 'payment_time'],
       customers: ['created_at'],
       manualSessions: ['created_at'],
     };
