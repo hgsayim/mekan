@@ -800,10 +800,16 @@ class MekanApp {
             this.loadTables();
             // Start auto-update for table cards when on tables view
             this.startTableCardPriceUpdates();
-        } else if (viewName === 'customers') {
-            this.loadCustomers();
+        } else if (viewName === 'products') {
             // Stop auto-update when not on tables view
             this.stopTableCardPriceUpdates();
+            // When entering from the menu, force a delta sync so the list is fresh
+            this.syncAndReloadView(viewName);
+        } else if (viewName === 'customers') {
+            // Stop auto-update when not on tables view
+            this.stopTableCardPriceUpdates();
+            // When entering from the menu, force a delta sync so the list is fresh
+            this.syncAndReloadView(viewName);
         } else if (viewName === 'sales') {
             this.loadSales();
             // Stop auto-update when not on tables view
@@ -815,6 +821,28 @@ class MekanApp {
         } else {
             // Stop auto-update for other views
             this.stopTableCardPriceUpdates();
+        }
+    }
+
+    // Force-refresh local cache from Supabase, then reload the selected view from local DB.
+    // Designed for manual navigation (menu click) so users always see up-to-date products/customers.
+    async syncAndReloadView(viewName) {
+        const token = (this._viewSyncToken = (this._viewSyncToken || 0) + 1);
+        try {
+            if (this.db?.syncNow) {
+                await this.db.syncNow({ force: true });
+            }
+        } catch (_) {
+            // Offline / transient errors: fall back to whatever is in local DB
+        }
+
+        // Ignore if user already navigated elsewhere
+        if (token !== this._viewSyncToken || this.currentView !== viewName) return;
+
+        if (viewName === 'products') {
+            await this.loadProducts();
+        } else if (viewName === 'customers') {
+            await this.loadCustomers();
         }
     }
 
@@ -1181,10 +1209,11 @@ class MekanApp {
             clearInterval(this.tableCardUpdateInterval);
         }
         
-        // Update table card prices every 1 minute
+        // Update table card prices frequently so hourly tables increase without waiting.
+        // (No network: uses local cache + computed totals)
         this.tableCardUpdateInterval = setInterval(() => {
             this.updateTableCardPrices();
-        }, 60000); // 60 seconds = 1 minute
+        }, 10000); // 10 seconds
     }
 
     stopTableCardPriceUpdates() {
@@ -2203,37 +2232,16 @@ class MekanApp {
                 await this.db.updateTable(table);
             }
 
-            await this.loadTableProducts(sale.tableId);
-            await this.loadTableSales(sale.tableId);
-            
-            // Update table totals in modal
-            const updatedTable = await this.db.getTable(sale.tableId);
-            let checkTotal = updatedTable.checkTotal;
-            if (updatedTable.type === 'hourly' && updatedTable.isActive && updatedTable.openTime) {
-                const hoursUsed = this.calculateHoursUsed(updatedTable.openTime);
-                const hourlyTotal = hoursUsed * updatedTable.hourlyRate;
-                checkTotal = hourlyTotal + updatedTable.salesTotal;
+            // Refresh the open modal (this updates sales list + green total button label)
+            await this.openTableModal(sale.tableId);
+
+            // Refresh the corresponding table card immediately (avoid waiting for full reload)
+            this.refreshSingleTableCard?.(sale.tableId);
+
+            // Keep tables view consistent if we are on it
+            if (this.currentView === 'tables') {
+                await this.loadTables();
             }
-            
-            // Update sales total and check total based on table type
-            if (updatedTable.type === 'hourly') {
-                const modalSalesTotal = document.getElementById('modal-sales-total');
-                if (modalSalesTotal) modalSalesTotal.textContent = Math.round(updatedTable.salesTotal);
-                const modalCheckTotal = document.getElementById('modal-check-total');
-                if (updatedTable.isActive && updatedTable.openTime) {
-                    const hoursUsed = this.calculateHoursUsed(updatedTable.openTime);
-                    const hourlyTotal = hoursUsed * updatedTable.hourlyRate;
-                    const newCheckTotal = hourlyTotal + updatedTable.salesTotal;
-                    if (modalCheckTotal) modalCheckTotal.textContent = Math.round(newCheckTotal);
-                } else {
-                    if (modalCheckTotal) modalCheckTotal.textContent = Math.round(updatedTable.salesTotal);
-                }
-            } else {
-                const modalCheckTotalRegular = document.getElementById('modal-check-total-regular');
-                if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(updatedTable.salesTotal);
-            }
-            
-            await this.loadTables();
             
             // Update products view if it's currently active (to show updated stock)
             if (this.currentView === 'products') {
