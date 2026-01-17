@@ -39,6 +39,51 @@ export class HybridDatabase {
     // This prevents 400 spam like `updated_at=gte...` when a table doesn't have that column.
     this._deltaColPrefix = 'mekanapp:deltaCol:';
     this._deltaColCache = new Map();
+
+    // Throttled sync diagnostics (polling + full sync are otherwise "silent").
+    this._syncLogPrefix = 'mekanapp:syncLog:';
+    this._lastSyncWarnAt = 0;
+    this._hasEverSyncedKey = 'mekanapp:hasEverSynced';
+  }
+
+  _warnSync(msg, err) {
+    const now = Date.now();
+    if (this._lastSyncWarnAt && now - this._lastSyncWarnAt < 15000) return;
+    this._lastSyncWarnAt = now;
+    try {
+      // eslint-disable-next-line no-console
+      console.warn('[HybridDatabase]', msg, err || '');
+    } catch (_) {}
+  }
+
+  async _countStore(storeName) {
+    if (!this.local?.db?.objectStoreNames?.contains?.(storeName)) return 0;
+    const db = this.local.db;
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction([storeName], 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.count();
+        req.onsuccess = () => resolve(Number(req.result) || 0);
+        req.onerror = () => resolve(0);
+      } catch (_) {
+        resolve(0);
+      }
+    });
+  }
+
+  _getHasEverSynced() {
+    try {
+      return localStorage.getItem(this._hasEverSyncedKey) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
+  _setHasEverSynced() {
+    try {
+      localStorage.setItem(this._hasEverSyncedKey, '1');
+    } catch (_) {}
   }
 
   _getDeltaCol(tableKey) {
@@ -381,16 +426,31 @@ export class HybridDatabase {
           tasks.push(
             this.remote
               .getAllProducts()
-              .then((rows) => this._replaceStore('products', (rows || []).map((r) => this._normalizeProduct(r))))
-              .catch(() => {})
+              .then(async (rows) => {
+                const list = rows || [];
+                // Safety: if remote suddenly returns empty but we already have local data, don't wipe UI.
+                if (Array.isArray(list) && list.length === 0 && this._getHasEverSynced()) {
+                  const localCount = await this._countStore('products');
+                  if (localCount > 0) return;
+                }
+                await this._replaceStore('products', list.map((r) => this._normalizeProduct(r)));
+              })
+              .catch((e) => this._warnSync('fullSync products failed', e))
           );
         }
         if (this.syncEntities.includes('tables')) {
           tasks.push(
             this.remote
               .getAllTables()
-              .then((rows) => this._replaceStore('tables', (rows || []).map((r) => this._normalizeTable(r))))
-              .catch(() => {})
+              .then(async (rows) => {
+                const list = rows || [];
+                if (Array.isArray(list) && list.length === 0 && this._getHasEverSynced()) {
+                  const localCount = await this._countStore('tables');
+                  if (localCount > 0) return;
+                }
+                await this._replaceStore('tables', list.map((r) => this._normalizeTable(r)));
+              })
+              .catch((e) => this._warnSync('fullSync tables failed', e))
           );
         }
         if (this.syncEntities.includes('sales')) {
@@ -398,15 +458,22 @@ export class HybridDatabase {
             this.remote
               .getAllSales()
               .then((rows) => this._replaceStore('sales', (rows || []).map((r) => this._normalizeSale(r))))
-              .catch(() => {})
+              .catch((e) => this._warnSync('fullSync sales failed', e))
           );
         }
         if (this.syncEntities.includes('customers')) {
           tasks.push(
             this.remote
               .getAllCustomers()
-              .then((rows) => this._replaceStore('customers', (rows || []).map((r) => this._normalizeCustomer(r))))
-              .catch(() => {})
+              .then(async (rows) => {
+                const list = rows || [];
+                if (Array.isArray(list) && list.length === 0 && this._getHasEverSynced()) {
+                  const localCount = await this._countStore('customers');
+                  if (localCount > 0) return;
+                }
+                await this._replaceStore('customers', list.map((r) => this._normalizeCustomer(r)));
+              })
+              .catch((e) => this._warnSync('fullSync customers failed', e))
           );
         }
         if (this.syncEntities.includes('manualSessions')) {
@@ -414,7 +481,7 @@ export class HybridDatabase {
             this.remote
               .getAllManualSessions()
               .then((rows) => this._replaceStore('manualSessions', (rows || []).map((r) => this._normalizeManualSession(r))))
-              .catch(() => {})
+              .catch((e) => this._warnSync('fullSync manualSessions failed', e))
           );
         }
         await Promise.all(tasks);
@@ -422,6 +489,7 @@ export class HybridDatabase {
         const nowIso = new Date().toISOString();
         this.syncEntities.forEach((e) => this._setLastSyncISO(e, nowIso));
         this._lastFullSyncAt = Date.now();
+        this._setHasEverSynced();
         anyChanged = true;
       } else {
         // Delta sync: only upsert changed rows
@@ -450,15 +518,19 @@ export class HybridDatabase {
               })
               .catch((e) => {
                 // If delta filters are not supported by the schema, do not spam 400 every 3 seconds.
-                // Move the cursor forward so we stop retrying until the next full sync.
                 if (e && e._deltaSyncFailed) {
                   this._deltaDisabled.add(entity);
+                  // Do NOT jump cursor to "now" (clock skew can permanently block deltas on some devices).
+                  // Keep it at the last known value; full sync will eventually reconcile.
+                  try {
+                    const bump = new Date(new Date(since).getTime() + 1).toISOString();
+                    this._setLastSyncISO(entity, bump);
+                  } catch (_) {}
+                  this._warnSync(`deltaSync disabled for ${entity} (schema unsupported)`, e);
+                  return false;
                 }
-                try {
-                  const nowIso = new Date().toISOString();
-                  const bump = new Date(new Date(nowIso).getTime() + 1).toISOString();
-                  this._setLastSyncISO(entity, bump);
-                } catch (_) {}
+                // Any other failure (auth/network/RLS): keep cursor unchanged so retries can recover.
+                this._warnSync(`deltaSync failed for ${entity}`, e);
                 return false;
               })
           );

@@ -3003,9 +3003,6 @@ class MekanApp {
 
             // Handle instant sale table
             if (isInstant) {
-                table.checkTotal = 0;
-                table.salesTotal = 0;
-                await this.db.updateTable(table);
                 this.closeAddProductModal();
                 
                 if (this.currentTableId === tableId) {
@@ -3020,23 +3017,6 @@ class MekanApp {
                 return;
             }
 
-            // Update table totals for regular tables
-            table.salesTotal += sale.saleTotal;
-            
-            if (!table.isActive && table.type !== 'hourly') {
-                table.isActive = true;
-            }
-            if (table.type === 'hourly' && table.openTime && !table.isActive) {
-                table.isActive = true;
-            }
-            
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
-                table.hourlyTotal = hoursUsed * table.hourlyRate;
-            }
-            table.checkTotal = table.hourlyTotal + table.salesTotal;
-            await this.db.updateTable(table);
-
             // Close modal immediately before reload
             this.closeAddProductModal();
 
@@ -3046,9 +3026,16 @@ class MekanApp {
                 this.loadTableSales(tableId)
             ]);
             
-            // Update table totals in modal
-            const updatedTable = await this.db.getTable(tableId);
-            this.updateModalTotals(updatedTable);
+            // Update totals from source-of-truth (unpaid sales) instead of denormalized table row
+            try {
+                const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+                const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                const updatedTable = await this.db.getTable(tableId);
+                if (updatedTable) {
+                    updatedTable.salesTotal = salesTotal;
+                    this.updateModalTotals(updatedTable);
+                }
+            } catch (_) {}
             
             // Reload views in parallel
             const reloadPromises = [this.loadTables()];
@@ -3083,50 +3070,11 @@ class MekanApp {
                 }
             }
 
-            // Update table totals
-            table.salesTotal -= sale.saleTotal;
-            table.checkTotal = table.hourlyTotal + table.salesTotal;
-
             // Delete sale first
             await this.db.deleteSale(saleId);
 
             // Check if table still has unpaid sales after deletion
             const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-            
-            // Auto-deactivate table if no products (unpaid sales) remain
-            // BUT for hourly tables that were manually opened (have openTime), keep them active
-            if (remainingUnpaidSales.length === 0 && table.isActive) {
-                if (table.type === 'hourly' && table.openTime) {
-                    // Manually opened hourly table - keep it active, just update salesTotal and checkTotal
-                    table.salesTotal = 0;
-                    // Update check total with real-time hourly calculation
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
-                    table.hourlyTotal = hoursUsed * table.hourlyRate;
-                    table.checkTotal = table.hourlyTotal;
-                } else {
-                    // Regular table or auto-activated table - deactivate
-                    table.isActive = false;
-                    table.salesTotal = 0;
-                    if (table.type === 'hourly') {
-                        table.hourlyTotal = 0;
-                        table.openTime = null;
-                    }
-                    table.checkTotal = 0;
-                }
-            } else if (remainingUnpaidSales.length === 0 && !table.isActive) {
-                // Table is inactive and no unpaid sales - ensure totals are reset
-                // BUT don't reset if it's a manually opened hourly table (shouldn't happen but safety check)
-                if (table.type !== 'hourly' || !table.openTime) {
-                    table.salesTotal = 0;
-                    if (table.type === 'hourly') {
-                        table.hourlyTotal = 0;
-                        table.openTime = null;
-                    }
-                    table.checkTotal = 0;
-                }
-            }
-            
-            await this.db.updateTable(table);
 
             // Reload products list in the modal and refresh modal content
             await this.loadTableProducts(sale.tableId);
