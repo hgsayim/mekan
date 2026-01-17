@@ -3153,7 +3153,7 @@ class MekanApp {
             if (this.currentView === 'daily') reloadPromises.push(this.loadDailyDashboard());
             await Promise.all(reloadPromises);
         } catch (error) {
-            console.error('Ürün eklenirken hata:', error);
+            console.error('Ürün eklenirken hata:', error, error?.message, error?.details, error?.hint, error?.code);
             await this.appAlert('Ürün eklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
             this.closeAddProductModal();
         } finally {

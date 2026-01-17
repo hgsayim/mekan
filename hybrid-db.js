@@ -221,15 +221,57 @@ export class HybridDatabase {
   }
 
   async _fetchSince(tableKey, sinceISO) {
-    // Fetch rows where updated_at or created_at is >= sinceISO.
-    // NOTE: relies on DB columns existing; if not, fallback to full sync.
+    // Fetch rows where a "time column" is >= sinceISO.
+    // IMPORTANT: Not all schemas have updated_at/created_at. We try several strategies and
+    // fall back gracefully (caller can decide to skip delta for this entity).
     const tableName = this.remote.tables?.[tableKey] || tableKey;
-    const res = await this.remote.supabase
-      .from(tableName)
-      .select('*')
-      .or(`updated_at.gte.${sinceISO},created_at.gte.${sinceISO}`);
-    this.remote._throwIfError(res);
-    return (res.data || []).map((r) => this.remote._snakeToCamel(tableKey, r));
+    const base = () => this.remote.supabase.from(tableName).select('*');
+
+    const tryOr = async (expr) => {
+      const res = await base().or(expr);
+      this.remote._throwIfError(res);
+      return res.data || [];
+    };
+    const tryGte = async (col) => {
+      const res = await base().gte(col, sinceISO);
+      this.remote._throwIfError(res);
+      return res.data || [];
+    };
+
+    const attempts = [];
+    // Preferred: updated_at / created_at (common)
+    attempts.push(() => tryOr(`updated_at.gte.${sinceISO},created_at.gte.${sinceISO}`));
+    attempts.push(() => tryGte('updated_at'));
+    attempts.push(() => tryGte('created_at'));
+
+    // Table-specific fallbacks (common schemas)
+    if (tableKey === 'sales') {
+      // sales often uses sell_datetime + payment_time
+      attempts.push(() => tryOr(`sell_datetime.gte.${sinceISO},payment_time.gte.${sinceISO}`));
+      attempts.push(() => tryGte('sell_datetime'));
+      attempts.push(() => tryGte('payment_time'));
+    } else if (tableKey === 'tables') {
+      // tables may not have updated_at triggers; try open_time
+      attempts.push(() => tryGte('open_time'));
+    } else if (tableKey === 'manualSessions') {
+      // manual sessions: close_time is meaningful
+      attempts.push(() => tryGte('close_time'));
+    }
+
+    let lastErr = null;
+    for (const fn of attempts) {
+      try {
+        const rows = await fn();
+        return (rows || []).map((r) => this.remote._snakeToCamel(tableKey, r));
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    // Signal failure to caller (avoid spamming 400s)
+    const err = lastErr;
+    err._deltaSyncFailed = true;
+    throw err;
   }
 
   _maxTimestampISO(rows, prevISO) {
@@ -324,7 +366,16 @@ export class HybridDatabase {
                 this._setLastSyncISO(entity, bump);
                 return true;
               })
-              .catch(() => false)
+              .catch((e) => {
+                // If delta filters are not supported by the schema, do not spam 400 every 3 seconds.
+                // Move the cursor forward so we stop retrying until the next full sync.
+                try {
+                  const nowIso = new Date().toISOString();
+                  const bump = new Date(new Date(nowIso).getTime() + 1).toISOString();
+                  this._setLastSyncISO(entity, bump);
+                } catch (_) {}
+                return false;
+              })
           );
         };
 
