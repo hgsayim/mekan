@@ -2705,8 +2705,12 @@ class MekanApp {
         // Supabase Realtime (Postgres changes). Makes multi-device updates visible without refresh.
         if (!this.supabase || this._realtimeChannel) return;
 
-        const onChange = (tableName, payload) => {
+        const onChange = async (tableName, payload) => {
             try {
+                // Apply change into local cache immediately (especially important for DELETE)
+                if (typeof this.db?.applyRealtimePayload === 'function') {
+                    await this.db.applyRealtimePayload(tableName, payload);
+                }
                 this.handleRealtimeChange(tableName, payload);
             } catch (e) {
                 console.error('Realtime handler error:', e);
@@ -2715,11 +2719,11 @@ class MekanApp {
 
         this._realtimeChannel = this.supabase
             .channel('mekanapp-realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (p) => onChange('tables', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (p) => onChange('products', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, (p) => onChange('sales', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (p) => onChange('customers', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_sessions' }, (p) => onChange('manual_sessions', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (p) => { onChange('tables', p); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (p) => { onChange('products', p); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, (p) => { onChange('sales', p); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (p) => { onChange('customers', p); })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_sessions' }, (p) => { onChange('manual_sessions', p); })
             .subscribe((status) => {
                 // statuses: SUBSCRIBED, TIMED_OUT, CLOSED, CHANNEL_ERROR
                 if (status !== 'SUBSCRIBED') {
@@ -2776,7 +2780,13 @@ class MekanApp {
 
         // If a table modal is open and the changed row matches, refresh it too.
         const tableModal = document.getElementById('table-modal');
-        const changedTableId = payload?.new?.id || payload?.old?.id || null;
+        // For sales/manual_sessions payloads, we need the associated table_id/tableId, not the row id.
+        const changedTableId =
+            tableName === 'sales'
+                ? (payload?.new?.table_id ?? payload?.old?.table_id ?? payload?.new?.tableId ?? payload?.old?.tableId ?? null)
+                : tableName === 'manual_sessions'
+                    ? (payload?.new?.table_id ?? payload?.old?.table_id ?? payload?.new?.tableId ?? payload?.old?.tableId ?? null)
+                    : (payload?.new?.id || payload?.old?.id || null);
         const shouldRefreshModal = Boolean(
             tableModal &&
             tableModal.classList.contains('active') &&
@@ -2794,6 +2804,7 @@ class MekanApp {
 
         // Debounce bursts (multiple rows changes)
         if (this._realtimeRefreshTimer) return;
+        // Faster: aim for <1s cross-device updates
         this._realtimeRefreshTimer = setTimeout(async () => {
             this._realtimeRefreshTimer = null;
             const pending = Array.from(this._realtimePendingViews);
@@ -2817,7 +2828,7 @@ class MekanApp {
             } catch (e) {
                 console.error('Realtime refresh failed:', e);
             }
-        }, 350);
+        }, 150);
     }
 
     // Helper: Check if product tracks stock
