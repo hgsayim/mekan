@@ -35,10 +35,12 @@ export class HybridDatabase {
     // Which timestamp columns exist per table for delta sync.
     // Some schemas may not have updated_at on every table (e.g. manual_sessions).
     this._deltaTsCols = {
-      products: ['updated_at', 'created_at'],
-      tables: ['updated_at', 'created_at'],
-      sales: ['updated_at', 'created_at'],
-      customers: ['updated_at', 'created_at'],
+      // Your schema may NOT have updated_at on all tables.
+      // We default to created_at to avoid 400s; realtime + periodic full sync covers updates/deletes.
+      products: ['created_at'],
+      tables: ['updated_at', 'created_at'], // tables usually has updated_at; if not, it will be caught by full sync/realtime
+      sales: ['created_at'],
+      customers: ['created_at'],
       manualSessions: ['created_at'],
     };
   }
