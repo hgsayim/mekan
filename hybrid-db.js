@@ -31,149 +31,6 @@ export class HybridDatabase {
     this._lsPrefix = 'mekanapp:lastSync:';
     this._fullSyncEveryMs = 15 * 60 * 1000; // safety net for deletes / missed updates
     this._lastFullSyncAt = 0;
-
-    // If an entity's delta query is not supported by schema, disable delta for it to avoid 400 spam.
-    this._deltaDisabled = new Set();
-
-    // Persist the "working" delta column per tableKey so we don't keep trying missing columns forever.
-    // This prevents 400 spam like `updated_at=gte...` when a table doesn't have that column.
-    this._deltaColPrefix = 'mekanapp:deltaCol:';
-    this._deltaColCache = new Map();
-
-    // Throttled sync diagnostics (polling + full sync are otherwise "silent").
-    this._syncLogPrefix = 'mekanapp:syncLog:';
-    this._lastSyncWarnAt = 0;
-    this._hasEverSyncedKey = 'mekanapp:hasEverSynced';
-  }
-
-  _warnSync(msg, err) {
-    const now = Date.now();
-    if (this._lastSyncWarnAt && now - this._lastSyncWarnAt < 15000) return;
-    this._lastSyncWarnAt = now;
-    try {
-      // eslint-disable-next-line no-console
-      console.warn('[HybridDatabase]', msg, err || '');
-    } catch (_) {}
-  }
-
-  async _countStore(storeName) {
-    if (!this.local?.db?.objectStoreNames?.contains?.(storeName)) return 0;
-    const db = this.local.db;
-    return new Promise((resolve) => {
-      try {
-        const tx = db.transaction([storeName], 'readonly');
-        const store = tx.objectStore(storeName);
-        const req = store.count();
-        req.onsuccess = () => resolve(Number(req.result) || 0);
-        req.onerror = () => resolve(0);
-      } catch (_) {
-        resolve(0);
-      }
-    });
-  }
-
-  _getHasEverSynced() {
-    try {
-      return localStorage.getItem(this._hasEverSyncedKey) === '1';
-    } catch (_) {
-      return false;
-    }
-  }
-
-  _setHasEverSynced() {
-    try {
-      localStorage.setItem(this._hasEverSyncedKey, '1');
-    } catch (_) {}
-  }
-
-  _getDeltaCol(tableKey) {
-    const k = String(tableKey || '');
-    if (!k) return null;
-    if (this._deltaColCache.has(k)) return this._deltaColCache.get(k) || null;
-    try {
-      const v = localStorage.getItem(this._deltaColPrefix + k);
-      const col = v ? String(v) : '';
-      this._deltaColCache.set(k, col || null);
-      return col || null;
-    } catch (_) {
-      this._deltaColCache.set(k, null);
-      return null;
-    }
-  }
-
-  _setDeltaCol(tableKey, col) {
-    const k = String(tableKey || '');
-    const c = String(col || '');
-    if (!k || !c) return;
-    this._deltaColCache.set(k, c);
-    try {
-      localStorage.setItem(this._deltaColPrefix + k, c);
-    } catch (_) {}
-  }
-
-  _clearDeltaCol(tableKey) {
-    const k = String(tableKey || '');
-    if (!k) return;
-    this._deltaColCache.delete(k);
-    try {
-      localStorage.removeItem(this._deltaColPrefix + k);
-    } catch (_) {}
-  }
-
-  _normId(v) {
-    if (v == null) return v;
-    if (typeof v === 'number') return v;
-    if (typeof v === 'string') {
-      const s = v.trim();
-      if (/^\d+$/.test(s)) return Number(s);
-    }
-    return v;
-  }
-
-  _normalizeProduct(p) {
-    if (!p) return p;
-    const out = { ...p };
-    if ('id' in out) out.id = this._normId(out.id);
-    return out;
-  }
-
-  _normalizeTable(t) {
-    if (!t) return t;
-    const out = { ...t };
-    if ('id' in out) out.id = this._normId(out.id);
-    return out;
-  }
-
-  _normalizeCustomer(c) {
-    if (!c) return c;
-    const out = { ...c };
-    if ('id' in out) out.id = this._normId(out.id);
-    return out;
-  }
-
-  _normalizeSale(s) {
-    if (!s) return s;
-    const out = { ...s };
-    if ('id' in out) out.id = this._normId(out.id);
-    if ('tableId' in out) out.tableId = this._normId(out.tableId);
-    if ('customerId' in out) out.customerId = this._normId(out.customerId);
-    if (Array.isArray(out.items)) {
-      out.items = out.items.map((it) => {
-        if (!it) return it;
-        const itemOut = { ...it };
-        if ('productId' in itemOut) itemOut.productId = this._normId(itemOut.productId);
-        return itemOut;
-      });
-    }
-    return out;
-  }
-
-  _normalizeManualSession(s) {
-    if (!s) return s;
-    const out = { ...s };
-    if ('id' in out) out.id = this._normId(out.id);
-    if ('tableId' in out) out.tableId = this._normId(out.tableId);
-    return out;
   }
 
   async init() {
@@ -244,166 +101,22 @@ export class HybridDatabase {
     });
   }
 
-  async _localPut(storeName, row) {
-    if (!row) return false;
-    if (!this.local?.db?.objectStoreNames?.contains?.(storeName)) return false;
-    const db = this.local.db;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction([storeName], 'readwrite');
-      const store = tx.objectStore(storeName);
-      try {
-        store.put(row);
-      } catch (e) {
-        // ignore
-      }
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
-
-  async _localDelete(storeName, id) {
-    const nid = this._normId(id);
-    if (nid == null) return false;
-    if (!this.local?.db?.objectStoreNames?.contains?.(storeName)) return false;
-    const db = this.local.db;
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction([storeName], 'readwrite');
-      const store = tx.objectStore(storeName);
-      const req = store.delete(nid);
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => resolve(true);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
-  }
-
-  /**
-   * Apply Supabase Realtime payload directly into local IndexedDB cache.
-   * This is critical for DELETE events (delta polling can't detect deletions without tombstones).
-   *
-   * @param {string} tableName - e.g. 'tables' | 'sales' | 'products' | 'customers' | 'manual_sessions'
-   * @param {any} payload - Supabase realtime payload
-   */
-  async applyRealtimePayload(tableName, payload) {
-    try {
-      const eventType = String(payload?.eventType || payload?.event || '').toUpperCase();
-      if (!eventType) return false;
-
-      const key = tableName === 'manual_sessions' ? 'manualSessions' : tableName;
-      const storeName = key;
-
-      const rawRow = eventType === 'DELETE' ? payload?.old : payload?.new;
-      if (!rawRow) return false;
-
-      // Convert to app shape, then normalize IDs
-      const camel = this.remote?._snakeToCamel ? this.remote._snakeToCamel(key, rawRow) : rawRow;
-      const normalized =
-        key === 'sales' ? this._normalizeSale(camel)
-          : key === 'tables' ? this._normalizeTable(camel)
-            : key === 'products' ? this._normalizeProduct(camel)
-              : key === 'customers' ? this._normalizeCustomer(camel)
-                : key === 'manualSessions' ? this._normalizeManualSession(camel)
-                  : camel;
-
-      if (eventType === 'DELETE') {
-        return await this._localDelete(storeName, normalized?.id ?? camel?.id ?? rawRow?.id);
-      }
-
-      // INSERT / UPDATE
-      return await this._localPut(storeName, normalized);
-    } catch (e) {
-      // best-effort only
-      return false;
-    }
-  }
-
   async _fetchSince(tableKey, sinceISO) {
-    // Delta fetch using ONE column at a time (avoids PostgREST `or` parsing/unknown-column spam).
-    // If schema doesn't support any of these, caller will disable delta for this entity.
+    // Fetch rows where updated_at or created_at is >= sinceISO.
+    // NOTE: relies on DB columns existing; if not, fallback to full sync.
     const tableName = this.remote.tables?.[tableKey] || tableKey;
-    const base = () => this.remote.supabase.from(tableName).select('*');
-
-    const tryGte = async (col) => {
-      const pageSize = 1000;
-      const out = [];
-      let from = 0;
-      while (true) {
-        const to = from + pageSize - 1;
-        const res = await base().gte(col, sinceISO).order(col, { ascending: true }).range(from, to);
-        this.remote._throwIfError(res);
-        const rows = res.data || [];
-        out.push(...rows);
-        if (rows.length < pageSize) break;
-        from += pageSize;
-      }
-      return out;
-    };
-
-    // Prefer table-specific time columns first (to avoid guaranteed 400s on missing updated_at).
-    const cols = [];
-    if (tableKey === 'sales') cols.push('sell_datetime', 'payment_time', 'created_at', 'updated_at');
-    else if (tableKey === 'tables') cols.push('open_time', 'created_at', 'updated_at');
-    else if (tableKey === 'manualSessions') cols.push('close_time', 'open_time', 'created_at', 'updated_at');
-    else if (tableKey === 'customers') cols.push('created_at', 'updated_at');
-    else if (tableKey === 'products') cols.push('updated_at', 'created_at');
-    else cols.push('updated_at', 'created_at');
-
-    // If we already learned a working delta column for this table, try ONLY that first.
-    // This is what removes ongoing 400 spam after the first successful sync.
-    const saved = this._getDeltaCol(tableKey);
-    if (saved) {
-      cols.unshift(saved);
-    }
-
-    // De-dupe while preserving order
-    const seen = new Set();
-    const ordered = [];
-    for (const c of cols) {
-      if (!c) continue;
-      if (seen.has(c)) continue;
-      seen.add(c);
-      ordered.push(c);
-    }
-
-    let lastErr = null;
-    for (const col of ordered) {
-      try {
-        const rows = await tryGte(col);
-        // Remember the first column that works so we stop trying missing columns on every poll cycle.
-        this._setDeltaCol(tableKey, col);
-        return (rows || []).map((r) => this.remote._snakeToCamel(tableKey, r));
-      } catch (e) {
-        lastErr = e;
-        // Only treat 400 as "schema doesn't support this filter column". Anything else (network/auth)
-        // should bubble up so polling can retry later.
-        const status = e?.status ?? e?.statusCode ?? e?.code;
-        if (status === 400 || e?.status === 400) {
-          // continue trying next column
-          continue;
-        }
-        // If our saved column broke for non-400 reasons, clear it so a future run can re-learn.
-        if (saved && col === saved) this._clearDeltaCol(tableKey);
-        throw e;
-      }
-    }
-    const err = lastErr || new Error('Delta sync not supported');
-    err._deltaSyncFailed = true;
-    throw err;
+    const res = await this.remote.supabase
+      .from(tableName)
+      .select('*')
+      .or(`updated_at.gte.${sinceISO},created_at.gte.${sinceISO}`);
+    this.remote._throwIfError(res);
+    return (res.data || []).map((r) => this.remote._snakeToCamel(tableKey, r));
   }
 
   _maxTimestampISO(rows, prevISO) {
     let max = new Date(prevISO).getTime();
     (rows || []).forEach((r) => {
-      // Use any known timestamp field we may have in the app shape
-      const t =
-        r?.updatedAt ||
-        r?.createdAt ||
-        r?.sellDateTime ||
-        r?.paymentTime ||
-        r?.openTime ||
-        r?.closeTime ||
-        null;
+      const t = r?.updatedAt || r?.createdAt || null;
       if (!t) return;
       const ms = new Date(t).getTime();
       if (!Number.isNaN(ms) && ms > max) max = ms;
@@ -423,116 +136,44 @@ export class HybridDatabase {
       if (shouldFull) {
         const tasks = [];
         if (this.syncEntities.includes('products')) {
-          tasks.push(
-            this.remote
-              .getAllProducts()
-              .then(async (rows) => {
-                const list = rows || [];
-                // Safety: if remote suddenly returns empty but we already have local data, don't wipe UI.
-                if (Array.isArray(list) && list.length === 0 && this._getHasEverSynced()) {
-                  const localCount = await this._countStore('products');
-                  if (localCount > 0) return;
-                }
-                await this._replaceStore('products', list.map((r) => this._normalizeProduct(r)));
-              })
-              .catch((e) => this._warnSync('fullSync products failed', e))
-          );
+          tasks.push(this.remote.getAllProducts().then((rows) => this._replaceStore('products', rows)).catch(() => {}));
         }
         if (this.syncEntities.includes('tables')) {
-          tasks.push(
-            this.remote
-              .getAllTables()
-              .then(async (rows) => {
-                const list = rows || [];
-                if (Array.isArray(list) && list.length === 0 && this._getHasEverSynced()) {
-                  const localCount = await this._countStore('tables');
-                  if (localCount > 0) return;
-                }
-                await this._replaceStore('tables', list.map((r) => this._normalizeTable(r)));
-              })
-              .catch((e) => this._warnSync('fullSync tables failed', e))
-          );
+          tasks.push(this.remote.getAllTables().then((rows) => this._replaceStore('tables', rows)).catch(() => {}));
         }
         if (this.syncEntities.includes('sales')) {
-          tasks.push(
-            this.remote
-              .getAllSales()
-              .then((rows) => this._replaceStore('sales', (rows || []).map((r) => this._normalizeSale(r))))
-              .catch((e) => this._warnSync('fullSync sales failed', e))
-          );
+          tasks.push(this.remote.getAllSales().then((rows) => this._replaceStore('sales', rows)).catch(() => {}));
         }
         if (this.syncEntities.includes('customers')) {
-          tasks.push(
-            this.remote
-              .getAllCustomers()
-              .then(async (rows) => {
-                const list = rows || [];
-                if (Array.isArray(list) && list.length === 0 && this._getHasEverSynced()) {
-                  const localCount = await this._countStore('customers');
-                  if (localCount > 0) return;
-                }
-                await this._replaceStore('customers', list.map((r) => this._normalizeCustomer(r)));
-              })
-              .catch((e) => this._warnSync('fullSync customers failed', e))
-          );
+          tasks.push(this.remote.getAllCustomers().then((rows) => this._replaceStore('customers', rows)).catch(() => {}));
         }
         if (this.syncEntities.includes('manualSessions')) {
-          tasks.push(
-            this.remote
-              .getAllManualSessions()
-              .then((rows) => this._replaceStore('manualSessions', (rows || []).map((r) => this._normalizeManualSession(r))))
-              .catch((e) => this._warnSync('fullSync manualSessions failed', e))
-          );
+          tasks.push(this.remote.getAllManualSessions().then((rows) => this._replaceStore('manualSessions', rows)).catch(() => {}));
         }
         await Promise.all(tasks);
         // Reset per-entity lastSync to "now" so subsequent delta syncs are cheap.
         const nowIso = new Date().toISOString();
         this.syncEntities.forEach((e) => this._setLastSyncISO(e, nowIso));
         this._lastFullSyncAt = Date.now();
-        this._setHasEverSynced();
         anyChanged = true;
       } else {
         // Delta sync: only upsert changed rows
         const deltaTasks = [];
 
         const enqueue = (entity, tableKey, storeName) => {
-          if (this._deltaDisabled.has(entity)) return;
           const since = this._getLastSyncISO(entity);
           deltaTasks.push(
             this._fetchSince(tableKey, since)
               .then(async (rows) => {
                 if (!rows || rows.length === 0) return false;
-                const normalized =
-                  tableKey === 'sales' ? rows.map((r) => this._normalizeSale(r))
-                    : tableKey === 'tables' ? rows.map((r) => this._normalizeTable(r))
-                      : tableKey === 'products' ? rows.map((r) => this._normalizeProduct(r))
-                        : tableKey === 'customers' ? rows.map((r) => this._normalizeCustomer(r))
-                          : tableKey === 'manualSessions' ? rows.map((r) => this._normalizeManualSession(r))
-                            : rows;
-                await this._upsertStore(storeName, normalized);
+                await this._upsertStore(storeName, rows);
                 const next = this._maxTimestampISO(rows, since);
                 // +1ms to avoid re-fetching same edge row repeatedly
                 const bump = new Date(new Date(next).getTime() + 1).toISOString();
                 this._setLastSyncISO(entity, bump);
                 return true;
               })
-              .catch((e) => {
-                // If delta filters are not supported by the schema, do not spam 400 every 3 seconds.
-                if (e && e._deltaSyncFailed) {
-                  this._deltaDisabled.add(entity);
-                  // Do NOT jump cursor to "now" (clock skew can permanently block deltas on some devices).
-                  // Keep it at the last known value; full sync will eventually reconcile.
-                  try {
-                    const bump = new Date(new Date(since).getTime() + 1).toISOString();
-                    this._setLastSyncISO(entity, bump);
-                  } catch (_) {}
-                  this._warnSync(`deltaSync disabled for ${entity} (schema unsupported)`, e);
-                  return false;
-                }
-                // Any other failure (auth/network/RLS): keep cursor unchanged so retries can recover.
-                this._warnSync(`deltaSync failed for ${entity}`, e);
-                return false;
-              })
+              .catch(() => false)
           );
         };
 
@@ -556,12 +197,11 @@ export class HybridDatabase {
   // ----- Products -----
   async addProduct(product) {
     const id = await this.remote.addProduct(product);
-    const localRow = this._normalizeProduct({ ...product, id });
     try {
-      await this.local.updateProduct(localRow);
+      await this.local.updateProduct({ ...product, id });
     } catch (e) {
       // If update fails because it doesn't exist, fallback to add
-      try { await this.local.addProduct(localRow); } catch (_) {}
+      try { await this.local.addProduct({ ...product, id }); } catch (_) {}
     }
     return id;
   }
@@ -569,31 +209,27 @@ export class HybridDatabase {
     try { return await this.local.getAllProducts(); } catch (_) { return await this.remote.getAllProducts(); }
   }
   async getProduct(id) {
-    const nid = this._normId(id);
     try {
-      const r = await this.local.getProduct(nid);
+      const r = await this.local.getProduct(id);
       if (r) return r;
     } catch (_) {}
-    return await this.remote.getProduct(nid);
+    return await this.remote.getProduct(id);
   }
   async updateProduct(product) {
-    const normalized = this._normalizeProduct(product);
-    const id = await this.remote.updateProduct(normalized);
-    try { await this.local.updateProduct(normalized); } catch (_) {}
+    const id = await this.remote.updateProduct(product);
+    try { await this.local.updateProduct(product); } catch (_) {}
     return id;
   }
   async deleteProduct(id) {
-    const nid = this._normId(id);
-    await this.remote.deleteProduct(nid);
-    try { await this.local.deleteProduct(nid); } catch (_) {}
+    await this.remote.deleteProduct(id);
+    try { await this.local.deleteProduct(id); } catch (_) {}
   }
 
   // ----- Tables -----
   async addTable(table) {
     const id = await this.remote.addTable(table);
-    const localRow = this._normalizeTable({ ...table, id });
-    try { await this.local.updateTable(localRow); } catch (_) {
-      try { await this.local.addTable(localRow); } catch (_) {}
+    try { await this.local.updateTable({ ...table, id }); } catch (_) {
+      try { await this.local.addTable({ ...table, id }); } catch (_) {}
     }
     return id;
   }
@@ -601,32 +237,27 @@ export class HybridDatabase {
     try { return await this.local.getAllTables(); } catch (_) { return await this.remote.getAllTables(); }
   }
   async getTable(id) {
-    const nid = this._normId(id);
     try {
-      const r = await this.local.getTable(nid);
+      const r = await this.local.getTable(id);
       if (r) return r;
     } catch (_) {}
-    return await this.remote.getTable(nid);
+    return await this.remote.getTable(id);
   }
   async updateTable(table) {
-    const normalized = this._normalizeTable(table);
-    const id = await this.remote.updateTable(normalized);
-    try { await this.local.updateTable(normalized); } catch (_) {}
+    const id = await this.remote.updateTable(table);
+    try { await this.local.updateTable(table); } catch (_) {}
     return id;
   }
   async deleteTable(id) {
-    const nid = this._normId(id);
-    await this.remote.deleteTable(nid);
-    try { await this.local.deleteTable(nid); } catch (_) {}
+    await this.remote.deleteTable(id);
+    try { await this.local.deleteTable(id); } catch (_) {}
   }
 
   // ----- Sales -----
   async addSale(sale) {
-    const normalizedInput = this._normalizeSale(sale);
-    const id = await this.remote.addSale(normalizedInput);
-    const localRow = this._normalizeSale({ ...normalizedInput, id });
-    try { await this.local.updateSale(localRow); } catch (_) {
-      try { await this.local.addSale(localRow); } catch (_) {}
+    const id = await this.remote.addSale(sale);
+    try { await this.local.updateSale({ ...sale, id }); } catch (_) {
+      try { await this.local.addSale({ ...sale, id }); } catch (_) {}
     }
     return id;
   }
@@ -634,37 +265,32 @@ export class HybridDatabase {
     try { return await this.local.getAllSales(); } catch (_) { return await this.remote.getAllSales(); }
   }
   async getSale(id) {
-    const nid = this._normId(id);
     try {
-      const r = await this.local.getSale(nid);
+      const r = await this.local.getSale(id);
       if (r) return r;
     } catch (_) {}
-    return await this.remote.getSale(nid);
+    return await this.remote.getSale(id);
   }
   async updateSale(sale) {
-    const normalized = this._normalizeSale(sale);
-    const id = await this.remote.updateSale(normalized);
-    try { await this.local.updateSale(normalized); } catch (_) {}
+    const id = await this.remote.updateSale(sale);
+    try { await this.local.updateSale(sale); } catch (_) {}
     return id;
   }
   async deleteSale(id) {
-    const nid = this._normId(id);
-    await this.remote.deleteSale(nid);
-    try { await this.local.deleteSale(nid); } catch (_) {}
+    await this.remote.deleteSale(id);
+    try { await this.local.deleteSale(id); } catch (_) {}
   }
   async getUnpaidSalesByTable(tableId) {
-    const tid = this._normId(tableId);
-    try { return await this.local.getUnpaidSalesByTable(tid); } catch (_) {
-      return await this.remote.getUnpaidSalesByTable(tid);
+    try { return await this.local.getUnpaidSalesByTable(tableId); } catch (_) {
+      return await this.remote.getUnpaidSalesByTable(tableId);
     }
   }
 
   // ----- Customers -----
   async addCustomer(customer) {
     const id = await this.remote.addCustomer(customer);
-    const localRow = this._normalizeCustomer({ ...customer, id });
-    try { await this.local.updateCustomer(localRow); } catch (_) {
-      try { await this.local.addCustomer(localRow); } catch (_) {}
+    try { await this.local.updateCustomer({ ...customer, id }); } catch (_) {
+      try { await this.local.addCustomer({ ...customer, id }); } catch (_) {}
     }
     return id;
   }
@@ -672,23 +298,20 @@ export class HybridDatabase {
     try { return await this.local.getAllCustomers(); } catch (_) { return await this.remote.getAllCustomers(); }
   }
   async getCustomer(id) {
-    const nid = this._normId(id);
     try {
-      const r = await this.local.getCustomer(nid);
+      const r = await this.local.getCustomer(id);
       if (r) return r;
     } catch (_) {}
-    return await this.remote.getCustomer(nid);
+    return await this.remote.getCustomer(id);
   }
   async updateCustomer(customer) {
-    const normalized = this._normalizeCustomer(customer);
-    const id = await this.remote.updateCustomer(normalized);
-    try { await this.local.updateCustomer(normalized); } catch (_) {}
+    const id = await this.remote.updateCustomer(customer);
+    try { await this.local.updateCustomer(customer); } catch (_) {}
     return id;
   }
   async deleteCustomer(id) {
-    const nid = this._normId(id);
-    await this.remote.deleteCustomer(nid);
-    try { await this.local.deleteCustomer(nid); } catch (_) {}
+    await this.remote.deleteCustomer(id);
+    try { await this.local.deleteCustomer(id); } catch (_) {}
   }
   async getSalesByCustomer(customerId) {
     // Prefer remote because it can be large; local may be stale if sync is off.
@@ -701,18 +324,16 @@ export class HybridDatabase {
 
   // ----- Manual Sessions -----
   async addManualSession(session) {
-    const normalizedInput = this._normalizeManualSession(session);
-    const id = await this.remote.addManualSession(normalizedInput);
-    try { await this.local.addManualSession({ ...normalizedInput, id: this._normId(id) }); } catch (_) {}
+    const id = await this.remote.addManualSession(session);
+    try { await this.local.addManualSession({ ...session, id }); } catch (_) {}
     return id;
   }
   async getAllManualSessions() {
     try { return await this.local.getAllManualSessions(); } catch (_) { return await this.remote.getAllManualSessions(); }
   }
   async deleteManualSession(id) {
-    const nid = this._normId(id);
-    await this.remote.deleteManualSession(nid);
-    try { await this.local.deleteManualSession(nid); } catch (_) {}
+    await this.remote.deleteManualSession(id);
+    try { await this.local.deleteManualSession(id); } catch (_) {}
   }
 
   // ----- Admin -----

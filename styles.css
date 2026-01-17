@@ -1735,7 +1735,37 @@ header h1 {
     flex: 1 1 auto;
 }
 
-/* Header total chip removed; total is shown on the pay button now */
+.table-modal-total-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    padding: 6px 10px;
+    border-radius: 8px;
+    /* Match table card price bubble */
+    background: rgba(52, 152, 219, 0.10);
+    color: var(--secondary-color);
+    font-weight: 800;
+    line-height: 1;
+    flex: 0 0 auto;
+}
+
+.table-modal-total-label {
+    color: rgba(44, 62, 80, 0.70);
+    font-weight: 800;
+    font-size: 0.86rem;
+}
+
+.table-modal-total-value {
+    color: var(--secondary-color);
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+}
+
+.table-modal-total-currency {
+    opacity: 0.7;
+    font-weight: 900;
+}
 
 .table-modal-header h2 {
     margin: 0;
@@ -2127,42 +2157,6 @@ form select:focus {
 
 .sales-items {
     margin-top: 15px;
-}
-
-/* Table modal: sold item rows should be compact (table-like) */
-#table-modal #table-sales-list .sale-item-row {
-    padding: 6px 10px;
-    min-height: 38px;
-    border-radius: 10px;
-}
-
-#table-modal #table-sales-list .sale-item-info {
-    font-size: 0.82rem;
-    gap: 6px;
-    flex-wrap: nowrap;
-    overflow: hidden;
-}
-
-#table-modal #table-sales-list .sale-item-product {
-    flex-wrap: nowrap;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#table-modal #table-sales-list .sale-item-total,
-#table-modal #table-sales-list .sale-item-time {
-    font-size: 0.82rem;
-}
-
-#table-modal #table-sales-list .sale-item-row .btn-icon {
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px !important;
-    min-height: 38px !important;
-    font-size: 1.15rem !important;
-    margin-left: 4px !important;
 }
 
 .sale-item-row {
@@ -3202,7 +3196,15 @@ form select:focus {
         display: none !important;
     }
 
-    /* Header total chip removed */
+    /* Header total chip more compact on phones */
+    .table-modal-total-chip {
+        padding: 6px 8px;
+        border-radius: 10px;
+        gap: 6px;
+    }
+    .table-modal-total-label {
+        font-size: 0.78rem;
+    }
 
     /* Icons for compact hourly info chips */
     /* Emoji icons removed for consistency across Android/iOS fonts */
@@ -3263,23 +3265,14 @@ form select:focus {
         letter-spacing: 0.2px;
     }
 
-    /* Pay button shows amount only */
-    #pay-table-btn {
-        font-size: 1.05rem;
-        font-weight: 900;
-        letter-spacing: 0.2px;
-        gap: 0;
-    }
-
-    #pay-table-btn .pay-table-amount {
-        display: inline-block;
-        color: rgba(255,255,255,0.98);
-        text-shadow: 0 1px 1px rgba(0,0,0,0.14);
-    }
-
-    #pay-table-btn .btn-ico,
+    /* Show text only on the center (Nakit) button */
     #pay-table-btn .btn-txt {
-        display: none !important;
+        display: inline;
+        font-weight: 800;
+    }
+
+    #pay-table-btn .btn-ico {
+        font-size: 1.2rem;
     }
 
     /* Veresiye: match CTA feel (solid + shadow) */
