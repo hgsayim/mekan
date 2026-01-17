@@ -34,6 +34,45 @@ export class HybridDatabase {
 
     // If an entity's delta query is not supported by schema, disable delta for it to avoid 400 spam.
     this._deltaDisabled = new Set();
+
+    // Persist the "working" delta column per tableKey so we don't keep trying missing columns forever.
+    // This prevents 400 spam like `updated_at=gte...` when a table doesn't have that column.
+    this._deltaColPrefix = 'mekanapp:deltaCol:';
+    this._deltaColCache = new Map();
+  }
+
+  _getDeltaCol(tableKey) {
+    const k = String(tableKey || '');
+    if (!k) return null;
+    if (this._deltaColCache.has(k)) return this._deltaColCache.get(k) || null;
+    try {
+      const v = localStorage.getItem(this._deltaColPrefix + k);
+      const col = v ? String(v) : '';
+      this._deltaColCache.set(k, col || null);
+      return col || null;
+    } catch (_) {
+      this._deltaColCache.set(k, null);
+      return null;
+    }
+  }
+
+  _setDeltaCol(tableKey, col) {
+    const k = String(tableKey || '');
+    const c = String(col || '');
+    if (!k || !c) return;
+    this._deltaColCache.set(k, c);
+    try {
+      localStorage.setItem(this._deltaColPrefix + k, c);
+    } catch (_) {}
+  }
+
+  _clearDeltaCol(tableKey) {
+    const k = String(tableKey || '');
+    if (!k) return;
+    this._deltaColCache.delete(k);
+    try {
+      localStorage.removeItem(this._deltaColPrefix + k);
+    } catch (_) {}
   }
 
   _normId(v) {
@@ -246,20 +285,51 @@ export class HybridDatabase {
       return res.data || [];
     };
 
+    // Prefer table-specific time columns first (to avoid guaranteed 400s on missing updated_at).
     const cols = [];
-    // Common
-    cols.push('updated_at', 'created_at');
-    if (tableKey === 'sales') cols.push('sell_datetime', 'payment_time');
-    if (tableKey === 'tables') cols.push('open_time');
-    if (tableKey === 'manualSessions') cols.push('close_time');
+    if (tableKey === 'sales') cols.push('sell_datetime', 'payment_time', 'created_at', 'updated_at');
+    else if (tableKey === 'tables') cols.push('open_time', 'created_at', 'updated_at');
+    else if (tableKey === 'manualSessions') cols.push('close_time', 'open_time', 'created_at', 'updated_at');
+    else if (tableKey === 'customers') cols.push('created_at', 'updated_at');
+    else if (tableKey === 'products') cols.push('updated_at', 'created_at');
+    else cols.push('updated_at', 'created_at');
+
+    // If we already learned a working delta column for this table, try ONLY that first.
+    // This is what removes ongoing 400 spam after the first successful sync.
+    const saved = this._getDeltaCol(tableKey);
+    if (saved) {
+      cols.unshift(saved);
+    }
+
+    // De-dupe while preserving order
+    const seen = new Set();
+    const ordered = [];
+    for (const c of cols) {
+      if (!c) continue;
+      if (seen.has(c)) continue;
+      seen.add(c);
+      ordered.push(c);
+    }
 
     let lastErr = null;
-    for (const col of cols) {
+    for (const col of ordered) {
       try {
         const rows = await tryGte(col);
+        // Remember the first column that works so we stop trying missing columns on every poll cycle.
+        this._setDeltaCol(tableKey, col);
         return (rows || []).map((r) => this.remote._snakeToCamel(tableKey, r));
       } catch (e) {
         lastErr = e;
+        // Only treat 400 as "schema doesn't support this filter column". Anything else (network/auth)
+        // should bubble up so polling can retry later.
+        const status = e?.status ?? e?.statusCode ?? e?.code;
+        if (status === 400 || e?.status === 400) {
+          // continue trying next column
+          continue;
+        }
+        // If our saved column broke for non-400 reasons, clear it so a future run can re-learn.
+        if (saved && col === saved) this._clearDeltaCol(tableKey);
+        throw e;
       }
     }
     const err = lastErr || new Error('Delta sync not supported');
