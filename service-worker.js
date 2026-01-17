@@ -1,5 +1,5 @@
 // Service Worker for MekanApp
-const CACHE_NAME = 'mekanapp-v20';
+const CACHE_NAME = 'mekanapp-v21';
 
 // Get base URL from service worker location
 const BASE_URL = self.location.href.replace(/\/service-worker\.js$/, '/');
@@ -55,7 +55,7 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
@@ -67,16 +67,55 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const url = new URL(event.request.url);
+  const isSameOrigin = url.origin === self.location.origin;
+  const isAppAsset =
+    isSameOrigin &&
+    (
+      url.pathname.endsWith('/') ||
+      url.pathname.endsWith('/index.html') ||
+      url.pathname.endsWith('/app.js') ||
+      url.pathname.endsWith('/hybrid-db.js') ||
+      url.pathname.endsWith('/database.js') ||
+      url.pathname.endsWith('/supabase-db.js') ||
+      url.pathname.endsWith('/supabase-config.js') ||
+      url.pathname.endsWith('/styles.css') ||
+      url.pathname.endsWith('/manifest.json') ||
+      url.pathname.endsWith('/env.js') ||
+      url.pathname.endsWith('/icon.svg')
+    );
+
+  // Network-first for app shell/assets so all devices converge to the same code quickly.
+  if (isAppAsset || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then((netRes) => {
+          const resClone = netRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone)).catch(() => {});
+          return netRes;
+        })
+        .catch(() => {
+          return caches.match(event.request).then((cached) => {
+            return cached || caches.match(BASE_URL + 'index.html');
+          });
+        })
+    );
+    return;
+  }
+
+  // Cache-first for everything else (images/CDN/etc)
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request).catch(() => {
-          // If fetch fails, return offline page if available
-          if (event.request.destination === 'document') {
-            return caches.match(BASE_URL + 'index.html');
-          }
-        });
-      })
+    caches.match(event.request).then((cached) => {
+      return (
+        cached ||
+        fetch(event.request)
+          .then((netRes) => {
+            const resClone = netRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone)).catch(() => {});
+            return netRes;
+          })
+          .catch(() => cached)
+      );
+    })
   );
 });
