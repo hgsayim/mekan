@@ -31,6 +31,9 @@ export class HybridDatabase {
     this._lsPrefix = 'mekanapp:lastSync:';
     this._fullSyncEveryMs = 15 * 60 * 1000; // safety net for deletes / missed updates
     this._lastFullSyncAt = 0;
+
+    // If an entity's delta query is not supported by schema, disable delta for it to avoid 400 spam.
+    this._deltaDisabled = new Set();
   }
 
   _normId(v) {
@@ -232,55 +235,34 @@ export class HybridDatabase {
   }
 
   async _fetchSince(tableKey, sinceISO) {
-    // Fetch rows where a "time column" is >= sinceISO.
-    // IMPORTANT: Not all schemas have updated_at/created_at. We try several strategies and
-    // fall back gracefully (caller can decide to skip delta for this entity).
+    // Delta fetch using ONE column at a time (avoids PostgREST `or` parsing/unknown-column spam).
+    // If schema doesn't support any of these, caller will disable delta for this entity.
     const tableName = this.remote.tables?.[tableKey] || tableKey;
     const base = () => this.remote.supabase.from(tableName).select('*');
 
-    const tryOr = async (expr) => {
-      const res = await base().or(expr);
-      this.remote._throwIfError(res);
-      return res.data || [];
-    };
     const tryGte = async (col) => {
       const res = await base().gte(col, sinceISO);
       this.remote._throwIfError(res);
       return res.data || [];
     };
 
-    const attempts = [];
-    // Preferred: updated_at / created_at (common)
-    attempts.push(() => tryOr(`updated_at.gte.${sinceISO},created_at.gte.${sinceISO}`));
-    attempts.push(() => tryGte('updated_at'));
-    attempts.push(() => tryGte('created_at'));
-
-    // Table-specific fallbacks (common schemas)
-    if (tableKey === 'sales') {
-      // sales often uses sell_datetime + payment_time
-      attempts.push(() => tryOr(`sell_datetime.gte.${sinceISO},payment_time.gte.${sinceISO}`));
-      attempts.push(() => tryGte('sell_datetime'));
-      attempts.push(() => tryGte('payment_time'));
-    } else if (tableKey === 'tables') {
-      // tables may not have updated_at triggers; try open_time
-      attempts.push(() => tryGte('open_time'));
-    } else if (tableKey === 'manualSessions') {
-      // manual sessions: close_time is meaningful
-      attempts.push(() => tryGte('close_time'));
-    }
+    const cols = [];
+    // Common
+    cols.push('updated_at', 'created_at');
+    if (tableKey === 'sales') cols.push('sell_datetime', 'payment_time');
+    if (tableKey === 'tables') cols.push('open_time');
+    if (tableKey === 'manualSessions') cols.push('close_time');
 
     let lastErr = null;
-    for (const fn of attempts) {
+    for (const col of cols) {
       try {
-        const rows = await fn();
+        const rows = await tryGte(col);
         return (rows || []).map((r) => this.remote._snakeToCamel(tableKey, r));
       } catch (e) {
         lastErr = e;
       }
     }
-
-    // Signal failure to caller (avoid spamming 400s)
-    const err = lastErr;
+    const err = lastErr || new Error('Delta sync not supported');
     err._deltaSyncFailed = true;
     throw err;
   }
@@ -288,7 +270,15 @@ export class HybridDatabase {
   _maxTimestampISO(rows, prevISO) {
     let max = new Date(prevISO).getTime();
     (rows || []).forEach((r) => {
-      const t = r?.updatedAt || r?.createdAt || null;
+      // Use any known timestamp field we may have in the app shape
+      const t =
+        r?.updatedAt ||
+        r?.createdAt ||
+        r?.sellDateTime ||
+        r?.paymentTime ||
+        r?.openTime ||
+        r?.closeTime ||
+        null;
       if (!t) return;
       const ms = new Date(t).getTime();
       if (!Number.isNaN(ms) && ms > max) max = ms;
@@ -358,6 +348,7 @@ export class HybridDatabase {
         const deltaTasks = [];
 
         const enqueue = (entity, tableKey, storeName) => {
+          if (this._deltaDisabled.has(entity)) return;
           const since = this._getLastSyncISO(entity);
           deltaTasks.push(
             this._fetchSince(tableKey, since)
@@ -380,6 +371,9 @@ export class HybridDatabase {
               .catch((e) => {
                 // If delta filters are not supported by the schema, do not spam 400 every 3 seconds.
                 // Move the cursor forward so we stop retrying until the next full sync.
+                if (e && e._deltaSyncFailed) {
+                  this._deltaDisabled.add(entity);
+                }
                 try {
                   const nowIso = new Date().toISOString();
                   const bump = new Date(new Date(nowIso).getTime() + 1).toISOString();
