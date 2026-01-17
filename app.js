@@ -2138,7 +2138,7 @@ class MekanApp {
                     <div class="sale-item-info">
                     ${items}
                         <span class="sale-item-separator">•</span>
-                        <span class="sale-item-total">Toplam: ${Math.round(sale.saleTotal)} ₺</span>
+                        <span class="sale-item-total">${Math.round(sale.saleTotal)} ₺</span>
                         <span class="sale-item-separator">•</span>
                         <span class="sale-item-time">${timeOnly}</span>
                 </div>

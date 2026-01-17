@@ -45,29 +45,37 @@ export class HybridDatabase {
 
   _normalizeProduct(p) {
     if (!p) return p;
-    return { ...p, id: this._normId(p.id) };
+    const out = { ...p };
+    if ('id' in out) out.id = this._normId(out.id);
+    return out;
   }
 
   _normalizeTable(t) {
     if (!t) return t;
-    return { ...t, id: this._normId(t.id) };
+    const out = { ...t };
+    if ('id' in out) out.id = this._normId(out.id);
+    return out;
   }
 
   _normalizeCustomer(c) {
     if (!c) return c;
-    return { ...c, id: this._normId(c.id) };
+    const out = { ...c };
+    if ('id' in out) out.id = this._normId(out.id);
+    return out;
   }
 
   _normalizeSale(s) {
     if (!s) return s;
     const out = { ...s };
-    out.id = this._normId(out.id);
-    out.tableId = this._normId(out.tableId);
-    out.customerId = this._normId(out.customerId);
+    if ('id' in out) out.id = this._normId(out.id);
+    if ('tableId' in out) out.tableId = this._normId(out.tableId);
+    if ('customerId' in out) out.customerId = this._normId(out.customerId);
     if (Array.isArray(out.items)) {
       out.items = out.items.map((it) => {
         if (!it) return it;
-        return { ...it, productId: this._normId(it.productId) };
+        const itemOut = { ...it };
+        if ('productId' in itemOut) itemOut.productId = this._normId(itemOut.productId);
+        return itemOut;
       });
     }
     return out;
@@ -75,7 +83,10 @@ export class HybridDatabase {
 
   _normalizeManualSession(s) {
     if (!s) return s;
-    return { ...s, id: this._normId(s.id), tableId: this._normId(s.tableId) };
+    const out = { ...s };
+    if ('id' in out) out.id = this._normId(out.id);
+    if ('tableId' in out) out.tableId = this._normId(out.tableId);
+    return out;
   }
 
   async init() {
