@@ -68,7 +68,7 @@ export class SupabaseDatabase {
     // Prevent 400 errors: app.js may include fields that are not real DB columns
     // (e.g. tables.sales array used only in IndexedDB). We whitelist columns per table.
     this.allowedColumns = {
-      products: new Set(['id', 'name', 'price', 'arrival_price', 'track_stock', 'stock', 'created_at', 'updated_at']),
+      products: new Set(['id', 'name', 'icon', 'price', 'arrival_price', 'track_stock', 'stock', 'created_at', 'updated_at']),
       tables: new Set([
         'id',
         'name',
@@ -122,6 +122,11 @@ export class SupabaseDatabase {
       customers: new Set(['balance']),
       manualSessions: new Set(['amount', 'hoursUsed', 'hourlyRate']),
     };
+
+    // Feature flags (auto-disable when a Supabase schema doesn't support a column yet)
+    this._supports = {
+      productIcon: true,
+    };
   }
 
   // Keep parity with old Database.init()
@@ -173,13 +178,33 @@ export class SupabaseDatabase {
   // Products
   async addProduct(product) {
     const insertRow = this._camelToSnake('products', product);
-    const res = await this.supabase
-      .from(this.tables.products)
-      .insert([insertRow])
-      .select('*')
-      .single();
-    this._throwIfError(res);
-    return res.data?.id;
+    if (!this._supports.productIcon) {
+      try { delete insertRow.icon; } catch (_) {}
+    }
+    try {
+      const res = await this.supabase
+        .from(this.tables.products)
+        .insert([insertRow])
+        .select('*')
+        .single();
+      this._throwIfError(res);
+      return res.data?.id;
+    } catch (e) {
+      // If the DB doesn't have the "icon" column yet, retry without it (avoid breaking the app).
+      const msg = String(e?.message || '');
+      if (this._supports.productIcon && msg.toLowerCase().includes('column') && msg.toLowerCase().includes('icon')) {
+        this._supports.productIcon = false;
+        try { delete insertRow.icon; } catch (_) {}
+        const res2 = await this.supabase
+          .from(this.tables.products)
+          .insert([insertRow])
+          .select('*')
+          .single();
+        this._throwIfError(res2);
+        return res2.data?.id;
+      }
+      throw e;
+    }
   }
 
   async getAllProducts() {
@@ -198,9 +223,24 @@ export class SupabaseDatabase {
     if (!product || product.id == null) throw new Error('updateProduct: missing id');
     const { id, ...patch } = product;
     const updatePatch = this._camelToSnake('products', patch);
-    const res = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
-    this._throwIfError(res);
-    return res.data?.id;
+    if (!this._supports.productIcon) {
+      try { delete updatePatch.icon; } catch (_) {}
+    }
+    try {
+      const res = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
+      this._throwIfError(res);
+      return res.data?.id;
+    } catch (e) {
+      const msg = String(e?.message || '');
+      if (this._supports.productIcon && msg.toLowerCase().includes('column') && msg.toLowerCase().includes('icon')) {
+        this._supports.productIcon = false;
+        try { delete updatePatch.icon; } catch (_) {}
+        const res2 = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
+        this._throwIfError(res2);
+        return res2.data?.id;
+      }
+      throw e;
+    }
   }
 
   async deleteProduct(id) {

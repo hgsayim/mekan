@@ -2029,7 +2029,7 @@ class MekanApp {
                     ${isOutOfStock ? 'disabled' : ''}
                     title="Ekle"
                 >+</button>
-                <h4>${product.name}</h4>
+                <h4><span class="product-mini-ico" aria-hidden="true">${product.icon || '📦'}</span> ${product.name}</h4>
                 <div class="product-price-mini">${Math.round(product.price)} ₺</div>
                 <div class="product-stock-mini ${stockClass}">${stockText}</div>
                 <div class="quantity-controls">
@@ -2072,7 +2072,16 @@ class MekanApp {
         // Sort by date (newest first)
         unpaidSales.sort((a, b) => new Date(b.sellDateTime) - new Date(a.sellDateTime));
 
-        container.innerHTML = unpaidSales.map(sale => this.createTableSaleItem(sale)).join('');
+        // Build productId -> icon map (for older sales that don't have item.icon stored)
+        let iconByProductId = {};
+        try {
+            const products = await this.db.getAllProducts();
+            (products || []).forEach((p) => {
+                if (p && p.id != null) iconByProductId[String(p.id)] = p.icon || '📦';
+            });
+        } catch (_) {}
+
+        container.innerHTML = unpaidSales.map(sale => this.createTableSaleItem(sale, iconByProductId)).join('');
         
         // Add delete, pay, and credit listeners for each item
         unpaidSales.forEach(sale => {
@@ -2135,15 +2144,20 @@ class MekanApp {
         }
     }
 
-    createTableSaleItem(sale) {
+    createTableSaleItem(sale, iconByProductId = {}) {
         const items = sale.items.map((item, index) => {
             const buttons = !sale.isPaid ? `
                 <button class="btn btn-danger btn-icon" id="delete-sale-item-${sale.id}-${index}" title="Sil">×</button>
                 <button class="btn btn-success btn-icon" id="pay-sale-item-${sale.id}-${index}" title="Öde">₺</button>
                 <button class="btn btn-info btn-icon" id="credit-sale-item-${sale.id}-${index}" title="Veresiye">💳</button>
             ` : '';
-            
-            return `<span class="sale-item-product"><strong>${item.name}</strong> x${item.amount} = ${Math.round(item.price * item.amount)} ₺${buttons}</span>`;
+
+            const icon =
+                item.icon ||
+                iconByProductId[String(item.productId)] ||
+                '📦';
+
+            return `<span class="sale-item-product" title="${item.name}"><strong class="sale-item-ico" aria-hidden="true">${icon}</strong> x${item.amount} = ${Math.round(item.price * item.amount)} ₺${buttons}</span>`;
         }).join(' <span class="sale-item-separator">•</span> ');
         
         const saleDate = new Date(sale.sellDateTime);
@@ -3083,6 +3097,7 @@ class MekanApp {
                 items: [{
                     productId: productId,
                     name: product.name,
+                    icon: product.icon || '📦',
                     price: product.price,
                     arrivalPrice: product.arrivalPrice || 0,
                     amount: amount
@@ -3113,9 +3128,9 @@ class MekanApp {
                 if (this.currentTableId === tableId) {
                     await this.loadTableSales(tableId);
                 }
-                
-                const tableModal = document.getElementById('table-modal');
-                if (tableModal) tableModal.classList.remove('active');
+
+                // Important: close via helper so body.table-modal-open is removed (otherwise header stays hidden on mobile)
+                this.closeTableModal();
                 this.currentTableId = null;
                 
                 await Promise.all([this.loadTables(), this.loadSales()]);
@@ -3769,7 +3784,7 @@ class MekanApp {
 
         return `
             <div class="product-card">
-                <div class="product-card-icon">📦</div>
+                <div class="product-card-icon">${product.icon || '📦'}</div>
                 <div class="product-card-content">
                 <h3>${product.name}</h3>
                     <div class="product-card-details">
@@ -3789,6 +3804,7 @@ class MekanApp {
         const modal = document.getElementById('product-modal');
         const title = document.getElementById('product-modal-title');
         const form = document.getElementById('product-form');
+        const iconSelect = document.getElementById('product-icon');
         
         const trackStockCheckbox = document.getElementById('product-track-stock');
         const stockLabel = document.getElementById('product-stock-label');
@@ -3818,6 +3834,7 @@ class MekanApp {
             document.getElementById('product-name').value = product.name;
             document.getElementById('product-price').value = product.price;
             document.getElementById('product-arrival-price').value = product.arrivalPrice || 0;
+            if (iconSelect) iconSelect.value = product.icon || '📦';
             
             // Check if product tracks stock
             const trackStockCheckboxElement = document.getElementById('product-track-stock');
@@ -3837,6 +3854,7 @@ class MekanApp {
             title.textContent = 'Ürün Ekle';
             form.reset();
             document.getElementById('product-id').value = '';
+            if (iconSelect) iconSelect.value = '☕';
             const trackStockCheckboxElement = document.getElementById('product-track-stock');
             if (trackStockCheckboxElement) trackStockCheckboxElement.checked = true;
             const stockInputGroup = stockLabel.querySelector('.stock-input-group');
@@ -3852,10 +3870,11 @@ class MekanApp {
         const name = document.getElementById('product-name').value;
         const price = parseFloat(document.getElementById('product-price').value);
         const arrivalPrice = parseFloat(document.getElementById('product-arrival-price').value) || 0;
+        const icon = (document.getElementById('product-icon')?.value || '📦');
         const trackStock = document.getElementById('product-track-stock').checked;
         const stock = trackStock ? parseInt(document.getElementById('product-stock').value) : null;
 
-        const productData = { name, price, arrivalPrice, stock, trackStock };
+        const productData = { name, price, arrivalPrice, icon, stock, trackStock };
 
         try {
             if (id) {

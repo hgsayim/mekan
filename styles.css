@@ -2215,6 +2215,15 @@ form select:focus {
     line-height: 1.15;
 }
 
+.sale-item-product .sale-item-ico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05rem;
+    line-height: 1;
+    transform: translateY(0.5px);
+}
+
 .sale-item-separator {
     color: #bdc3c7;
     font-weight: normal;
@@ -2531,6 +2540,13 @@ form select:focus {
     padding-right: 5px;
     line-height: 1.2;
     letter-spacing: 0.2px;
+}
+
+.product-card-mini .product-mini-ico {
+    display: inline-block;
+    margin-right: 6px;
+    line-height: 1;
+    transform: translateY(0.5px);
 }
 
 .product-card-mini .product-price-mini {
