@@ -1735,38 +1735,6 @@ header h1 {
     flex: 1 1 auto;
 }
 
-.table-modal-total-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    white-space: nowrap;
-    padding: 6px 10px;
-    border-radius: 8px;
-    /* Match table card price bubble */
-    background: rgba(52, 152, 219, 0.10);
-    color: var(--secondary-color);
-    font-weight: 800;
-    line-height: 1;
-    flex: 0 0 auto;
-}
-
-.table-modal-total-label {
-    color: rgba(44, 62, 80, 0.70);
-    font-weight: 800;
-    font-size: 0.86rem;
-}
-
-.table-modal-total-value {
-    color: var(--secondary-color);
-    font-weight: 900;
-    font-variant-numeric: tabular-nums;
-}
-
-.table-modal-total-currency {
-    opacity: 0.7;
-    font-weight: 900;
-}
-
 .table-modal-header h2 {
     margin: 0;
     /* Keep perfectly aligned with the close button */
@@ -3196,14 +3164,64 @@ form select:focus {
         display: none !important;
     }
 
-    /* Header total chip more compact on phones */
-    .table-modal-total-chip {
-        padding: 6px 8px;
-        border-radius: 10px;
-        gap: 6px;
+    /* Pay (green) button shows ONLY the total amount */
+    #pay-table-btn .btn-ico {
+        display: none !important;
     }
-    .table-modal-total-label {
+    #pay-table-btn .btn-txt {
+        display: inline !important;
+        font-weight: 900;
+        font-size: 1.1rem;
+        letter-spacing: 0;
+    }
+
+    /* Product picker cards: more compact, table-like (fit more items vertically) */
+    .product-card-mini {
+        padding: 10px 10px;
+        border-radius: 12px;
+    }
+    .product-card-mini h4 {
+        font-size: 0.72rem;
+        margin-bottom: 8px;
+        margin-right: 30px;
+    }
+    .product-card-mini .product-price-mini {
         font-size: 0.78rem;
+        padding: 2px 7px;
+        margin-bottom: 6px;
+        border-radius: 8px;
+    }
+    .product-card-mini .product-stock-mini {
+        font-size: 0.68rem;
+        padding: 2px 7px;
+        margin-bottom: 6px;
+        border-radius: 8px;
+    }
+    .product-card-mini .quantity-controls {
+        margin-top: 4px;
+        gap: 6px;
+        border-radius: 10px;
+    }
+    .product-card-mini .quantity-btn {
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        border-radius: 10px;
+        font-size: 1.05rem;
+    }
+    .product-card-mini .product-quantity-input {
+        width: 40px;
+        min-width: 40px;
+        max-width: 40px;
+        height: 30px;
+        border-radius: 10px;
+        font-size: 0.95rem;
+    }
+    .product-card-mini .product-add-btn-top {
+        width: 36px;
+        height: 36px;
+        border-radius: 0 12px 0 24px;
+        font-size: 1.35rem;
     }
 
     /* Icons for compact hourly info chips */
@@ -3242,6 +3260,11 @@ form select:focus {
         line-height: 1;
         font-size: 1.35rem;
     }
+
+/* Global: pay button should not show the icon, only amount text */
+#pay-table-btn .btn-ico {
+    display: none !important;
+}
 
     /* Ensure single-row order: Veresiye - Nakit - İptal (Nakit centered) */
     #credit-table-btn { order: 1; }

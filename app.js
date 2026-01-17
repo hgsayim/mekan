@@ -909,6 +909,19 @@ class MekanApp {
         // Sync each table's status with unpaid sales - but hourly tables must be manually opened
         for (const table of tables) {
             const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
+            // Compute totals from sales to avoid cross-device race conditions on aggregated columns
+            const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            table._computedSalesTotal = computedSalesTotal;
+
+            // Compute check total (hourly tables include time when open)
+            if (table.type === 'hourly' && table.isActive && table.openTime) {
+                const hoursUsed = this.calculateHoursUsed(table.openTime);
+                table._computedHourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                table._computedCheckTotal = table._computedHourlyTotal + computedSalesTotal;
+            } else {
+                table._computedHourlyTotal = 0;
+                table._computedCheckTotal = computedSalesTotal;
+            }
             let tableUpdated = false;
 
             // If a table was just settled (paid/credited), avoid "close -> reopen" flicker for a couple seconds
@@ -962,6 +975,10 @@ class MekanApp {
                 // Reload table to get updated data
                 const updatedTable = await this.db.getTable(table.id);
                 Object.assign(table, updatedTable);
+                // Re-attach computed fields after refresh
+                table._computedSalesTotal = computedSalesTotal;
+                table._computedHourlyTotal = table._computedHourlyTotal || 0;
+                table._computedCheckTotal = table._computedCheckTotal || computedSalesTotal;
             }
         }
 
@@ -1182,17 +1199,22 @@ class MekanApp {
         // Instant sale table is always active
         const statusClass = (effectiveTable.type === 'instant' || effectiveTable.isActive) ? 'active' : 'inactive';
         
-        // Calculate check total for display
-        let displayTotal = effectiveTable.checkTotal;
+        // Calculate check total for display (prefer computed totals from unpaid sales)
+        const computedSalesTotal = Number(effectiveTable._computedSalesTotal);
+        const salesTotal = Number.isFinite(computedSalesTotal) ? computedSalesTotal : (effectiveTable.salesTotal || 0);
+        let displayTotal = (effectiveTable._computedCheckTotal != null) ? effectiveTable._computedCheckTotal : (effectiveTable.checkTotal || 0);
         
         if (effectiveTable.type === 'hourly' && effectiveTable.isActive && effectiveTable.openTime) {
             // For hourly tables, include hourly total
             const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
             const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
-            displayTotal = hourlyTotal + effectiveTable.salesTotal;
+            displayTotal = hourlyTotal + salesTotal;
         } else if (effectiveTable.type === 'instant') {
             // For instant sale table, show today's paid sales total
             displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
+        } else {
+            // Regular tables: sum of unpaid sales
+            displayTotal = salesTotal;
         }
 
         // Get icon from table data, or use default
@@ -1533,8 +1555,9 @@ class MekanApp {
                 return;
             }
 
-        // Get all unpaid sales for this table
+        // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+        const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
 
         // Sync table active status with unpaid sales - but hourly tables must be manually opened
         let tableUpdated = false;
@@ -1592,14 +1615,9 @@ class MekanApp {
         const modalTitle = document.getElementById('table-modal-title');
         modalTitle.textContent = table.name;
 
-        // Header total chip (move "Genel Toplam" here to free footer space)
-        const totalChip = document.getElementById('table-modal-total-chip');
-        const headerTotalEl = document.getElementById('modal-header-total');
-        if (totalChip && headerTotalEl) {
-            totalChip.style.display = 'inline-flex';
-            const headerTotal = Math.round(checkTotal || 0);
-            headerTotalEl.textContent = String(headerTotal);
-        }
+        // Total is shown on the green pay button (not in header)
+        const payBtnTxt = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt') || null;
+        if (payBtnTxt) payBtnTxt.textContent = `${Math.round(checkTotal || 0)} ₺`;
         
         // Update modal content
         // Hourly table info
@@ -1622,12 +1640,12 @@ class MekanApp {
                 const hoursUsed = this.calculateHoursUsed(table.openTime);
                 const hourlyTotal = hoursUsed * table.hourlyRate;
                 document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
-                document.getElementById('modal-sales-total').textContent = Math.round(table.salesTotal);
+                document.getElementById('modal-sales-total').textContent = Math.round(computedSalesTotal);
                 
                 // Update check total with real-time hourly calculation
-                table.checkTotal = hourlyTotal + table.salesTotal;
+                table.checkTotal = hourlyTotal + computedSalesTotal;
                 document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
-                if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.checkTotal));
+                if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
                 
                 // Update hourly total in real-time every minute
                 if (this.hourlyUpdateInterval) {
@@ -1636,13 +1654,15 @@ class MekanApp {
                 this.hourlyUpdateInterval = setInterval(async () => {
                     const updatedTable = await this.db.getTable(tableId);
                     if (updatedTable && updatedTable.isActive && updatedTable.openTime) {
+                        const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+                        const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                         const hoursUsed = this.calculateHoursUsed(updatedTable.openTime);
                         const hourlyTotal = hoursUsed * updatedTable.hourlyRate;
                         document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
-                        document.getElementById('modal-sales-total').textContent = Math.round(updatedTable.salesTotal);
-                        updatedTable.checkTotal = hourlyTotal + updatedTable.salesTotal;
+                        document.getElementById('modal-sales-total').textContent = Math.round(salesTotal);
+                        updatedTable.checkTotal = hourlyTotal + salesTotal;
                         document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
-                        if (headerTotalEl) headerTotalEl.textContent = String(Math.round(updatedTable.checkTotal));
+                        if (payBtnTxt) payBtnTxt.textContent = `${Math.round(updatedTable.checkTotal)} ₺`;
                     }
                 }, 60000); // Update every minute
                 
@@ -1662,10 +1682,10 @@ class MekanApp {
             } else {
                 document.getElementById('modal-open-time').textContent = 'Açılmadı';
                 document.getElementById('modal-hourly-total').textContent = '0';
-                document.getElementById('modal-sales-total').textContent = Math.round(table.salesTotal);
-                table.checkTotal = table.salesTotal;
+                document.getElementById('modal-sales-total').textContent = Math.round(computedSalesTotal);
+                table.checkTotal = computedSalesTotal;
                 document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
-                if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.checkTotal));
+                if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
                 
                 // Table is not open - hide products section
                 if (productsSection) {
@@ -1687,9 +1707,9 @@ class MekanApp {
             hourlyInfo.style.display = 'none';
             // Total moved to header; hide footer info for regular tables to free space.
             regularInfo.style.display = 'none';
-            table.checkTotal = table.salesTotal;
+            table.checkTotal = computedSalesTotal;
             document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
-            if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.checkTotal));
+            if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
             if (openBtn) {
             openBtn.style.display = 'none';
             }
@@ -2082,7 +2102,7 @@ class MekanApp {
                     <div class="sale-item-info">
                     ${items}
                         <span class="sale-item-separator">•</span>
-                        <span class="sale-item-total">Toplam: ${Math.round(sale.saleTotal)} ₺</span>
+                        <span class="sale-item-total">${Math.round(sale.saleTotal)} ₺</span>
                         <span class="sale-item-separator">•</span>
                         <span class="sale-item-time">${timeOnly}</span>
                 </div>
@@ -2646,8 +2666,9 @@ class MekanApp {
 
     // Helper: Update modal totals (reduces DOM queries)
     updateModalTotals(table) {
-        // Header total chip should be kept in sync
-        const headerTotalEl = document.getElementById('modal-header-total');
+        // Keep the green pay button label in sync (show amount only)
+        const payBtn = document.getElementById('pay-table-btn');
+        const payTxt = payBtn?.querySelector?.('.btn-txt') || null;
         if (table.type === 'hourly') {
             const modalSalesTotal = document.getElementById('modal-sales-total');
             const modalCheckTotal = document.getElementById('modal-check-total');
@@ -2655,12 +2676,12 @@ class MekanApp {
             if (modalCheckTotal) {
                 const checkTotal = this.calculateCheckTotal(table);
                 modalCheckTotal.textContent = Math.round(checkTotal);
-                if (headerTotalEl) headerTotalEl.textContent = String(Math.round(checkTotal));
+                if (payTxt) payTxt.textContent = `${Math.round(checkTotal)} ₺`;
             }
         } else {
             const modalCheckTotalRegular = document.getElementById('modal-check-total-regular');
             if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(table.salesTotal);
-            if (headerTotalEl) headerTotalEl.textContent = String(Math.round(table.salesTotal));
+            if (payTxt) payTxt.textContent = `${Math.round(table.salesTotal)} ₺`;
         }
     }
 
@@ -3080,6 +3101,21 @@ class MekanApp {
             
             // Update table totals in modal
             const updatedTable = await this.db.getTable(tableId);
+            // Ensure totals are computed from sales (avoid stale aggregated columns)
+            try {
+                const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+                const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                updatedTable.salesTotal = salesTotal;
+                if (updatedTable.type === 'hourly' && updatedTable.isActive && updatedTable.openTime) {
+                    const hoursUsed = this.calculateHoursUsed(updatedTable.openTime);
+                    updatedTable.hourlyTotal = hoursUsed * (updatedTable.hourlyRate || 0);
+                } else {
+                    updatedTable.hourlyTotal = updatedTable.hourlyTotal || 0;
+                }
+                updatedTable.checkTotal = (updatedTable.hourlyTotal || 0) + salesTotal;
+            } catch (_) {
+                // ignore
+            }
             this.updateModalTotals(updatedTable);
             
             // Reload views in parallel
