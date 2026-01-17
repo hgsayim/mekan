@@ -215,6 +215,25 @@ class MekanApp {
         }
     }
 
+    _syncHourlyRateFieldForTableType(type) {
+        const hourlyRateLabel = document.getElementById('hourly-rate-label');
+        const hourlyRateInput = document.getElementById('table-hourly-rate');
+        if (!hourlyRateInput) return;
+
+        const isHourly = String(type) === 'hourly';
+        if (hourlyRateLabel) hourlyRateLabel.style.display = isHourly ? 'block' : 'none';
+
+        // Critical: hidden + required => "invalid form control not focusable" in Chrome.
+        hourlyRateInput.required = isHourly;
+        hourlyRateInput.disabled = !isHourly;
+        if (!isHourly) {
+            hourlyRateInput.value = '';
+        } else if (!hourlyRateInput.value) {
+            // reasonable default
+            hourlyRateInput.value = '0';
+        }
+    }
+
     setupOrientationLock() {
         // Best-effort: keep app in portrait (especially for "Add to Home Screen" standalone).
         // Some browsers require a user gesture to lock; we try on init and on first interaction.
@@ -405,20 +424,7 @@ class MekanApp {
         const tableType = document.getElementById('table-type');
         if (tableType) {
             tableType.addEventListener('change', (e) => {
-            const hourlyRateLabel = document.getElementById('hourly-rate-label');
-                const hourlyRateInput = document.getElementById('table-hourly-rate');
-                const iconLabel = document.getElementById('table-icon-label');
-                const iconSelect = document.getElementById('table-icon');
-                
-            if (e.target.value === 'hourly') {
-                    if (hourlyRateLabel) hourlyRateLabel.style.display = 'block';
-                    if (hourlyRateInput) hourlyRateInput.required = true;
-                    // Icon label is always visible now
-            } else {
-                    if (hourlyRateLabel) hourlyRateLabel.style.display = 'none';
-                    if (hourlyRateInput) hourlyRateInput.required = false;
-                    // Icon label is always visible now
-            }
+                this._syncHourlyRateFieldForTableType(e.target.value);
         });
         }
 
@@ -1534,19 +1540,14 @@ class MekanApp {
             document.getElementById('table-type').value = table.type;
             document.getElementById('table-hourly-rate').value = table.hourlyRate || 0;
             document.getElementById('table-icon').value = table.icon || (table.type === 'hourly' ? '🎱' : '🪑');
-            
-            const hourlyRateLabel = document.getElementById('hourly-rate-label');
-            if (table.type === 'hourly') {
-                if (hourlyRateLabel) hourlyRateLabel.style.display = 'block';
-            } else {
-                if (hourlyRateLabel) hourlyRateLabel.style.display = 'none';
-            }
-            // Icon label is always visible now
+            this._syncHourlyRateFieldForTableType(table.type);
         } else {
             title.textContent = 'Masa Ekle';
             form.reset();
             document.getElementById('table-id').value = '';
-            document.getElementById('hourly-rate-label').style.display = 'none';
+            // Reset hourly fields reliably (form.reset doesn't reset "required" flags we toggled previously)
+            document.getElementById('table-type').value = 'regular';
+            this._syncHourlyRateFieldForTableType('regular');
             document.getElementById('table-icon').value = '🪑'; // Default icon for new tables
             // Icon label is always visible now
         }
@@ -2128,6 +2129,8 @@ class MekanApp {
                         icon,
                         amount: 0,
                         total: 0,
+                        firstTs: ts,
+                        lastTs: ts,
                         // action target (most recent underlying item)
                         actionSaleId: sale.id,
                         actionItemIndex: idx,
@@ -2140,6 +2143,8 @@ class MekanApp {
                 agg.amount += amount;
                 agg.total += lineTotal;
                 row.total += lineTotal;
+                agg.firstTs = Math.min(agg.firstTs || ts, ts);
+                agg.lastTs = Math.max(agg.lastTs || ts, ts);
 
                 // Choose the most recent underlying item to attach buttons to.
                 // Prefer amount=1 so "pay/cancel one" behaves as expected for tap-to-add.
@@ -2159,18 +2164,26 @@ class MekanApp {
         });
 
         const rows = Array.from(rowsByMinute.values())
-            .sort((a, b) => b.latestTs - a.latestTs)
+            // Oldest first so "last added" ends up at the bottom of the list
+            .sort((a, b) => a.latestTs - b.latestTs)
             .map((r) => {
                 const items = Array.from(r.itemsByProductKey.values()).map((g) => ({
                     name: g.name,
                     icon: g.icon,
                     amount: g.amount,
                     total: g.total,
+                    firstTs: g.firstTs,
+                    lastTs: g.lastTs,
                     actionSaleId: g.actionSaleId,
                     actionItemIndex: g.actionItemIndex,
                 }));
-                // Keep stable-ish order: bigger amounts first, then name
-                items.sort((a, b) => (b.amount - a.amount) || (a.name || '').localeCompare(b.name || '', 'tr', { sensitivity: 'base' }));
+                // Keep add order inside the minute group: first-added first (latest at bottom)
+                items.sort(
+                    (a, b) =>
+                        (Number(a.firstTs || 0) - Number(b.firstTs || 0)) ||
+                        (Number(a.lastTs || 0) - Number(b.lastTs || 0)) ||
+                        (a.name || '').localeCompare(b.name || '', 'tr', { sensitivity: 'base' })
+                );
                 return {
                     timeOnly: r.timeOnly,
                     minuteKey: r.minuteKey,
