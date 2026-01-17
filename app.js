@@ -1296,6 +1296,43 @@ class MekanApp {
         priceEl.textContent = `${Math.round(displayTotal)} ₺`;
     }
 
+    // Recompute a single table card total from unpaid sales (for realtime multi-device updates)
+    async refreshSingleTableCard(tableId) {
+        if (!tableId) return;
+        if (this.currentView !== 'tables') return;
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+
+        try {
+            const table = await this.db.getTable(tableId);
+            if (!table) return;
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+
+            let checkTotal = salesTotal;
+            if (table.type === 'hourly' && table.isActive && table.openTime) {
+                const hoursUsed = this.calculateHoursUsed(table.openTime);
+                const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                checkTotal = hourlyTotal + salesTotal;
+            }
+
+            const isActive =
+                table.type === 'instant' ||
+                (table.type === 'hourly' ? Boolean(table.isActive && table.openTime) : unpaidSales.length > 0);
+
+            this.setTableCardState(tableId, {
+                isActive,
+                type: table.type,
+                openTime: table.openTime,
+                hourlyRate: table.hourlyRate || 0,
+                salesTotal,
+                checkTotal
+            });
+        } catch (e) {
+            // ignore
+        }
+    }
+
     _markTableSettling(tableId, ms = 2600) {
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
@@ -2766,14 +2803,6 @@ class MekanApp {
     }
 
     handleRealtimeChange(tableName, payload) {
-        // Apply change to local cache immediately (so multi-device updates are instant)
-        // This avoids relying on updated_at filters for delta sync.
-        try {
-            this.db?.applyRealtimeChange?.(tableName, payload);
-        } catch (e) {
-            // ignore (best-effort)
-        }
-
         // Decide which screens to refresh (debounced)
         const views = new Set();
         const current = this.currentView;
@@ -2803,9 +2832,12 @@ class MekanApp {
             if (current === 'daily') views.add('daily');
         }
 
-        // If a table modal is open and the changed row matches, refresh it too.
+        // Identify impacted tableId (sales payload id is sale id; we need table_id)
         const tableModal = document.getElementById('table-modal');
-        const changedTableId = payload?.new?.id || payload?.old?.id || null;
+        const changedTableId =
+            (tableName === 'sales')
+                ? (payload?.new?.table_id || payload?.old?.table_id || payload?.new?.tableId || payload?.old?.tableId || null)
+                : (payload?.new?.id || payload?.old?.id || null);
         const shouldRefreshModal = Boolean(
             tableModal &&
             tableModal.classList.contains('active') &&
@@ -2814,7 +2846,25 @@ class MekanApp {
             String(changedTableId) === String(this.currentTableId)
         );
 
-        this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
+        const schedule = () => {
+            this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
+            // Additionally update the one changed card instantly for sales changes while on tables view
+            if (tableName === 'sales' && changedTableId) {
+                this.refreshSingleTableCard(changedTableId);
+            }
+        };
+
+        // Apply change to local cache first, then schedule UI refresh (prevents race where UI reloads before IDB upsert).
+        try {
+            const p = this.db?.applyRealtimeChange?.(tableName, payload);
+            if (p && typeof p.finally === 'function') {
+                p.finally(schedule);
+                return;
+            }
+        } catch (e) {
+            // ignore
+        }
+        schedule();
     }
 
     scheduleRealtimeRefresh(views, refreshModal) {
