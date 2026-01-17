@@ -2174,12 +2174,39 @@ form select:focus {
 .sale-item-info {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
+    justify-content: space-between;
+    gap: 12px;
     font-size: 0.9rem;
     width: 100%;
 }
 
+.sale-item-items {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.sale-item-meta {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap;
+    font-weight: 800;
+    color: rgba(44, 62, 80, 0.75);
+}
+
+.sale-item-meta .sale-item-total {
+    font-weight: 900;
+    color: rgba(44, 62, 80, 0.92);
+}
+
+.sale-item-meta .sale-item-time {
+    font-weight: 800;
+    color: #7f8c8d;
+}
 .sale-item-product {
     display: inline-flex;
     align-items: center;
@@ -3439,8 +3466,20 @@ form select:focus {
         min-height: 44px;
     }
     .sale-item-info {
-        font-size: 0.82rem;
+        font-size: 0.80rem;
+        gap: 10px;
+    }
+
+    /* Keep time on the same row: compact meta, hide separators */
+    .sale-item-items {
         gap: 8px;
+    }
+    .sale-item-items .sale-item-separator {
+        display: none;
+    }
+    .sale-item-meta {
+        gap: 8px;
+        font-size: 0.78rem;
     }
 
     /* Bilgi alanı (Açılış/Oyun/Ürün/Toplam) küçült */

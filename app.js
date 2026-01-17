@@ -1150,15 +1150,21 @@ class MekanApp {
             const card = document.getElementById(`table-${table.id}`);
             if (!card) continue;
 
-            // Calculate current price
-            let displayTotal = table.checkTotal;
-            
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
-                // For hourly tables, include hourly total
-                displayTotal = this.calculateCheckTotal(table);
-            } else if (table.type === 'instant') {
+            // Calculate current price from unpaid sales (avoid stale aggregated columns when 2 devices add simultaneously)
+            let displayTotal = 0;
+            if (table.type === 'instant') {
                 // For instant sale table, show today's paid sales total
                 displayTotal = await this.getInstantTableDailyTotal(table.id);
+            } else {
+                const unpaid = await this.db.getUnpaidSalesByTable(table.id);
+                const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                if (table.type === 'hourly' && table.isActive && table.openTime) {
+                    const hoursUsed = this.calculateHoursUsed(table.openTime);
+                    const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                    displayTotal = hourlyTotal + salesTotal;
+                } else {
+                    displayTotal = salesTotal;
+                }
             }
 
             // Update the price element
@@ -2137,11 +2143,13 @@ class MekanApp {
             <div class="sale-item-row">
                 <div class="sale-item-content">
                     <div class="sale-item-info">
-                    ${items}
-                        <span class="sale-item-separator">•</span>
-                        <span class="sale-item-total">${Math.round(sale.saleTotal)} ₺</span>
-                        <span class="sale-item-separator">•</span>
-                        <span class="sale-item-time">${timeOnly}</span>
+                        <div class="sale-item-items">
+                            ${items}
+                        </div>
+                        <div class="sale-item-meta">
+                            <span class="sale-item-total">${Math.round(sale.saleTotal)} ₺</span>
+                            <span class="sale-item-time">${timeOnly}</span>
+                        </div>
                 </div>
                 </div>
             </div>
