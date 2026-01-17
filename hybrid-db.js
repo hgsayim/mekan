@@ -280,9 +280,19 @@ export class HybridDatabase {
     const base = () => this.remote.supabase.from(tableName).select('*');
 
     const tryGte = async (col) => {
-      const res = await base().gte(col, sinceISO);
-      this.remote._throwIfError(res);
-      return res.data || [];
+      const pageSize = 1000;
+      const out = [];
+      let from = 0;
+      while (true) {
+        const to = from + pageSize - 1;
+        const res = await base().gte(col, sinceISO).order(col, { ascending: true }).range(from, to);
+        this.remote._throwIfError(res);
+        const rows = res.data || [];
+        out.push(...rows);
+        if (rows.length < pageSize) break;
+        from += pageSize;
+      }
+      return out;
     };
 
     // Prefer table-specific time columns first (to avoid guaranteed 400s on missing updated_at).

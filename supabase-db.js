@@ -136,6 +136,22 @@ export class SupabaseDatabase {
     return result;
   }
 
+  async _fetchAllRows(tableName, { orderBy = 'id', ascending = true, pageSize = 1000 } = {}) {
+    // Supabase/PostgREST often applies an implicit limit; use range() pagination to fetch all rows.
+    const out = [];
+    let from = 0;
+    while (true) {
+      const to = from + pageSize - 1;
+      const res = await this.supabase.from(tableName).select('*').order(orderBy, { ascending }).range(from, to);
+      this._throwIfError(res);
+      const rows = res.data || [];
+      out.push(...rows);
+      if (rows.length < pageSize) break;
+      from += pageSize;
+    }
+    return out;
+  }
+
   _camelToSnake(tableKey, obj) {
     if (!obj) return obj;
     const map = this.columnMaps[tableKey] || {};
@@ -183,9 +199,10 @@ export class SupabaseDatabase {
   }
 
   async getAllProducts() {
-    const res = await this.supabase.from(this.tables.products).select('*').order('name', { ascending: true });
-    this._throwIfError(res);
-    return (res.data || []).map((r) => this._snakeToCamel('products', r));
+    const rows = await this._fetchAllRows(this.tables.products, { orderBy: 'id', ascending: true });
+    const mapped = (rows || []).map((r) => this._snakeToCamel('products', r));
+    mapped.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'tr', { sensitivity: 'base' }));
+    return mapped;
   }
 
   async getProduct(id) {
@@ -217,9 +234,8 @@ export class SupabaseDatabase {
   }
 
   async getAllTables() {
-    const res = await this.supabase.from(this.tables.tables).select('*').order('name', { ascending: true });
-    this._throwIfError(res);
-    return (res.data || []).map((r) => this._snakeToCamel('tables', r));
+    const rows = await this._fetchAllRows(this.tables.tables, { orderBy: 'id', ascending: true });
+    return (rows || []).map((r) => this._snakeToCamel('tables', r));
   }
 
   async getTable(id) {
@@ -256,9 +272,8 @@ export class SupabaseDatabase {
 
   async getAllManualSessions() {
     // closeTime is used in DB schema; if your column differs, update here.
-    const res = await this.supabase.from(this.tables.manualSessions).select('*').order('close_time', { ascending: false });
-    this._throwIfError(res);
-    return (res.data || []).map((r) => this._snakeToCamel('manualSessions', r));
+    const rows = await this._fetchAllRows(this.tables.manualSessions, { orderBy: 'close_time', ascending: false });
+    return (rows || []).map((r) => this._snakeToCamel('manualSessions', r));
   }
 
   async deleteManualSession(id) {
@@ -275,9 +290,8 @@ export class SupabaseDatabase {
   }
 
   async getAllSales() {
-    const res = await this.supabase.from(this.tables.sales).select('*').order('sell_datetime', { ascending: false });
-    this._throwIfError(res);
-    return (res.data || []).map((r) => this._snakeToCamel('sales', r));
+    const rows = await this._fetchAllRows(this.tables.sales, { orderBy: 'sell_datetime', ascending: false });
+    return (rows || []).map((r) => this._snakeToCamel('sales', r));
   }
 
   async getSale(id) {
@@ -320,9 +334,10 @@ export class SupabaseDatabase {
   }
 
   async getAllCustomers() {
-    const res = await this.supabase.from(this.tables.customers).select('*').order('name', { ascending: true });
-    this._throwIfError(res);
-    return (res.data || []).map((r) => this._snakeToCamel('customers', r));
+    const rows = await this._fetchAllRows(this.tables.customers, { orderBy: 'id', ascending: true });
+    const mapped = (rows || []).map((r) => this._snakeToCamel('customers', r));
+    mapped.sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''), 'tr', { sensitivity: 'base' }));
+    return mapped;
   }
 
   async getCustomer(id) {

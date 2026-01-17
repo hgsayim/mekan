@@ -204,6 +204,7 @@ class MekanApp {
     startPollSync() {
         // Keep local IndexedDB cache continuously up-to-date
         if (this._pollSyncInterval) return;
+        if (this._pollSyncLastErrAt == null) this._pollSyncLastErrAt = 0;
         const tick = async () => {
             try {
                 if (typeof this.db?.syncNow !== 'function') return;
@@ -227,13 +228,19 @@ class MekanApp {
                     await this.reloadViews(Array.from(new Set(views)));
                 }
             } catch (e) {
-                // silent best-effort
+                // Do not stay silent forever: if polling is broken, multi-device looks "local only".
+                const now = Date.now();
+                if (!this._pollSyncLastErrAt || now - this._pollSyncLastErrAt > 15000) {
+                    this._pollSyncLastErrAt = now;
+                    console.warn('[poll-sync] failed:', e);
+                }
             }
         };
 
         // Run once immediately, then every 3s
         tick();
-        this._pollSyncInterval = setInterval(tick, 3000);
+        // Realtime is optional/disabled; polling should feel near-instant across devices.
+        this._pollSyncInterval = setInterval(tick, 2000);
     }
 
     stopPollSync() {
