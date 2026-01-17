@@ -963,28 +963,20 @@ class MekanApp {
                     tableUpdated = true;
                 }
             } else if (unpaidSales.length === 0 && table.isActive) {
-                // Table has no unpaid sales - must be inactive
-                // BUT for hourly tables that were manually opened (have openTime), keep them active
+                // Table has no unpaid sales.
+                // Hourly tables: if manually opened (have openTime), keep active and update totals.
+                // Regular tables: DO NOT auto-deactivate. They can be "occupied" with zero products,
+                // and that state must sync across devices (açılış / boş-dolu).
                 if (table.type === 'hourly' && table.openTime) {
                     if (isSettling) {
                         // Recent settle: prefer showing as closed while DB catches up
                         // (do not write to DB here; payment flow will persist state)
                     } else {
-                    // Manually opened hourly table - keep it active, just update totals
-                    table.hourlyTotal = this.calculateHourlyTotal(table);
-                    table.checkTotal = this.calculateCheckTotal(table);
-                    tableUpdated = true;
+                        // Manually opened hourly table - keep it active, just update totals
+                        table.hourlyTotal = this.calculateHourlyTotal(table);
+                        table.checkTotal = this.calculateCheckTotal(table);
+                        tableUpdated = true;
                     }
-                } else {
-                    // Regular table or auto-activated table - deactivate
-                    table.isActive = false;
-                    table.salesTotal = 0;
-                    if (table.type === 'hourly') {
-                        table.hourlyTotal = 0;
-                        table.openTime = null;
-                    }
-                    table.checkTotal = 0;
-                    tableUpdated = true;
                 }
             } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0)) {
                 // Table is inactive but has totals - reset them
@@ -1353,7 +1345,9 @@ class MekanApp {
 
             const isActive =
                 table.type === 'instant' ||
-                (table.type === 'hourly' ? Boolean(table.isActive && table.openTime) : unpaidSales.length > 0);
+                (table.type === 'hourly'
+                    ? Boolean(table.isActive && table.openTime)
+                    : (Boolean(table.isActive) || unpaidSales.length > 0));
 
             this.setTableCardState(tableId, {
                 isActive,
@@ -1642,24 +1636,13 @@ class MekanApp {
                 tableUpdated = true;
             }
         } else if (unpaidSales.length === 0 && table.isActive) {
-            // Table has no unpaid sales - must be inactive (deactivate it)
-            // BUT for hourly tables that were manually opened (have openTime), keep them active until manually closed
+            // Table has no unpaid sales.
+            // Hourly tables: if manually opened (have openTime), keep active and update totals.
+            // Regular tables: DO NOT auto-deactivate; empty-but-occupied is a valid state.
             if (table.type === 'hourly' && table.openTime) {
-                // Hourly table is manually opened - keep it active even without unpaid sales
-                // Don't deactivate it, just update the check total
                 const hoursUsed = this.calculateHoursUsed(table.openTime);
                 table.hourlyTotal = hoursUsed * table.hourlyRate;
                 table.checkTotal = table.hourlyTotal + table.salesTotal;
-                tableUpdated = true;
-            } else {
-                // Regular table or hourly table without openTime (auto-activated) - deactivate
-                table.isActive = false;
-                table.salesTotal = 0;
-                if (table.type === 'hourly') {
-                    table.hourlyTotal = 0;
-                    table.openTime = null;
-                }
-                table.checkTotal = 0;
                 tableUpdated = true;
             }
         } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || (table.hourlyTotal > 0 && (!table.openTime || table.type !== 'hourly')))) {
@@ -2864,8 +2847,8 @@ class MekanApp {
 
         const schedule = () => {
             this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
-            // Additionally update the one changed card instantly for sales changes while on tables view
-            if (tableName === 'sales' && changedTableId) {
+            // Additionally update the one changed card instantly while on tables view
+            if ((tableName === 'sales' || tableName === 'tables') && changedTableId) {
                 this.refreshSingleTableCard(changedTableId);
             }
         };
