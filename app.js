@@ -207,7 +207,13 @@ class MekanApp {
         const tick = async () => {
             try {
                 if (typeof this.db?.syncNow !== 'function') return;
-                const changed = await this.db.syncNow();
+                const changedDelta = await this.db.syncNow();
+                // Tables closing/opening must propagate reliably across devices.
+                // Some schemas don't maintain tables.updated_at, so do a cheap tables-only full sync + diff.
+                const changedTables = (typeof this.db?.syncTablesFull === 'function')
+                    ? await this.db.syncTablesFull()
+                    : false;
+                const changed = Boolean(changedDelta || changedTables);
                 if (!changed) return;
 
                 // Refresh UI only when needed (avoid unnecessary re-renders)

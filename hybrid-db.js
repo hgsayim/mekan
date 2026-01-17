@@ -271,6 +271,45 @@ export class HybridDatabase {
     }
   }
 
+  // Tables-only full sync (cheap + reliable even if updated_at isn't present/maintained).
+  // Returns true if anything important changed (active/open state etc.)
+  async syncTablesFull() {
+    try {
+      let before = [];
+      try { before = await this.local.getAllTables(); } catch (_) { before = []; }
+      const rows = await this.remote.getAllTables();
+
+      const snap = (t) => JSON.stringify({
+        id: t?.id ?? null,
+        isActive: Boolean(t?.isActive),
+        openTime: t?.openTime ?? null,
+        closeTime: t?.closeTime ?? null,
+        hourlyRate: Number(t?.hourlyRate || 0),
+        hourlyTotal: Number(t?.hourlyTotal || 0),
+        salesTotal: Number(t?.salesTotal || 0),
+        checkTotal: Number(t?.checkTotal || 0),
+        // session history affects "still running" perception
+        hourlySessions: Array.isArray(t?.hourlySessions) ? t.hourlySessions.length : 0,
+      });
+
+      const beforeMap = new Map((before || []).map((t) => [String(t?.id), snap(t)]));
+      let changed = false;
+      (rows || []).forEach((t) => {
+        const key = String(t?.id);
+        if (!beforeMap.has(key) || beforeMap.get(key) !== snap(t)) changed = true;
+      });
+      if ((before || []).length !== (rows || []).length) changed = true;
+
+      await this._replaceStore('tables', rows);
+      // Keep delta sync cheap
+      const nowIso = new Date().toISOString();
+      this._setLastSyncISO('tables', nowIso);
+      return changed;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ----- Products -----
   async addProduct(product) {
     const id = await this.remote.addProduct(product);
