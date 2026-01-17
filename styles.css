@@ -2486,8 +2486,8 @@ form select:focus {
 
 .product-card-mini {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    padding: 18px 12px;
-    border-radius: 10px;
+    padding: 10px 10px;
+    border-radius: 12px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
     border: 2px solid transparent;
     transition: all 0.3s ease;
@@ -2495,6 +2495,12 @@ form select:focus {
     position: relative;
     box-sizing: border-box;
     overflow: hidden;
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
 }
 
 .product-card-mini::before {
@@ -2531,22 +2537,33 @@ form select:focus {
     opacity: 1;
 }
 
-.product-card-mini h4 {
-    color: #ff8c00;
-    font-size: 0.9rem;
-    margin-bottom: 14px;
-    margin-right: 35px;
-    font-weight: 700;
-    padding-right: 5px;
-    line-height: 1.2;
-    letter-spacing: 0.2px;
+.product-mini-ico-lg {
+    font-size: 2.2rem;
+    line-height: 1;
+    margin-bottom: 8px;
+    transform: translateY(0.5px);
 }
 
-.product-card-mini .product-mini-ico {
-    display: inline-block;
-    margin-right: 6px;
-    line-height: 1;
-    transform: translateY(0.5px);
+.product-mini-name {
+    color: #ff8c00;
+    font-size: 0.88rem;
+    font-weight: 800;
+    line-height: 1.15;
+    margin-bottom: 6px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.product-mini-stock {
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    max-width: 100%;
+    white-space: nowrap;
 }
 
 .product-card-mini .product-price-mini {
@@ -3387,6 +3404,28 @@ form select:focus {
         font-size: 1rem !important;
         margin-top: 8px !important;
         margin-bottom: 8px !important;
+    }
+
+    /* Table detail product grid: like table cards (3 columns, square) */
+    .products-grid-mini {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 8px !important;
+    }
+    .product-card-mini {
+        padding: 8px !important;
+        border-radius: 12px !important;
+    }
+    .product-mini-ico-lg {
+        font-size: 2.05rem !important;
+        margin-bottom: 6px !important;
+    }
+    .product-mini-name {
+        font-size: 0.82rem !important;
+        margin-bottom: 6px !important;
+    }
+    .product-mini-stock {
+        font-size: 0.72rem !important;
+        padding: 3px 8px !important;
     }
 
     /* Receipt (Adisyon) modal: fit to phone screen */

@@ -1947,114 +1947,36 @@ class MekanApp {
             return;
         }
 
+        // Render square tap-to-add cards (1 item per tap)
+        container.dataset.tableId = String(tableId);
         container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
-        
-        // Add event listeners for product cards
-        products.forEach(product => {
-                const card = document.getElementById(`table-product-card-${product.id}`);
-                const addBtn = document.getElementById(`add-product-btn-${product.id}`);
-                const quantityInput = document.getElementById(`product-quantity-${product.id}`);
-                const plusBtn = document.getElementById(`quantity-plus-${product.id}`);
-                const minusBtn = document.getElementById(`quantity-minus-${product.id}`);
-                const tracksStock = this.tracksStock(product);
-                
-            if (card && tracksStock && product.stock === 0) {
-                card.classList.add('out-of-stock');
-            }
-            
-            // Plus button for quantity
-            if (plusBtn) {
-                plusBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (quantityInput && !quantityInput.disabled) {
-                        const currentValue = parseInt(quantityInput.value) || 1;
-                        if (tracksStock) {
-                            const maxStock = product.stock;
-                            const newValue = Math.min(currentValue + 1, maxStock);
-                            quantityInput.value = newValue;
-                        } else {
-                            quantityInput.value = currentValue + 1;
-                        }
-                    }
-                });
-            }
-            
-            // Minus button for quantity
-            if (minusBtn) {
-                minusBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (quantityInput && !quantityInput.disabled) {
-                        const currentValue = parseInt(quantityInput.value) || 1;
-                        const newValue = Math.max(currentValue - 1, 1);
-                        quantityInput.value = newValue;
-                    }
-                });
-            }
-            
-            // Add product button (top right corner)
-            if (addBtn) {
-                addBtn.addEventListener('click', async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const amount = parseInt(quantityInput.value) || 1;
-                    if (amount > 0) {
-                        if (!this.tracksStock(product) || amount <= product.stock) {
-                            await this.addProductToTableFromModal(tableId, product.id, amount);
-                            // Reset quantity input
-                            quantityInput.value = 1;
-                        } else {
-                            await this.appAlert(`Yetersiz stok. Mevcut: ${product.stock}`, 'Uyarı');
-                        }
-                    } else {
-                        await this.appAlert('Lütfen geçerli bir miktar girin', 'Uyarı');
-                    }
-                });
-            }
-        });
+
+        // Bind once: event delegation
+        if (!this._tableProductsDelegationBound) {
+            this._tableProductsDelegationBound = true;
+            container.addEventListener('click', async (e) => {
+                const card = e.target.closest('.product-card-mini');
+                if (!card) return;
+                if (card.classList.contains('out-of-stock')) return;
+                const pid = card.getAttribute('data-product-id');
+                const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                if (!pid || !tid) return;
+                await this.addProductToTableFromModal(tid, pid, 1);
+            });
+        }
     }
 
     createTableProductCard(product, tableId) {
         const tracksStock = this.tracksStock(product);
         const isOutOfStock = tracksStock && product.stock === 0;
-        const stockText = !tracksStock ? 'Stok: ∞' : (isOutOfStock ? 'Stokta Yok' : `Stok: ${product.stock}`);
+        const stockText = !tracksStock ? '∞' : (isOutOfStock ? 'Stok Yok' : `${product.stock}`);
         const stockClass = isOutOfStock ? 'stock-out' : (!tracksStock ? 'stock-high' : (product.stock < 10 ? 'stock-low' : 'stock-high'));
 
         return `
-            <div class="product-card-mini ${isOutOfStock ? 'out-of-stock' : ''}" id="table-product-card-${product.id}">
-                <button 
-                    class="product-add-btn-top" 
-                    id="add-product-btn-${product.id}" 
-                    ${isOutOfStock ? 'disabled' : ''}
-                    title="Ekle"
-                >+</button>
-                <h4><span class="product-mini-ico" aria-hidden="true">${product.icon || '📦'}</span> ${product.name}</h4>
-                <div class="product-price-mini">${Math.round(product.price)} ₺</div>
-                <div class="product-stock-mini ${stockClass}">${stockText}</div>
-                <div class="quantity-controls">
-                    <button 
-                        class="quantity-btn quantity-minus" 
-                        id="quantity-minus-${product.id}"
-                        ${isOutOfStock ? 'disabled' : ''}
-                    >-</button>
-                    <input 
-                        type="number" 
-                        class="product-quantity-input" 
-                        id="product-quantity-${product.id}" 
-                        value="1" 
-                        min="1" 
-                        max="${product.stock}"
-                        ${isOutOfStock ? 'disabled' : ''}
-                        readonly
-                        style="text-align: center;"
-                    >
-                    <button 
-                        class="quantity-btn quantity-plus" 
-                        id="quantity-plus-${product.id}"
-                        ${isOutOfStock ? 'disabled' : ''}
-                    >+</button>
-                </div>
+            <div class="product-card-mini ${isOutOfStock ? 'out-of-stock' : ''}" id="table-product-card-${product.id}" data-product-id="${product.id}" title="${product.name}">
+                <div class="product-mini-ico-lg" aria-hidden="true">${product.icon || '📦'}</div>
+                <div class="product-mini-name">${product.name}</div>
+                <div class="product-mini-stock ${stockClass}">Stok: ${stockText}</div>
             </div>
         `;
     }
@@ -3475,6 +3397,12 @@ class MekanApp {
                 // Keep openTime/closeTime as last-session snapshot; detailed history is in hourlySessions
             }
 
+            // Regular/instant tables: payment should close the table (other devices must see it closed).
+            // (Hourly already handled above.)
+            if (table.type !== 'hourly') {
+                table.isActive = false;
+            }
+
             // Reset totals but keep hourlyTotal and closeTime for daily reporting
             table.salesTotal = 0;
             table.checkTotal = 0;
@@ -3677,6 +3605,12 @@ class MekanApp {
                 table.isActive = false;
                 table.closeTime = closeTimeISO;
                 table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
+            }
+
+            // Regular/instant tables: credit should close the table (other devices must see it closed).
+            // (Hourly already handled above.)
+            if (table.type !== 'hourly') {
+                table.isActive = false;
             }
 
             // Reset totals but keep hourlyTotal and closeTime for daily reporting
