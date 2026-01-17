@@ -2003,7 +2003,9 @@ class MekanApp {
             });
         } catch (_) {}
 
-        container.innerHTML = unpaidSales.map(sale => this.createTableSaleItem(sale, iconByProductId)).join('');
+        // Group: same minute + same product => "3x Tuborg" instead of "1x,1x,1x"
+        const groupedRows = this.groupUnpaidSalesForTableModal(unpaidSales, iconByProductId);
+        container.innerHTML = groupedRows.map((row) => this.createGroupedTableSaleRow(row)).join('');
         
         // Add delete, pay, and credit listeners for each item
         unpaidSales.forEach(sale => {
@@ -2031,6 +2033,140 @@ class MekanApp {
                 }
             });
         });
+    }
+
+    // Convert unpaid sales list into compact rows:
+    // - Row key: same local minute (YYYY-MM-DD HH:MM)
+    // - Inside row: group by productId+price => "3x Tuborg"
+    // Buttons are wired to the most-recent underlying sale item for that product (so existing handlers keep working).
+    groupUnpaidSalesForTableModal(unpaidSales, iconByProductId = {}) {
+        const rowsByMinute = new Map(); // minuteKey -> { minuteKey, timeOnly, latestTs, total, itemsByProductKey: Map }
+
+        const toLocalMinuteKey = (iso) => {
+            const d = new Date(iso);
+            const yyyy = d.getFullYear();
+            const mm = String(d.getMonth() + 1).padStart(2, '0');
+            const dd = String(d.getDate()).padStart(2, '0');
+            const hh = String(d.getHours()).padStart(2, '0');
+            const mi = String(d.getMinutes()).padStart(2, '0');
+            return { minuteKey: `${yyyy}-${mm}-${dd} ${hh}:${mi}`, timeOnly: `${hh}:${mi}`, ts: d.getTime() };
+        };
+
+        (unpaidSales || []).forEach((sale) => {
+            if (!sale || !sale.sellDateTime || !Array.isArray(sale.items)) return;
+            const { minuteKey, timeOnly, ts } = toLocalMinuteKey(sale.sellDateTime);
+            let row = rowsByMinute.get(minuteKey);
+            if (!row) {
+                row = { minuteKey, timeOnly, latestTs: ts, total: 0, itemsByProductKey: new Map() };
+                rowsByMinute.set(minuteKey, row);
+            } else {
+                row.latestTs = Math.max(row.latestTs, ts);
+            }
+
+            sale.items.forEach((it, idx) => {
+                if (!it || it.isCancelled) return;
+                const amount = Number(it.amount) || 0;
+                const price = Number(it.price) || 0;
+                if (amount <= 0) return;
+
+                const productIdKey = (it.productId != null) ? String(it.productId) : '';
+                const priceKey = String(price);
+                const key = `${productIdKey}|${priceKey}|${it.name || ''}`;
+
+                const icon = it.icon || iconByProductId[productIdKey] || '📦';
+                const lineTotal = price * amount;
+
+                let agg = row.itemsByProductKey.get(key);
+                if (!agg) {
+                    agg = {
+                        // display
+                        name: it.name || '',
+                        icon,
+                        amount: 0,
+                        total: 0,
+                        // action target (most recent underlying item)
+                        actionSaleId: sale.id,
+                        actionItemIndex: idx,
+                        actionTs: ts,
+                        actionItemAmount: amount,
+                    };
+                    row.itemsByProductKey.set(key, agg);
+                }
+
+                agg.amount += amount;
+                agg.total += lineTotal;
+                row.total += lineTotal;
+
+                // Choose the most recent underlying item to attach buttons to.
+                // Prefer amount=1 so "pay/cancel one" behaves as expected for tap-to-add.
+                const shouldTake =
+                    (ts > agg.actionTs) ||
+                    (ts === agg.actionTs && agg.actionItemAmount !== 1 && amount === 1);
+                if (shouldTake) {
+                    agg.actionSaleId = sale.id;
+                    agg.actionItemIndex = idx;
+                    agg.actionTs = ts;
+                    agg.actionItemAmount = amount;
+                    // keep latest icon/name too (safe)
+                    agg.icon = icon;
+                    agg.name = it.name || agg.name;
+                }
+            });
+        });
+
+        const rows = Array.from(rowsByMinute.values())
+            .sort((a, b) => b.latestTs - a.latestTs)
+            .map((r) => {
+                const items = Array.from(r.itemsByProductKey.values()).map((g) => ({
+                    name: g.name,
+                    icon: g.icon,
+                    amount: g.amount,
+                    total: g.total,
+                    actionSaleId: g.actionSaleId,
+                    actionItemIndex: g.actionItemIndex,
+                }));
+                // Keep stable-ish order: bigger amounts first, then name
+                items.sort((a, b) => (b.amount - a.amount) || (a.name || '').localeCompare(b.name || '', 'tr', { sensitivity: 'base' }));
+                return {
+                    timeOnly: r.timeOnly,
+                    minuteKey: r.minuteKey,
+                    total: r.total,
+                    items,
+                };
+            });
+
+        return rows;
+    }
+
+    createGroupedTableSaleRow(row) {
+        const itemsHtml = (row.items || [])
+            .map((it) => {
+                const saleId = it.actionSaleId;
+                const idx = it.actionItemIndex;
+                const buttons = `
+                    <button class="btn btn-danger btn-icon" id="delete-sale-item-${saleId}-${idx}" title="Sil">×</button>
+                    <button class="btn btn-success btn-icon" id="pay-sale-item-${saleId}-${idx}" title="Öde">₺</button>
+                    <button class="btn btn-info btn-icon" id="credit-sale-item-${saleId}-${idx}" title="Veresiye">💳</button>
+                `;
+                return `<span class="sale-item-product" title="${it.name}"><strong class="sale-item-ico" aria-hidden="true">${it.icon || '📦'}</strong> x${Math.round(it.amount || 0)} = ${Math.round(it.total || 0)} ₺${buttons}</span>`;
+            })
+            .join(' <span class="sale-item-separator">•</span> ');
+
+        return `
+            <div class="sale-item-row">
+                <div class="sale-item-content">
+                    <div class="sale-item-info">
+                        <div class="sale-item-items">
+                            ${itemsHtml}
+                        </div>
+                        <div class="sale-item-meta">
+                            <span class="sale-item-total">${Math.round(row.total || 0)} ₺</span>
+                            <span class="sale-item-time">${row.timeOnly || ''}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     formatDateTimeWithoutSeconds(dateString) {
