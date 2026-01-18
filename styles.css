@@ -1819,6 +1819,47 @@ header h1 {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
 }
 
+/* Mobile: keep "Anlık Satış" fully readable + make qty controls narrower */
+@media (max-width: 540px) {
+    .table-modal-titlebar.instant-mode {
+        gap: 6px;
+    }
+    .table-modal-titlebar.instant-mode h2 {
+        padding: 0 10px;
+        font-size: 1.02rem;
+        max-width: none;
+        height: auto;
+        min-height: 44px;
+        /* allow wrapping instead of truncating to "Anlık S" */
+        white-space: normal;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+    .table-modal-titlebar.instant-mode .instant-qty-controls {
+        padding: 0 6px;
+        gap: 4px;
+        height: 44px;
+        border-radius: 10px;
+    }
+    .table-modal-titlebar.instant-mode .instant-qty-btn {
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        border-radius: 10px;
+        font-size: 1.1rem;
+    }
+    .table-modal-titlebar.instant-mode .instant-qty-input {
+        width: 44px;
+        height: 32px;
+        border-radius: 10px;
+        font-size: 0.95rem;
+        padding: 0 4px;
+    }
+}
+
 .table-modal-header h2 {
     margin: 0;
     /* Keep perfectly aligned with the close button */

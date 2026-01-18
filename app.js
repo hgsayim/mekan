@@ -3140,6 +3140,12 @@ class MekanApp {
         const root = document.getElementById('instant-qty-controls');
         if (!root) return;
         root.style.display = visible ? 'inline-flex' : 'none';
+
+        // Toggle a class to allow CSS to optimize header layout only for instant sale
+        const titlebar = document.querySelector('.table-modal-titlebar');
+        if (titlebar) {
+            titlebar.classList.toggle('instant-mode', Boolean(visible));
+        }
     }
 
     setInstantSaleQty(n) {
