@@ -3124,17 +3124,11 @@ form select:focus {
         white-space: nowrap;
     }
 
-    /* Table modal product picker: show 2-3 products per row on phones */
+    /* Table modal product picker: show 4 products per row on phones (user preference) */
     .products-grid-mini {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
         margin-top: 12px;
-    }
-
-    @media (min-width: 420px) and (max-width: 540px) {
-        .products-grid-mini {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
     }
 
     .product-card-mini {
@@ -3557,26 +3551,26 @@ form select:focus {
         margin-bottom: 8px !important;
     }
 
-    /* Table detail product grid: like table cards (3 columns, square) */
+    /* Table detail product grid: like table cards (4 columns, square) */
     .products-grid-mini {
-        grid-template-columns: repeat(3, 1fr) !important;
-        gap: 8px !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 6px !important;
     }
     .product-card-mini {
-        padding: 8px !important;
+        padding: 6px !important;
         border-radius: 12px !important;
     }
     .product-mini-ico-lg {
-        font-size: 2.05rem !important;
-        margin-bottom: 6px !important;
+        font-size: 1.85rem !important;
+        margin-bottom: 5px !important;
     }
     .product-mini-name {
-        font-size: 0.82rem !important;
-        margin-bottom: 6px !important;
+        font-size: 0.76rem !important;
+        margin-bottom: 5px !important;
     }
     .product-mini-stock {
-        font-size: 0.72rem !important;
-        padding: 3px 8px !important;
+        font-size: 0.66rem !important;
+        padding: 2px 6px !important;
     }
 
     /* Receipt (Adisyon) modal: fit to phone screen */
