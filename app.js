@@ -1676,6 +1676,16 @@ class MekanApp {
                 return;
             }
 
+            // Track current table type for UI behaviors (e.g. instant sale qty)
+            this.currentTableType = table.type;
+
+            // Instant sale: show qty controls next to title; default 1 every time modal opens
+            this.setupInstantSaleQtyControls?.();
+            this.setInstantSaleQtyControlsVisible?.(table.type === 'instant');
+            if (table.type === 'instant') {
+                this.setInstantSaleQty?.(1);
+            }
+
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
         const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
@@ -1993,7 +2003,7 @@ class MekanApp {
     }
 
     async loadTableProducts(tableId) {
-        const products = await this.db.getAllProducts();
+        const products = this.sortProductsByStock(await this.db.getAllProducts());
         const container = document.getElementById('table-products-grid');
         if (!container) return;
 
@@ -2017,7 +2027,10 @@ class MekanApp {
                 const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                 if (!pid || !tid) return;
                 // Fast taps should stack and be processed serially so stock decrements correctly.
-                this.queueQuickAddToTable(tid, pid, 1);
+                const amount = (this.currentTableType === 'instant')
+                    ? this.getInstantSaleQty?.()
+                    : 1;
+                this.queueQuickAddToTable(tid, pid, amount);
             });
         }
     }
@@ -3069,12 +3082,78 @@ class MekanApp {
     renderProductIcon(iconValue) {
         const v = (iconValue == null) ? '' : String(iconValue);
         const key = v.startsWith('ico:') ? v.slice(4) : v;
-        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay']);
+        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay', 'nescafe']);
         if (supported.has(key)) {
             return `<span class="app-ico" data-ico="${key}" aria-hidden="true"></span>`;
         }
         // Backward compat: existing emoji/icon strings
         return `<span class="app-ico-text" aria-hidden="true">${v || '📦'}</span>`;
+    }
+
+    sortProductsByStock(products) {
+        const arr = Array.isArray(products) ? [...products] : [];
+        arr.sort((a, b) => {
+            const aTracked = this.tracksStock(a);
+            const bTracked = this.tracksStock(b);
+            if (aTracked !== bTracked) return aTracked ? -1 : 1; // tracked first
+            if (aTracked && bTracked) {
+                const as = Number(a?.stock ?? 0);
+                const bs = Number(b?.stock ?? 0);
+                if (as !== bs) return bs - as; // higher stock first
+            }
+            // stable-ish secondary sort
+            return String(a?.name || '').localeCompare(String(b?.name || ''), 'tr', { sensitivity: 'base' });
+        });
+        return arr;
+    }
+
+    // --- Instant sale qty controls (header, instant table only) ---
+    setupInstantSaleQtyControls() {
+        if (this._instantQtyBound) return;
+        this._instantQtyBound = true;
+
+        const root = document.getElementById('instant-qty-controls');
+        const minusBtn = document.getElementById('instant-qty-minus');
+        const plusBtn = document.getElementById('instant-qty-plus');
+        const input = document.getElementById('instant-qty-input');
+        if (!root || !minusBtn || !plusBtn || !input) return;
+
+        const clamp = (n) => {
+            const x = Number(n);
+            if (!Number.isFinite(x)) return 1;
+            return Math.max(1, Math.min(99, Math.round(x)));
+        };
+
+        minusBtn.addEventListener('click', () => {
+            input.value = String(clamp(Number(input.value || 1) - 1));
+        });
+        plusBtn.addEventListener('click', () => {
+            input.value = String(clamp(Number(input.value || 1) + 1));
+        });
+        input.addEventListener('input', () => {
+            // keep numeric
+            input.value = String(clamp(input.value));
+        });
+    }
+
+    setInstantSaleQtyControlsVisible(visible) {
+        const root = document.getElementById('instant-qty-controls');
+        if (!root) return;
+        root.style.display = visible ? 'inline-flex' : 'none';
+    }
+
+    setInstantSaleQty(n) {
+        const input = document.getElementById('instant-qty-input');
+        if (!input) return;
+        const x = Number(n);
+        input.value = String(Number.isFinite(x) ? Math.max(1, Math.min(99, Math.round(x))) : 1);
+    }
+
+    getInstantSaleQty() {
+        const input = document.getElementById('instant-qty-input');
+        const raw = input ? Number(input.value) : 1;
+        if (!Number.isFinite(raw)) return 1;
+        return Math.max(1, Math.min(99, Math.round(raw)));
     }
 
     async openTable(tableId = null) {
@@ -3871,7 +3950,7 @@ class MekanApp {
 
     // Products Management
     async loadProducts() {
-        const products = await this.db.getAllProducts();
+        const products = this.sortProductsByStock(await this.db.getAllProducts());
         const container = document.getElementById('products-container');
         
         if (!container) {
