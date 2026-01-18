@@ -1304,7 +1304,8 @@ header h1 {
 .modal {
     display: none;
     position: fixed;
-    z-index: 1000;
+    /* Must be above the sticky app header (header is z-index: 3000) */
+    z-index: 3500;
     left: 0;
     top: 0;
     width: 100%;
@@ -2885,9 +2886,9 @@ form select:focus {
     display: flex !important;
     flex-direction: column;
     align-items: flex-start;
-    gap: 15px;
-    margin: 20px 0 !important;
-    padding: 20px;
+    gap: 10px;
+    margin: 12px 0 !important;
+    padding: 12px 12px;
     background: #f8f9fa;
     border-radius: 12px;
     border: 2px solid #e9ecef;
@@ -2896,21 +2897,21 @@ form select:focus {
 .stock-checkbox-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
 }
 
 .stock-checkbox-group input[type="checkbox"] {
-    width: 28px;
-    height: 28px;
-    min-width: 28px;
-    min-height: 28px;
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
     cursor: pointer;
     accent-color: var(--primary-color);
 }
 
 .stock-checkbox-group span {
-    font-size: 1.05rem;
+    font-size: 0.98rem;
     font-weight: 600;
     color: var(--dark-text);
     cursor: pointer;
@@ -2919,13 +2920,13 @@ form select:focus {
 .stock-input-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     width: 100%;
 }
 
 .stock-input-group span {
     white-space: nowrap;
-    font-size: 1.05rem;
+    font-size: 0.98rem;
     font-weight: 600;
     color: var(--dark-text);
     min-width: 60px;
@@ -2936,9 +2937,9 @@ form select:focus {
     max-width: 150px !important;
     min-width: 100px;
     width: auto !important;
-    padding: 16px 18px !important;
-    min-height: 52px !important;
-    font-size: 1.1rem !important;
+    padding: 10px 12px !important;
+    min-height: 42px !important;
+    font-size: 1.02rem !important;
     border: 2px solid var(--border-color) !important;
     border-radius: 10px !important;
     background: white !important;
