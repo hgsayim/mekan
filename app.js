@@ -1981,7 +1981,7 @@ class MekanApp {
 
             if (cancelBtn) {
                 cancelBtn.disabled = false;
-                cancelBtn.textContent = prevCancelText || '✖';
+                cancelBtn.textContent = 'X';
                 cancelBtn.style.display = 'none';
             }
 
