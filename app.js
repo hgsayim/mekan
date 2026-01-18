@@ -263,6 +263,13 @@ class MekanApp {
         const tick = async () => {
             try {
                 if (typeof this.db?.syncNow !== 'function') return;
+
+                // While the table detail modal is open, avoid background DB refresh/re-render.
+                // The user is interacting inside the modal; periodic refresh here causes jank.
+                const tableModal = document.getElementById('table-modal');
+                const isModalOpen = Boolean(tableModal && tableModal.classList.contains('active') && this.currentTableId);
+                if (isModalOpen) return;
+
                 const changedDelta = await this.db.syncNow();
                 // Tables closing/opening must propagate reliably across devices.
                 // Some schemas don't maintain tables.updated_at, so do a cheap tables-only full sync + diff.
@@ -276,14 +283,6 @@ class MekanApp {
                 const views = [];
                 if (this.currentView === 'tables') views.push('tables');
                 if (this.currentView === 'sales') views.push('sales');
-
-                // If a table modal is open, refresh it (now served from local cache => fast)
-                const tableModal = document.getElementById('table-modal');
-                const isModalOpen = Boolean(tableModal && tableModal.classList.contains('active') && this.currentTableId);
-                if (isModalOpen) {
-                    // Best-effort lightweight refresh: just reopen to re-render
-                    await this.openTableModal(this.currentTableId);
-                }
 
                 if (views.length > 0) {
                     await this.reloadViews(Array.from(new Set(views)));
@@ -1142,7 +1141,7 @@ class MekanApp {
                     if (table && table.isActive && table.openTime) {
                         clearTimeout(tapTimer);
                         tapCount = 0;
-                    this.openTableModal(table.id);
+                    this.openTableModal(table.id, { preSync: true });
                         return;
                     }
                     
@@ -1176,7 +1175,7 @@ class MekanApp {
                     // Cancel any pending long press
                     cancelLongPress();
                     
-                    this.openTableModal(table.id);
+                    this.openTableModal(table.id, { preSync: true });
                 });
             }
         });
@@ -1602,7 +1601,8 @@ class MekanApp {
         }
     }
 
-    async openTableModal(tableId) {
+    async openTableModal(tableId, opts = {}) {
+        const { preSync = false } = opts || {};
         // Clear any existing interval
         if (this.hourlyUpdateInterval) {
             clearInterval(this.hourlyUpdateInterval);
@@ -1657,6 +1657,17 @@ class MekanApp {
 
         let table = null;
         try {
+            // User request: when opening the table detail screen, refresh DB once beforehand.
+            // While modal is open we avoid background refreshes.
+            if (preSync && typeof this.db?.syncNow === 'function') {
+                try {
+                    await this.db.syncNow();
+                    if (typeof this.db?.syncTablesFull === 'function') {
+                        await this.db.syncTablesFull();
+                    }
+                } catch (_) {}
+            }
+
             table = await this.db.getTable(tableId);
             if (!table) {
                 unlockModal();
@@ -2016,10 +2027,12 @@ class MekanApp {
         const isOutOfStock = tracksStock && product.stock === 0;
         const stockText = !tracksStock ? '∞' : (isOutOfStock ? 'Stok Yok' : `${product.stock}`);
         const stockClass = isOutOfStock ? 'stock-out' : (!tracksStock ? 'stock-high' : (product.stock < 10 ? 'stock-low' : 'stock-high'));
+        const catClass = this.getProductCategoryClass?.(product) || '';
+        const iconHtml = this.renderProductIcon?.(product.icon) || (product.icon || '📦');
 
         return `
-            <div class="product-card-mini ${isOutOfStock ? 'out-of-stock' : ''}" id="table-product-card-${product.id}" data-product-id="${product.id}" title="${product.name}">
-                <div class="product-mini-ico-lg" aria-hidden="true">${product.icon || '📦'}</div>
+            <div class="product-card-mini ${catClass} ${isOutOfStock ? 'out-of-stock' : ''}" id="table-product-card-${product.id}" data-product-id="${product.id}" title="${product.name}">
+                <div class="product-mini-ico-lg" aria-hidden="true">${iconHtml}</div>
                 <div class="product-mini-name">${product.name}</div>
                 <div class="product-mini-stock ${stockClass}">Stok: ${stockText}</div>
             </div>
@@ -2196,6 +2209,8 @@ class MekanApp {
     }
 
     createGroupedTableSaleRow(row) {
+        const rowCatKey = (row?.items?.[0]?.category != null) ? String(row.items[0].category) : '';
+        const rowCatClass = this.getProductCategoryClass({ category: rowCatKey });
         const itemsHtml = (row.items || [])
             .map((it) => {
                 const saleId = it.actionSaleId;
@@ -2205,12 +2220,13 @@ class MekanApp {
                     <button class="btn btn-success btn-icon" id="pay-sale-item-${saleId}-${idx}" title="Öde">₺</button>
                     <button class="btn btn-info btn-icon" id="credit-sale-item-${saleId}-${idx}" title="Veresiye">💳</button>
                 `;
-                return `<span class="sale-item-product" title="${it.name}"><strong class="sale-item-ico" aria-hidden="true">${it.icon || '📦'}</strong> x${Math.round(it.amount || 0)} = ${Math.round(it.total || 0)} ₺${buttons}</span>`;
+                const iconHtml = this.renderProductIcon(it.icon || '📦');
+                return `<span class="sale-item-product" title="${it.name}"><strong class="sale-item-ico" aria-hidden="true">${iconHtml}</strong> x${Math.round(it.amount || 0)} = ${Math.round(it.total || 0)} ₺${buttons}</span>`;
             })
             .join(' <span class="sale-item-separator">•</span> ');
 
         return `
-            <div class="sale-item-row">
+            <div class="sale-item-row ${rowCatClass}">
                 <div class="sale-item-content">
                     <div class="sale-item-info">
                         <div class="sale-item-items">
@@ -2272,7 +2288,8 @@ class MekanApp {
                 iconByProductId[String(item.productId)] ||
                 '📦';
 
-            return `<span class="sale-item-product" title="${item.name}"><strong class="sale-item-ico" aria-hidden="true">${icon}</strong> x${item.amount} = ${Math.round(item.price * item.amount)} ₺${buttons}</span>`;
+            const iconHtml = this.renderProductIcon(icon);
+            return `<span class="sale-item-product" title="${item.name}"><strong class="sale-item-ico" aria-hidden="true">${iconHtml}</strong> x${item.amount} = ${Math.round(item.price * item.amount)} ₺${buttons}</span>`;
         }).join(' <span class="sale-item-separator">•</span> ');
         
         const saleDate = new Date(sale.sellDateTime);
@@ -2876,11 +2893,7 @@ class MekanApp {
             // Reload common data sets
             await this.reloadViews(['tables', 'products', 'customers', 'sales']);
 
-            // If a table modal is open, refresh it too
-            const tableModal = document.getElementById('table-modal');
-            if (tableModal && tableModal.classList.contains('active') && this.currentTableId) {
-                await this.openTableModal(this.currentTableId);
-            }
+            // If a table modal is open, do NOT refresh it here (user requested no DB refresh while inside)
         } catch (e) {
             // Silent: refresh is best-effort
             console.log('DB refresh skipped:', e?.message || e);
@@ -3010,17 +3023,11 @@ class MekanApp {
             const modalRequested = pending.includes('__modal__');
 
             try {
-                // Keep local cache synced before repainting UI
-                if (typeof this.db?.syncNow === 'function') {
-                    await this.db.syncNow();
-                }
-
                 if (viewsToReload.length > 0) {
                     await this.reloadViews(viewsToReload);
                 }
-                if (modalRequested && this.currentTableId) {
-                    await this.openTableModal(this.currentTableId);
-                }
+                // While table modal is open, avoid auto re-rendering it from realtime bursts.
+                // applyRealtimeChange already updated IndexedDB; user prefers a stable modal UI.
             } catch (e) {
                 console.error('Realtime refresh failed:', e);
             }
@@ -3030,6 +3037,44 @@ class MekanApp {
     // Helper: Check if product tracks stock
     tracksStock(product) {
         return product.trackStock !== false && product.stock !== null && product.stock !== undefined;
+    }
+
+    // --- Product categories (Cafe defaults) ---
+    getProductCategoryKey(product) {
+        const raw = (product && product.category != null) ? String(product.category) : '';
+        const v = raw.trim().toLowerCase();
+        if (v === 'alkollu' || v === 'alkollü' || v === 'alkollu_icecekler' || v === 'alkollü içecekler' || v === 'alcohol') return 'alcohol';
+        if (v === 'mesrubat' || v === 'meşrubat' || v === 'mesrubatlar' || v === 'meşrubatlar' || v === 'soft') return 'soft';
+        if (v === 'yiyecek' || v === 'yiyecekler' || v === 'food') return 'food';
+        return 'soft';
+    }
+
+    getProductCategoryLabel(catKey) {
+        const k = String(catKey || '');
+        if (k === 'alcohol') return 'Alkollü İçecekler';
+        if (k === 'soft') return 'Meşrubatlar';
+        if (k === 'food') return 'Yiyecekler';
+        return 'Meşrubatlar';
+    }
+
+    getProductCategoryClass(product) {
+        const k = this.getProductCategoryKey(product);
+        if (k === 'alcohol') return 'cat-alcohol';
+        if (k === 'soft') return 'cat-soft';
+        if (k === 'food') return 'cat-food';
+        return 'cat-soft';
+    }
+
+    // --- Product icons (built-in) ---
+    renderProductIcon(iconValue) {
+        const v = (iconValue == null) ? '' : String(iconValue);
+        const key = v.startsWith('ico:') ? v.slice(4) : v;
+        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay']);
+        if (supported.has(key)) {
+            return `<span class="app-ico" data-ico="${key}" aria-hidden="true"></span>`;
+        }
+        // Backward compat: existing emoji/icon strings
+        return `<span class="app-ico-text" aria-hidden="true">${v || '📦'}</span>`;
     }
 
     async openTable(tableId = null) {
@@ -3213,6 +3258,7 @@ class MekanApp {
                     productId: productId,
                     name: product.name,
                     icon: product.icon || '📦',
+                    category: this.getProductCategoryKey(product),
                     price: product.price,
                     arrivalPrice: product.arrivalPrice || 0,
                     amount: amount
@@ -3893,6 +3939,7 @@ class MekanApp {
 
     createProductCard(product) {
         const tracksStock = this.tracksStock(product);
+        const iconHtml = this.renderProductIcon?.(product.icon) || (product.icon || '📦');
         let stockClass = 'stock-high';
         let stockText = '';
         
@@ -3911,7 +3958,7 @@ class MekanApp {
 
         return `
             <div class="product-card">
-                <div class="product-card-icon">${product.icon || '📦'}</div>
+                <div class="product-card-icon">${iconHtml}</div>
                 <div class="product-card-content">
                 <h3>${product.name}</h3>
                     <div class="product-card-details">
@@ -3932,6 +3979,7 @@ class MekanApp {
         const title = document.getElementById('product-modal-title');
         const form = document.getElementById('product-form');
         const iconSelect = document.getElementById('product-icon');
+        const categorySelect = document.getElementById('product-category');
         
         const trackStockCheckbox = document.getElementById('product-track-stock');
         const stockLabel = document.getElementById('product-stock-label');
@@ -3962,6 +4010,7 @@ class MekanApp {
             document.getElementById('product-price').value = product.price;
             document.getElementById('product-arrival-price').value = product.arrivalPrice || 0;
             if (iconSelect) iconSelect.value = product.icon || '📦';
+            if (categorySelect) categorySelect.value = this.getProductCategoryKey(product);
             
             // Check if product tracks stock
             const trackStockCheckboxElement = document.getElementById('product-track-stock');
@@ -3981,7 +4030,8 @@ class MekanApp {
             title.textContent = 'Ürün Ekle';
             form.reset();
             document.getElementById('product-id').value = '';
-            if (iconSelect) iconSelect.value = '☕';
+            if (iconSelect) iconSelect.value = 'cay';
+            if (categorySelect) categorySelect.value = 'soft';
             const trackStockCheckboxElement = document.getElementById('product-track-stock');
             if (trackStockCheckboxElement) trackStockCheckboxElement.checked = true;
             const stockInputGroup = stockLabel.querySelector('.stock-input-group');
@@ -3998,10 +4048,11 @@ class MekanApp {
         const price = parseFloat(document.getElementById('product-price').value);
         const arrivalPrice = parseFloat(document.getElementById('product-arrival-price').value) || 0;
         const icon = (document.getElementById('product-icon')?.value || '📦');
+        const category = (document.getElementById('product-category')?.value || 'soft');
         const trackStock = document.getElementById('product-track-stock').checked;
         const stock = trackStock ? parseInt(document.getElementById('product-stock').value) : null;
 
-        const productData = { name, price, arrivalPrice, icon, stock, trackStock };
+        const productData = { name, price, arrivalPrice, icon, category, stock, trackStock };
 
         try {
             if (id) {

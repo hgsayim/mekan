@@ -838,6 +838,47 @@ header h1 {
     flex-shrink: 0;
 }
 
+/* --- Built-in icons (SVG via data-URI) + fallback emoji/text --- */
+.app-ico,
+.app-ico-text {
+    display: inline-block;
+    width: 1.25em;
+    height: 1.25em;
+    vertical-align: -0.2em;
+}
+.app-ico {
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: contain;
+}
+.app-ico-text {
+    width: auto;
+    height: auto;
+    font-size: 1.15em;
+    line-height: 1;
+}
+.app-ico[data-ico="tuborg"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M18 10h24l-3 44H21L18 10z' fill='%23f6d400'/%3E%3Cpath d='M22 14h16l-2 36H24L22 14z' fill='%23fff3a6' opacity='.85'/%3E%3Cpath d='M42 18h6c6 0 10 4 10 10s-4 10-10 10h-6' fill='none' stroke='%23d0a800' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M16 10h28' stroke='%23b58f00' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M26 6h12' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' opacity='.8'/%3E%3C/svg%3E");
+}
+.app-ico[data-ico="carlsberg"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M18 10h24l-3 44H21L18 10z' fill='%230b7a3b'/%3E%3Cpath d='M22 14h16l-2 36H24L22 14z' fill='%23c8f7db' opacity='.75'/%3E%3Cpath d='M42 18h6c6 0 10 4 10 10s-4 10-10 10h-6' fill='none' stroke='%23075a2b' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M16 10h28' stroke='%23064a24' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M26 6h12' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' opacity='.8'/%3E%3C/svg%3E");
+}
+.app-ico[data-ico="kasar"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 40l36-20 8 6-36 20-8-6z' fill='%23f3c24f'/%3E%3Cpath d='M10 40v10l36-20V20L10 40z' fill='%23e8b23c'/%3E%3Ccircle cx='28' cy='34' r='3' fill='%23d59a25'/%3E%3Ccircle cx='36' cy='30' r='2.5' fill='%23d59a25'/%3E%3Ccircle cx='22' cy='40' r='2.5' fill='%23d59a25'/%3E%3C/svg%3E");
+}
+.app-ico[data-ico="ayran"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M24 10h16l-2 44H26L24 10z' fill='%23e9f2ff'/%3E%3Cpath d='M26 14h12l-2 36H28l-2-36z' fill='%23ffffff'/%3E%3Cpath d='M24 10h16' stroke='%23b9c7dd' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M30 6h4' stroke='%238aa3c7' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.app-ico[data-ico="cola"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M28 8h8l2 6-2 6v28c0 4-3 8-6 8s-6-4-6-8V20l-2-6 2-6 2-6z' fill='%23b5121b'/%3E%3Cpath d='M24 28h16' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' opacity='.95'/%3E%3Cpath d='M28 8h8' stroke='%232b2b2b' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.app-ico[data-ico="sigara"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 36h36v8H10z' fill='%23f2f2f2'/%3E%3Cpath d='M46 36h8v8h-8z' fill='%23f7b500'/%3E%3Cpath d='M54 36h2v8h-2z' fill='%23e26b00'/%3E%3Cpath d='M22 36v8' stroke='%23c9c9c9' stroke-width='2'/%3E%3Cpath d='M6 30c6 0 6-6 12-6' fill='none' stroke='%23b9b9b9' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M10 28c5 0 5-5 10-5' fill='none' stroke='%23cfcfcf' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.app-ico[data-ico="cay"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M18 20h24v20c0 8-6 14-12 14s-12-6-12-14V20z' fill='%232d2d2d'/%3E%3Cpath d='M22 24h16v16c0 6-4 10-8 10s-8-4-8-10V24z' fill='%234a4a4a'/%3E%3Cpath d='M42 24h6c4 0 7 3 7 7s-3 7-7 7h-6' fill='none' stroke='%232d2d2d' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M20 18h20' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' opacity='.25'/%3E%3C/svg%3E");
+}
+
 .product-card-content {
     flex: 1;
     display: flex;
@@ -2542,7 +2583,31 @@ form select:focus {
     line-height: 1;
     margin-bottom: 8px;
     transform: translateY(0.5px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
 }
+
+/* Subtle category tint (table detail) */
+.product-card-mini.cat-alcohol::after,
+.product-card-mini.cat-soft::after,
+.product-card-mini.cat-food::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.12;
+}
+.product-card-mini.cat-alcohol::after { background: rgba(246, 212, 0, 0.7); }
+.product-card-mini.cat-soft::after { background: rgba(11, 122, 59, 0.55); }
+.product-card-mini.cat-food::after { background: rgba(243, 194, 79, 0.65); }
+
+/* Sale rows: very light tint by category */
+.sale-item-row.cat-alcohol { background: rgba(246, 212, 0, 0.06); }
+.sale-item-row.cat-soft { background: rgba(11, 122, 59, 0.045); }
+.sale-item-row.cat-food { background: rgba(243, 194, 79, 0.06); }
 
 .product-mini-name {
     color: #ff8c00;

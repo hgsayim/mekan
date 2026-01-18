@@ -68,7 +68,7 @@ export class SupabaseDatabase {
     // Prevent 400 errors: app.js may include fields that are not real DB columns
     // (e.g. tables.sales array used only in IndexedDB). We whitelist columns per table.
     this.allowedColumns = {
-      products: new Set(['id', 'name', 'icon', 'price', 'arrival_price', 'track_stock', 'stock', 'created_at', 'updated_at']),
+      products: new Set(['id', 'name', 'icon', 'category', 'price', 'arrival_price', 'track_stock', 'stock', 'created_at', 'updated_at']),
       tables: new Set([
         'id',
         'name',
@@ -126,6 +126,7 @@ export class SupabaseDatabase {
     // Feature flags (auto-disable when a Supabase schema doesn't support a column yet)
     this._supports = {
       productIcon: true,
+      productCategory: true,
     };
   }
 
@@ -181,6 +182,9 @@ export class SupabaseDatabase {
     if (!this._supports.productIcon) {
       try { delete insertRow.icon; } catch (_) {}
     }
+    if (!this._supports.productCategory) {
+      try { delete insertRow.category; } catch (_) {}
+    }
     try {
       const res = await this.supabase
         .from(this.tables.products)
@@ -202,6 +206,17 @@ export class SupabaseDatabase {
           .single();
         this._throwIfError(res2);
         return res2.data?.id;
+      }
+      if (this._supports.productCategory && msg.toLowerCase().includes('column') && msg.toLowerCase().includes('category')) {
+        this._supports.productCategory = false;
+        try { delete insertRow.category; } catch (_) {}
+        const res3 = await this.supabase
+          .from(this.tables.products)
+          .insert([insertRow])
+          .select('*')
+          .single();
+        this._throwIfError(res3);
+        return res3.data?.id;
       }
       throw e;
     }
@@ -226,6 +241,9 @@ export class SupabaseDatabase {
     if (!this._supports.productIcon) {
       try { delete updatePatch.icon; } catch (_) {}
     }
+    if (!this._supports.productCategory) {
+      try { delete updatePatch.category; } catch (_) {}
+    }
     try {
       const res = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
       this._throwIfError(res);
@@ -238,6 +256,13 @@ export class SupabaseDatabase {
         const res2 = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
         this._throwIfError(res2);
         return res2.data?.id;
+      }
+      if (this._supports.productCategory && msg.toLowerCase().includes('column') && msg.toLowerCase().includes('category')) {
+        this._supports.productCategory = false;
+        try { delete updatePatch.category; } catch (_) {}
+        const res3 = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
+        this._throwIfError(res3);
+        return res3.data?.id;
       }
       throw e;
     }
