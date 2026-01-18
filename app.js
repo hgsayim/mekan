@@ -1906,7 +1906,7 @@ class MekanApp {
             const prevCancelText = cancelBtn ? cancelBtn.textContent : null;
             if (cancelBtn) {
                 cancelBtn.disabled = true;
-                cancelBtn.textContent = 'İptal ediliyor...';
+                cancelBtn.textContent = '...';
             }
 
             // Close modal ASAP so user sees result even if DB ops take time
@@ -1981,7 +1981,7 @@ class MekanApp {
 
             if (cancelBtn) {
                 cancelBtn.disabled = false;
-                cancelBtn.textContent = prevCancelText || '✖ İptal';
+                cancelBtn.textContent = prevCancelText || '✖';
                 cancelBtn.style.display = 'none';
             }
 
