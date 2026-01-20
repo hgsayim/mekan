@@ -2370,7 +2370,16 @@ class MekanApp {
                 // Recalculate table totals
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
                 table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
-                table.checkTotal = table.hourlyTotal + table.salesTotal;
+                table.checkTotal = (Number(table.hourlyTotal) || 0) + table.salesTotal;
+
+                // If last unpaid item is gone, auto-close regular tables (otherwise they stay "open" with 0₺)
+                if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
+                    table.isActive = false;
+                    table.openTime = null;
+                    table.closeTime = new Date().toISOString();
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                }
                 await this.db.updateTable(table);
             }
 
@@ -2434,7 +2443,16 @@ class MekanApp {
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
                 table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
-                table.checkTotal = table.hourlyTotal + table.salesTotal;
+                table.checkTotal = (Number(table.hourlyTotal) || 0) + table.salesTotal;
+
+                // If last unpaid item is gone, auto-close regular tables
+                if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
+                    table.isActive = false;
+                    table.openTime = null;
+                    table.closeTime = new Date().toISOString();
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                }
                 await this.db.updateTable(table);
             }
 
@@ -2560,7 +2578,16 @@ class MekanApp {
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
                 table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
-                table.checkTotal = table.hourlyTotal + table.salesTotal;
+                table.checkTotal = (Number(table.hourlyTotal) || 0) + table.salesTotal;
+
+                // If last unpaid item is gone, auto-close regular tables
+                if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
+                    table.isActive = false;
+                    table.openTime = null;
+                    table.closeTime = new Date().toISOString();
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                }
                 await this.db.updateTable(table);
             }
 
