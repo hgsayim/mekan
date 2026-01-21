@@ -1026,10 +1026,18 @@ class MekanApp {
                         tableUpdated = true;
                     }
                 }
-            } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0)) {
+            } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0 || table.checkTotal > 0)) {
                 // Table is inactive but has totals - reset them
-                // BUT don't reset if it's a manually opened hourly table (shouldn't happen but safety check)
-                if (table.type !== 'hourly' || !table.openTime) {
+                // For hourly tables: if closed (has closeTime), reset hourlyTotal too (it's stored in hourlySessions)
+                if (table.type === 'hourly' && table.closeTime) {
+                    // Closed hourly table: reset all totals (history is in hourlySessions)
+                    table.salesTotal = 0;
+                    table.hourlyTotal = 0;
+                    table.checkTotal = 0;
+                    table.openTime = null;
+                    tableUpdated = true;
+                } else if (table.type !== 'hourly' || !table.openTime) {
+                    // Regular table or hourly table without openTime
                     table.salesTotal = 0;
                     table.hourlyTotal = 0;
                     table.checkTotal = 0;
@@ -2369,8 +2377,7 @@ class MekanApp {
             if (table) {
                 // Recalculate table totals
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
-                table.checkTotal = (Number(table.hourlyTotal) || 0) + table.salesTotal;
+                await this._updateTableTotals(table, unpaidSales);
 
                 // If last unpaid item is gone, auto-close regular tables (otherwise they stay "open" with 0₺)
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -2442,8 +2449,7 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
-                table.checkTotal = (Number(table.hourlyTotal) || 0) + table.salesTotal;
+                await this._updateTableTotals(table, unpaidSales);
 
                 // If last unpaid item is gone, auto-close regular tables
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -2577,8 +2583,7 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                table.salesTotal = unpaidSales.reduce((sum, s) => sum + s.saleTotal, 0);
-                table.checkTotal = (Number(table.hourlyTotal) || 0) + table.salesTotal;
+                await this._updateTableTotals(table, unpaidSales);
 
                 // If last unpaid item is gone, auto-close regular tables
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -2619,6 +2624,73 @@ class MekanApp {
         const end = new Date(endTime);
         const diffMs = end - start;
         return Math.max(0, diffMs / (1000 * 60 * 60));
+    }
+
+    /**
+     * Helper: Close hourly table and finalize session (used by processPayment and processCreditTable)
+     * @param {Object} table - Table object
+     * @param {Array} unpaidSales - Array of unpaid sales
+     * @param {string} paymentTime - ISO timestamp
+     * @param {boolean} isCredit - Whether this is a credit payment
+     * @param {string|null} customerId - Customer ID for credit payments
+     */
+    _closeHourlyTable(table, unpaidSales, paymentTime, isCredit = false, customerId = null) {
+        if (table.type !== 'hourly' || !table.isActive || !table.openTime) return;
+
+        const closeTimeISO = new Date().toISOString();
+        // Eğer hiç ürün yoksa süre fark etmeksizin ücretsiz kapat (dükkan sahibi kaybetti)
+        let finalHourlyTotal = 0;
+        if (unpaidSales.length === 0 && table.salesTotal === 0) {
+            // Hiç ürün olmadan kapanırsa 0 TL (süre fark etmez)
+            finalHourlyTotal = 0;
+        } else {
+            // Normal hesaplama
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            finalHourlyTotal = hoursUsed * table.hourlyRate;
+        }
+
+        // Persist this session so reopening the table doesn't overwrite report history
+        table.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
+        const sessionHoursUsed = this.calculateHoursBetween(table.openTime, closeTimeISO);
+        const sessionHourlyTotal = finalHourlyTotal > 0 ? finalHourlyTotal : (sessionHoursUsed * table.hourlyRate);
+        
+        const session = {
+            openTime: table.openTime,
+            closeTime: closeTimeISO,
+            hoursUsed: sessionHoursUsed,
+            hourlyTotal: sessionHourlyTotal,
+            paymentTime,
+            isCredit
+        };
+        if (customerId) session.customerId = customerId;
+        
+        table.hourlySessions.push(session);
+
+        table.isActive = false;
+        table.closeTime = closeTimeISO;
+        table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
+        // Reset totals: hourlyTotal is stored in hourlySessions, so we can reset it here
+        table.hourlyTotal = 0;
+    }
+
+    /**
+     * Helper: Update table totals from unpaid sales (used in multiple places)
+     * @param {Object} table - Table object
+     * @param {Array} unpaidSales - Array of unpaid sales
+     */
+    async _updateTableTotals(table, unpaidSales) {
+        if (!table) return;
+        
+        const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+        table.salesTotal = salesTotal;
+        
+        if (table.type === 'hourly' && table.isActive && table.openTime) {
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            table.hourlyTotal = hoursUsed * table.hourlyRate;
+            table.checkTotal = table.hourlyTotal + salesTotal;
+        } else {
+            table.checkTotal = salesTotal;
+        }
     }
 
     closeDelayedStartModal() {
@@ -3717,36 +3789,7 @@ class MekanApp {
             }
 
             // For hourly tables, close it and finalize hourly charges (Pay = Close for hourly tables)
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
-                const closeTimeISO = new Date().toISOString();
-                // Eğer hiç ürün yoksa süre fark etmeksizin ücretsiz kapat (dükkan sahibi kaybetti)
-                if (unpaidSales.length === 0 && table.salesTotal === 0) {
-                    // Hiç ürün olmadan kapanırsa 0 TL (süre fark etmez)
-                    table.hourlyTotal = 0;
-                } else {
-                    // Normal hesaplama
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
-                    table.hourlyTotal = hoursUsed * table.hourlyRate;
-                }
-                
-                // Persist this session so reopening the table doesn't overwrite report history
-                table.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
-                const sessionHoursUsed = this.calculateHoursBetween(table.openTime, closeTimeISO);
-                const sessionHourlyTotal = (table.hourlyTotal || 0) > 0 ? table.hourlyTotal : (sessionHoursUsed * table.hourlyRate);
-                table.hourlySessions.push({
-                    openTime: table.openTime,
-                    closeTime: closeTimeISO,
-                    hoursUsed: sessionHoursUsed,
-                    hourlyTotal: sessionHourlyTotal,
-                    paymentTime,
-                    isCredit: false
-                });
-
-                table.isActive = false;
-                table.closeTime = closeTimeISO;
-                table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
-                // Keep openTime/closeTime as last-session snapshot; detailed history is in hourlySessions
-            }
+            this._closeHourlyTable(table, unpaidSales, paymentTime, false);
 
             // Regular/instant tables: payment should close the table (other devices must see it closed).
             // (Hourly already handled above.)
@@ -3754,10 +3797,9 @@ class MekanApp {
                 table.isActive = false;
             }
 
-            // Reset totals but keep hourlyTotal and closeTime for daily reporting
+            // Reset totals (hourlyTotal already reset above for hourly tables)
             table.salesTotal = 0;
             table.checkTotal = 0;
-            // Note: hourlyTotal and closeTime are kept for daily dashboard reporting
             
             await this.db.updateTable(table);
             // Background refresh instead of blocking the UI
@@ -3927,36 +3969,7 @@ class MekanApp {
             await this.db.updateCustomer(customer);
 
             // For hourly tables, close it and finalize hourly charges
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
-                const closeTimeISO = new Date().toISOString();
-                // Eğer hiç ürün yoksa süre fark etmeksizin ücretsiz kapat (dükkan sahibi kaybetti)
-                if (unpaidSales.length === 0 && table.salesTotal === 0) {
-                    // Hiç ürün olmadan kapanırsa 0 TL (süre fark etmez)
-            table.hourlyTotal = 0;
-                } else {
-                    // Normal hesaplama
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
-                    table.hourlyTotal = hoursUsed * table.hourlyRate;
-                }
-
-                // Persist this session so reopening the table doesn't overwrite report history
-                table.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
-                const sessionHoursUsed = this.calculateHoursBetween(table.openTime, closeTimeISO);
-                const sessionHourlyTotal = (table.hourlyTotal || 0) > 0 ? table.hourlyTotal : (sessionHoursUsed * table.hourlyRate);
-                table.hourlySessions.push({
-                    openTime: table.openTime,
-                    closeTime: closeTimeISO,
-                    hoursUsed: sessionHoursUsed,
-                    hourlyTotal: sessionHourlyTotal,
-                    paymentTime: creditTime,
-                    isCredit: true,
-                    customerId: selectedCustomerId
-                });
-                
-                table.isActive = false;
-                table.closeTime = closeTimeISO;
-                table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
-            }
+            this._closeHourlyTable(table, unpaidSales, creditTime, true, selectedCustomerId);
 
             // Regular/instant tables: credit should close the table (other devices must see it closed).
             // (Hourly already handled above.)
@@ -3964,7 +3977,7 @@ class MekanApp {
                 table.isActive = false;
             }
 
-            // Reset totals but keep hourlyTotal and closeTime for daily reporting
+            // Reset totals (hourlyTotal already reset above for hourly tables)
             table.salesTotal = 0;
             table.checkTotal = 0;
             
