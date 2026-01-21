@@ -5201,8 +5201,17 @@ class MekanApp {
         const periodExpenses = allExpenses.filter(expense => {
             const expenseDate = expense.expenseDate || expense.date;
             if (!expenseDate) return false;
-            const date = new Date(expenseDate);
-            return date >= startDate && date <= endDate;
+            // Parse expense date and set to start of day for comparison
+            const expenseDateObj = new Date(expenseDate);
+            expenseDateObj.setHours(0, 0, 0, 0);
+            
+            // Compare dates (not times) - expense should be included if its date falls within the range
+            const startDateOnly = new Date(startDate);
+            startDateOnly.setHours(0, 0, 0, 0);
+            const endDateOnly = new Date(endDate);
+            endDateOnly.setHours(23, 59, 59, 999);
+            
+            return expenseDateObj >= startDateOnly && expenseDateObj <= endDateOnly;
         });
         const totalExpenses = periodExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
 
@@ -5240,8 +5249,17 @@ class MekanApp {
         const monthlyExpenses = allExpenses.filter(expense => {
             const expenseDate = expense.expenseDate || expense.date;
             if (!expenseDate) return false;
-            const date = new Date(expenseDate);
-            return date >= monthStart && date <= monthEnd;
+            // Parse expense date and set to start of day for comparison
+            const expenseDateObj = new Date(expenseDate);
+            expenseDateObj.setHours(0, 0, 0, 0);
+            
+            // Compare dates (not times)
+            const monthStartOnly = new Date(monthStart);
+            monthStartOnly.setHours(0, 0, 0, 0);
+            const monthEndOnly = new Date(monthEnd);
+            monthEndOnly.setHours(23, 59, 59, 999);
+            
+            return expenseDateObj >= monthStartOnly && expenseDateObj <= monthEndOnly;
         }).reduce((sum, expense) => sum + (expense.amount || 0), 0);
 
         // Calculate net profit (total profit - expenses)
