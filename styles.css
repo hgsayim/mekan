@@ -88,6 +88,16 @@ header::before {
     gap: 15px;
 }
 
+.install-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    white-space: nowrap;
+}
+
 header h1 {
     margin: 0;
     font-size: 1.5rem;
@@ -3077,6 +3087,11 @@ form select:focus {
     .header-content {
         flex-wrap: wrap;
         gap: 10px;
+    }
+
+    .install-btn {
+        width: 100%;
+        justify-content: center;
     }
 
     .products-grid {

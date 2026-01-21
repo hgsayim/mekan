@@ -126,6 +126,7 @@ class MekanApp {
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
         this.dailyResetInterval = null;
+        this.deferredPwaPrompt = null;
         this._realtimeChannel = null;
         this._realtimeRefreshTimer = null;
         this._realtimePendingViews = new Set();
@@ -323,6 +324,36 @@ class MekanApp {
 
     setupEventListeners() {
         this.initAppDialog();
+
+        // PWA install (Android Chrome home screen)
+        const installBtn = document.getElementById('pwa-install-btn');
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            this.deferredPwaPrompt = e;
+            if (installBtn) {
+                installBtn.style.display = 'inline-flex';
+            }
+        });
+        window.addEventListener('appinstalled', () => {
+            this.deferredPwaPrompt = null;
+            if (installBtn) {
+                installBtn.style.display = 'none';
+            }
+        });
+        if (installBtn) {
+            installBtn.addEventListener('click', async () => {
+                if (!this.deferredPwaPrompt) return;
+                this.deferredPwaPrompt.prompt();
+                try {
+                    await this.deferredPwaPrompt.userChoice;
+                } catch (_) {
+                    // ignore
+                } finally {
+                    this.deferredPwaPrompt = null;
+                    installBtn.style.display = 'none';
+                }
+            });
+        }
 
         // Header logo/title click - go to tables view
         const headerTitle = document.querySelector('header h1');
