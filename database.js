@@ -3,7 +3,7 @@ class Database {
     constructor() {
         this.db = null;
         this.dbName = 'MekanAppDB';
-        this.dbVersion = 3;
+        this.dbVersion = 4;
     }
 
     async init() {
@@ -103,6 +103,13 @@ class Database {
                     const manualStore = db.createObjectStore('manualSessions', { keyPath: 'id', autoIncrement: true });
                     manualStore.createIndex('type', 'type', { unique: false });
                     manualStore.createIndex('closeTime', 'closeTime', { unique: false });
+                }
+
+                // Expenses store (giderler)
+                if (!db.objectStoreNames.contains('expenses')) {
+                    const expenseStore = db.createObjectStore('expenses', { keyPath: 'id', autoIncrement: true });
+                    expenseStore.createIndex('date', 'date', { unique: false });
+                    expenseStore.createIndex('category', 'category', { unique: false });
                 }
             };
         });
@@ -473,9 +480,85 @@ class Database {
         }
     }
 
+    // Expenses CRUD
+    async addExpense(expense) {
+        if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains('expenses')) {
+            throw new Error('Expenses store does not exist. Please refresh the page to initialize the database.');
+        }
+        
+        const transaction = this.db.transaction(['expenses'], 'readwrite');
+        const store = transaction.objectStore('expenses');
+        const request = store.add(expense);
+        
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async getAllExpenses() {
+        if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains('expenses')) {
+            return [];
+        }
+        
+        const transaction = this.db.transaction(['expenses'], 'readonly');
+        const store = transaction.objectStore('expenses');
+        const request = store.getAll();
+        
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async getExpense(id) {
+        if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains('expenses')) {
+            return null;
+        }
+        
+        const transaction = this.db.transaction(['expenses'], 'readonly');
+        const store = transaction.objectStore('expenses');
+        const request = store.get(id);
+        
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async updateExpense(expense) {
+        if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains('expenses')) {
+            throw new Error('Expenses store does not exist. Please refresh the page to initialize the database.');
+        }
+        
+        const transaction = this.db.transaction(['expenses'], 'readwrite');
+        const store = transaction.objectStore('expenses');
+        const request = store.put(expense);
+        
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deleteExpense(id) {
+        if (!this.db || !this.db.objectStoreNames || !this.db.objectStoreNames.contains('expenses')) {
+            throw new Error('Expenses store does not exist. Please refresh the page to initialize the database.');
+        }
+        
+        const transaction = this.db.transaction(['expenses'], 'readwrite');
+        const store = transaction.objectStore('expenses');
+        const request = store.delete(id);
+        
+        return new Promise((resolve, reject) => {
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     // Clear all data from all stores
     async clearAllData() {
-        const stores = ['products', 'tables', 'sales', 'customers'];
+        const stores = ['products', 'tables', 'sales', 'customers', 'expenses'];
         const promises = stores.map(storeName => {
             return new Promise((resolve, reject) => {
                 // Check if store exists before trying to clear it

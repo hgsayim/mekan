@@ -32,6 +32,7 @@
                         <button class="nav-btn-compact active" data-view="tables">Masalar</button>
                         <button class="nav-btn-compact" data-view="products">Ürünler</button>
                         <button class="nav-btn-compact" data-view="customers">Müşteriler</button>
+                        <button class="nav-btn-compact" data-view="expenses">Giderler</button>
                         <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
                         <button class="nav-btn-compact" data-view="daily">Rapor</button>
                     </div>
@@ -53,6 +54,15 @@
             <!-- Customers View -->
             <section id="customers-view" class="view">
                 <div id="customers-container" class="customers-grid"></div>
+            </section>
+
+            <!-- Expenses View -->
+            <section id="expenses-view" class="view">
+                <div class="view-header">
+                    <h2>Giderler</h2>
+                    <button class="btn btn-primary" id="add-expense-btn">+ Gider Ekle</button>
+                </div>
+                <div id="expenses-container" class="expenses-list"></div>
             </section>
 
             <!-- Sales History View -->
@@ -170,6 +180,34 @@
                             <div class="stat-content">
                                 <h3>Toplam Veresiye Bakiyesi</h3>
                                 <p class="stat-value" id="total-credit-balance">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
+                            <div class="stat-icon">💸</div>
+                            <div class="stat-content">
+                                <h3>Toplam Gider</h3>
+                                <p class="stat-value" id="total-expenses">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="background: #d1ecf1; border-color: #0c5460;">
+                            <div class="stat-icon">📊</div>
+                            <div class="stat-content">
+                                <h3>Net Kar</h3>
+                                <p class="stat-value" id="net-profit">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="background: #d4edda; border-color: #28a745;">
+                            <div class="stat-icon">📈</div>
+                            <div class="stat-content">
+                                <h3>Aylık Gelir</h3>
+                                <p class="stat-value" id="monthly-income">0.00 ₺</p>
+                            </div>
+                        </div>
+                        <div class="stat-card" style="background: #f8d7da; border-color: #dc3545;">
+                            <div class="stat-icon">📉</div>
+                            <div class="stat-content">
+                                <h3>Aylık Gider</h3>
+                                <p class="stat-value" id="monthly-expenses">0.00 ₺</p>
                             </div>
                         </div>
                     </div>
@@ -392,10 +430,17 @@
                     Masa İkonu:
                     <select id="table-icon" required>
                         <option value="🪑">🪑 Sandalye</option>
-                        <option value="🍽️">🍽️ Masa</option>
                         <option value="💺">💺 Koltuk</option>
                         <option value="🛋️">🛋️ Koltuk (Yumuşak)</option>
+                        <option value="🪑">🪑 Sandalye (Klasik)</option>
+                        <option value="🪑">🪑 Sandalye (Yüksek)</option>
+                        <option value="🪑">🪑 Sandalye (Bar)</option>
+                        <option value="🏢">🏢 Ofis</option>
+                        <option value="🍵">🍵 Çay</option>
+                        <option value="🪑">🪑 Koltuk (Ofis)</option>
+                        <option value="🪑">🪑 Sandalye (Kafe)</option>
                         <option value="☕">☕ Kahve</option>
+                        <option value="🍽️">🍽️ Masa</option>
                         <option value="🍺">🍺 Bira</option>
                         <option value="🎱">🎱 Bilardo</option>
                         <option value="🎮">🎮 PlayStation</option>

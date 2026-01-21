@@ -624,6 +624,43 @@ class MekanApp {
         // Initialize date inputs with today's range
         this.setTodayDateRange();
 
+        // Expense form
+        const expenseForm = document.getElementById('expense-form');
+        if (expenseForm) {
+            expenseForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveExpense();
+            });
+        }
+
+        // Add expense button
+        const addExpenseBtn = document.getElementById('add-expense-btn');
+        if (addExpenseBtn) {
+            addExpenseBtn.addEventListener('click', () => {
+                this.openExpenseFormModal();
+            });
+        }
+
+        // Cancel expense button
+        const cancelExpenseBtn = document.getElementById('cancel-expense-btn');
+        if (cancelExpenseBtn) {
+            cancelExpenseBtn.addEventListener('click', () => {
+                const expenseModal = document.getElementById('expense-form-modal');
+                if (expenseModal) expenseModal.classList.remove('active');
+            });
+        }
+
+        // Expense form modal close button
+        const expenseModal = document.getElementById('expense-form-modal');
+        if (expenseModal) {
+            const closeBtn = expenseModal.querySelector('.close');
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    expenseModal.classList.remove('active');
+                });
+            }
+        }
+
         // Product select change handler
         const productSelect = document.getElementById('product-select');
         if (productSelect) {
@@ -858,6 +895,10 @@ class MekanApp {
             this.stopTableCardPriceUpdates();
             // When entering from the menu, force a delta sync so the list is fresh
             this.syncAndReloadView(viewName);
+        } else if (viewName === 'expenses') {
+            // Stop auto-update when not on tables view
+            this.stopTableCardPriceUpdates();
+            await this.loadExpenses();
         } else if (viewName === 'sales') {
             this.loadSales();
             // Stop auto-update when not on tables view
@@ -2986,6 +3027,7 @@ class MekanApp {
         if (views.includes('products')) promises.push(this.loadProducts());
         if (views.includes('sales')) promises.push(this.loadSales());
         if (views.includes('customers')) promises.push(this.loadCustomers());
+        if (views.includes('expenses')) promises.push(this.loadExpenses());
         if (views.includes('daily') && this.currentView === 'daily') {
             promises.push(this.loadDailyDashboard());
         }
@@ -3030,6 +3072,7 @@ class MekanApp {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, (p) => onChange('products', p))
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, (p) => onChange('sales', p))
             .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (p) => onChange('customers', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, (p) => onChange('expenses', p))
             .on('postgres_changes', { event: '*', schema: 'public', table: 'manual_sessions' }, (p) => onChange('manual_sessions', p))
             .subscribe((status) => {
                 // statuses: SUBSCRIBED, TIMED_OUT, CLOSED, CHANNEL_ERROR
@@ -3994,6 +4037,201 @@ class MekanApp {
         }
     }
 
+    // Expenses Management
+    async loadExpenses() {
+        const expenses = await this.db.getAllExpenses();
+        const container = document.getElementById('expenses-container');
+        
+        if (!container) {
+            console.error('Expenses container not found');
+            return;
+        }
+        
+        // Sort by date (newest first)
+        expenses.sort((a, b) => {
+            const dateA = new Date(a.expenseDate || a.date || 0);
+            const dateB = new Date(b.expenseDate || b.date || 0);
+            return dateB - dateA;
+        });
+        
+        if (expenses.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>Henüz gider kaydı yok</p></div>';
+            return;
+        }
+        
+        container.innerHTML = expenses.map(expense => this.createExpenseCard(expense)).join('');
+        
+        // Use event delegation for edit/delete buttons
+        if (!this._expensesDelegationBound) {
+            this._expensesDelegationBound = true;
+            container.addEventListener('click', (e) => {
+                const target = e.target.closest('[id^="edit-expense-"], [id^="delete-expense-"]');
+                if (!target) return;
+                
+                const extractId = (prefix) => {
+                    if (!target.id.startsWith(prefix)) return null;
+                    const idPart = target.id.slice(prefix.length);
+                    return idPart || null;
+                };
+                
+                const editPrefix = 'edit-expense-';
+                const deletePrefix = 'delete-expense-';
+                
+                if (target.id.startsWith(editPrefix)) {
+                    const id = extractId(editPrefix);
+                    if (!id) return;
+                    const expense = expenses.find(e => String(e.id) === String(id));
+                    if (expense) {
+                        this.openExpenseFormModal(expense);
+                    }
+                } else if (target.id.startsWith(deletePrefix)) {
+                    const id = extractId(deletePrefix);
+                    if (!id) return;
+                    this.deleteExpense(id);
+                }
+            });
+        }
+    }
+
+    createExpenseCard(expense) {
+        const categoryIcons = {
+            elektrik: '⚡',
+            toptanci: '🍺',
+            bilardo: '🎱',
+            playstation: '🎮',
+            tamir: '🔧',
+            eleman: '👤',
+            kira: '🏠',
+            su: '💧',
+            internet: '🌐',
+            diger: '📋'
+        };
+        
+        const categoryLabels = {
+            elektrik: 'Elektrik',
+            toptanci: 'Toptancı (Bira)',
+            bilardo: 'Bilardo Giderleri',
+            playstation: 'PlayStation Giderleri',
+            tamir: 'Tamir Tadilat',
+            eleman: 'Eleman Parası',
+            kira: 'Kira',
+            su: 'Su',
+            internet: 'İnternet',
+            diger: 'Diğer'
+        };
+        
+        const icon = categoryIcons[expense.category] || '📋';
+        const label = categoryLabels[expense.category] || expense.category || 'Diğer';
+        const date = expense.expenseDate || expense.date || new Date().toISOString().split('T')[0];
+        const formattedDate = this.formatDateOnly(date);
+        
+        return `
+            <div class="expense-card">
+                <div class="expense-icon">${icon}</div>
+                <div class="expense-content">
+                    <h3>${expense.description || 'Gider'}</h3>
+                    <div class="expense-details">
+                        <span class="expense-category">${label}</span>
+                        <span class="expense-date">${formattedDate}</span>
+                    </div>
+                </div>
+                <div class="expense-amount">${Math.round(expense.amount || 0)} ₺</div>
+                <div class="expense-actions">
+                    <button class="btn btn-icon" id="edit-expense-${expense.id}" title="Düzenle">✏️</button>
+                    <button class="btn btn-icon btn-danger" id="delete-expense-${expense.id}" title="Sil">🗑️</button>
+                </div>
+            </div>
+        `;
+    }
+
+    openExpenseFormModal(expense = null) {
+        const modal = document.getElementById('expense-form-modal');
+        const title = document.getElementById('expense-form-modal-title');
+        const form = document.getElementById('expense-form');
+        
+        if (!modal || !title || !form) return;
+        
+        if (expense) {
+            title.textContent = 'Gideri Düzenle';
+            document.getElementById('expense-id').value = expense.id;
+            document.getElementById('expense-description').value = expense.description || '';
+            document.getElementById('expense-amount').value = expense.amount || 0;
+            document.getElementById('expense-category').value = expense.category || '';
+            document.getElementById('expense-date').value = expense.expenseDate || expense.date || new Date().toISOString().split('T')[0];
+        } else {
+            title.textContent = 'Gider Ekle';
+            form.reset();
+            document.getElementById('expense-id').value = '';
+            document.getElementById('expense-date').value = new Date().toISOString().split('T')[0];
+        }
+        
+        modal.classList.add('active');
+    }
+
+    async saveExpense() {
+        const id = document.getElementById('expense-id').value;
+        const description = document.getElementById('expense-description').value.trim();
+        const amount = parseFloat(document.getElementById('expense-amount').value) || 0;
+        const category = document.getElementById('expense-category').value;
+        const expenseDate = document.getElementById('expense-date').value;
+        
+        if (!description || !category || amount <= 0) {
+            await this.appAlert('Lütfen tüm alanları doldurun ve tutar 0\'dan büyük olsun.', 'Uyarı');
+            return;
+        }
+        
+        const expenseData = {
+            description,
+            amount,
+            category,
+            expenseDate: expenseDate || new Date().toISOString().split('T')[0],
+            date: expenseDate || new Date().toISOString().split('T')[0]
+        };
+        
+        try {
+            if (id) {
+                expenseData.id = parseInt(id);
+                await this.db.updateExpense(expenseData);
+            } else {
+                await this.db.addExpense(expenseData);
+            }
+            
+            document.getElementById('expense-form-modal').classList.remove('active');
+            await this.loadExpenses();
+            if (this.currentView === 'daily') {
+                await this.loadDailyDashboard();
+            }
+        } catch (error) {
+            console.error('Gider kaydedilirken hata:', error);
+            await this.appAlert('Gider kaydedilirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+        }
+    }
+
+    async deleteExpense(id) {
+        if (!(await this.appConfirm('Bu gideri silmek istediğinize emin misiniz?', { title: 'Silme Onayı', confirmText: 'Sil', cancelText: 'İptal', confirmVariant: 'danger' }))) return;
+        
+        try {
+            await this.db.deleteExpense(id);
+            await this.loadExpenses();
+            if (this.currentView === 'daily') {
+                await this.loadDailyDashboard();
+            }
+        } catch (error) {
+            console.error('Gider silinirken hata:', error);
+            await this.appAlert('Gider silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+        }
+    }
+
+    formatDateOnly(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        if (Number.isNaN(date.getTime())) return dateString;
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}.${month}.${year}`;
+    }
+
     // Products Management
     async loadProducts() {
         const products = this.sortProductsByStock(await this.db.getAllProducts());
@@ -4947,6 +5185,57 @@ class MekanApp {
         const allCustomers = await this.db.getAllCustomers();
         const totalCreditBalance = allCustomers.reduce((sum, customer) => sum + (customer.balance || 0), 0);
 
+        // Calculate expenses in date range
+        const allExpenses = await this.db.getAllExpenses();
+        const periodExpenses = allExpenses.filter(expense => {
+            const expenseDate = expense.expenseDate || expense.date;
+            if (!expenseDate) return false;
+            const date = new Date(expenseDate);
+            return date >= startDate && date <= endDate;
+        });
+        const totalExpenses = periodExpenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+
+        // Calculate monthly income and expenses (for current month)
+        const now = new Date();
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+        
+        const monthlySales = allSales.filter(sale => {
+            if (!sale.isPaid || sale.isCancelled) return false;
+            const paymentDate = sale.paymentTime ? new Date(sale.paymentTime) : new Date(sale.sellDateTime);
+            return paymentDate >= monthStart && paymentDate <= monthEnd;
+        });
+        
+        const monthlyIncome = monthlySales
+            .filter(sale => !sale.isCredit)
+            .reduce((sum, sale) => sum + (sale.saleTotal || 0), 0);
+        
+        // Add monthly hourly income
+        const monthlyHourlyIncome = allTables
+            .filter(table => table.type === 'hourly')
+            .reduce((sum, table) => {
+                const sessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
+                return sum + sessions
+                    .filter(s => {
+                        if (!s.closeTime) return false;
+                        const closeDate = new Date(s.closeTime);
+                        return closeDate >= monthStart && closeDate <= monthEnd;
+                    })
+                    .reduce((sSum, s) => sSum + (s.hourlyTotal || 0), 0);
+            }, 0);
+        
+        const totalMonthlyIncome = monthlyIncome + monthlyHourlyIncome;
+        
+        const monthlyExpenses = allExpenses.filter(expense => {
+            const expenseDate = expense.expenseDate || expense.date;
+            if (!expenseDate) return false;
+            const date = new Date(expenseDate);
+            return date >= monthStart && date <= monthEnd;
+        }).reduce((sum, expense) => sum + (expense.amount || 0), 0);
+
+        // Calculate net profit (total profit - expenses)
+        const netProfit = totalProfit - totalExpenses;
+
         // Check if date range is today (single day)
         const isToday = this.isDateRangeToday(startDate, endDate);
         const periodLabel = isToday ? 'Günlük' : '';
@@ -4982,6 +5271,26 @@ class MekanApp {
         const creditBalanceEl = document.getElementById('total-credit-balance');
         if (creditBalanceEl) {
             creditBalanceEl.textContent = `${Math.round(totalCreditBalance)} ₺`;
+        }
+
+        // Update expense and net profit info
+        const totalExpensesEl = document.getElementById('total-expenses');
+        if (totalExpensesEl) {
+            totalExpensesEl.textContent = `${Math.round(totalExpenses)} ₺`;
+        }
+        const netProfitEl = document.getElementById('net-profit');
+        if (netProfitEl) {
+            netProfitEl.textContent = `${Math.round(netProfit)} ₺`;
+            netProfitEl.parentElement.parentElement.style.background = netProfit >= 0 ? '#d4edda' : '#f8d7da';
+            netProfitEl.parentElement.parentElement.style.borderColor = netProfit >= 0 ? '#28a745' : '#dc3545';
+        }
+        const monthlyIncomeEl = document.getElementById('monthly-income');
+        if (monthlyIncomeEl) {
+            monthlyIncomeEl.textContent = `${Math.round(totalMonthlyIncome)} ₺`;
+        }
+        const monthlyExpensesEl = document.getElementById('monthly-expenses');
+        if (monthlyExpensesEl) {
+            monthlyExpensesEl.textContent = `${Math.round(monthlyExpenses)} ₺`;
         }
 
         // Update charts

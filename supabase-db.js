@@ -15,6 +15,7 @@ export class SupabaseDatabase {
       sales: 'sales',
       customers: 'customers',
       manualSessions: 'manual_sessions',
+      expenses: 'expenses',
     };
 
     // Column mapping: app.js uses camelCase, Supabase tables use snake_case.
@@ -60,6 +61,11 @@ export class SupabaseDatabase {
         closeTime: 'close_time',
         hoursUsed: 'hours_used',
         hourlyRate: 'hourly_rate',
+        createdAt: 'created_at',
+        updatedAt: 'updated_at',
+      },
+      expenses: {
+        expenseDate: 'expense_date',
         createdAt: 'created_at',
         updatedAt: 'updated_at',
       },
@@ -112,6 +118,15 @@ export class SupabaseDatabase {
         'created_at',
         'updated_at',
       ]),
+      expenses: new Set([
+        'id',
+        'description',
+        'amount',
+        'category',
+        'expense_date',
+        'created_at',
+        'updated_at',
+      ]),
     };
 
     // Supabase/PostgREST often returns numeric columns as strings. Normalize them here so app.js math works.
@@ -121,6 +136,7 @@ export class SupabaseDatabase {
       sales: new Set(['saleTotal']),
       customers: new Set(['balance']),
       manualSessions: new Set(['amount', 'hoursUsed', 'hourlyRate']),
+      expenses: new Set(['amount']),
     };
 
     // Feature flags (auto-disable when a Supabase schema doesn't support a column yet)
@@ -415,6 +431,40 @@ export class SupabaseDatabase {
     const res = await this.supabase.from(this.tables.sales).select('*').eq('customer_id', customerId).order('sell_datetime', { ascending: false });
     this._throwIfError(res);
     return (res.data || []).map((r) => this._snakeToCamel('sales', r));
+  }
+
+  // Expenses
+  async addExpense(expense) {
+    const insertRow = this._camelToSnake('expenses', expense);
+    const res = await this.supabase.from(this.tables.expenses).insert([insertRow]).select('*').single();
+    this._throwIfError(res);
+    return res.data?.id;
+  }
+
+  async getAllExpenses() {
+    const res = await this.supabase.from(this.tables.expenses).select('*').order('expense_date', { ascending: false });
+    this._throwIfError(res);
+    return (res.data || []).map((r) => this._snakeToCamel('expenses', r));
+  }
+
+  async getExpense(id) {
+    const res = await this.supabase.from(this.tables.expenses).select('*').eq('id', id).maybeSingle();
+    this._throwIfError(res);
+    return res.data ? this._snakeToCamel('expenses', res.data) : null;
+  }
+
+  async updateExpense(expense) {
+    if (!expense || expense.id == null) throw new Error('updateExpense: missing id');
+    const { id, ...patch } = expense;
+    const updatePatch = this._camelToSnake('expenses', patch);
+    const res = await this.supabase.from(this.tables.expenses).update(updatePatch).eq('id', id).select('*').single();
+    this._throwIfError(res);
+    return res.data?.id;
+  }
+
+  async deleteExpense(id) {
+    const res = await this.supabase.from(this.tables.expenses).delete().eq('id', id);
+    this._throwIfError(res);
   }
 
   // Clear all data (dangerous)

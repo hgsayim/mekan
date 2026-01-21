@@ -13,7 +13,7 @@ import { SupabaseDatabase } from './supabase-db.js';
 export class HybridDatabase {
   /**
    * @param {import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm').SupabaseClient} supabase
-   * @param {{ syncEntities?: Array<'products'|'tables'|'sales'|'customers'|'manualSessions'> }} [opts]
+   * @param {{ syncEntities?: Array<'products'|'tables'|'sales'|'customers'|'manualSessions'|'expenses'> }} [opts]
    */
   constructor(supabase, opts = {}) {
     this.remote = new SupabaseDatabase(supabase);
@@ -22,7 +22,7 @@ export class HybridDatabase {
     }
     this.local = new window.Database();
 
-    this.syncEntities = opts.syncEntities || ['products', 'tables', 'sales', 'customers', 'manualSessions'];
+    this.syncEntities = opts.syncEntities || ['products', 'tables', 'sales', 'customers', 'manualSessions', 'expenses'];
 
     this._syncInFlight = false;
     this._lastSyncAt = 0;
@@ -44,6 +44,7 @@ export class HybridDatabase {
       sales: ['created_at', 'payment_time'],
       customers: ['created_at'],
       manualSessions: ['created_at'],
+      expenses: ['created_at', 'expense_date'],
     };
   }
 
@@ -145,6 +146,7 @@ export class HybridDatabase {
       customers: { key: 'customers', store: 'customers' },
       manual_sessions: { key: 'manualSessions', store: 'manualSessions' },
       manualSessions: { key: 'manualSessions', store: 'manualSessions' },
+      expenses: { key: 'expenses', store: 'expenses' },
     };
     const entry = map[tableName];
     if (!entry) return false;
@@ -261,6 +263,7 @@ export class HybridDatabase {
         if (this.syncEntities.includes('sales')) enqueue('sales', 'sales', 'sales');
         if (this.syncEntities.includes('customers')) enqueue('customers', 'customers', 'customers');
         if (this.syncEntities.includes('manualSessions')) enqueue('manualSessions', 'manualSessions', 'manualSessions');
+        if (this.syncEntities.includes('expenses')) enqueue('expenses', 'expenses', 'expenses');
 
         const results = await Promise.all(deltaTasks);
         anyChanged = results.some(Boolean);
@@ -452,6 +455,34 @@ export class HybridDatabase {
   async deleteManualSession(id) {
     await this.remote.deleteManualSession(id);
     try { await this.local.deleteManualSession(id); } catch (_) {}
+  }
+
+  // ----- Expenses -----
+  async addExpense(expense) {
+    const id = await this.remote.addExpense(expense);
+    try { await this.local.updateExpense({ ...expense, id }); } catch (_) {
+      try { await this.local.addExpense({ ...expense, id }); } catch (_) {}
+    }
+    return id;
+  }
+  async getAllExpenses() {
+    try { return await this.local.getAllExpenses(); } catch (_) { return await this.remote.getAllExpenses(); }
+  }
+  async getExpense(id) {
+    try {
+      const r = await this.local.getExpense(id);
+      if (r) return r;
+    } catch (_) {}
+    return await this.remote.getExpense(id);
+  }
+  async updateExpense(expense) {
+    const id = await this.remote.updateExpense(expense);
+    try { await this.local.updateExpense(expense); } catch (_) {}
+    return id;
+  }
+  async deleteExpense(id) {
+    await this.remote.deleteExpense(id);
+    try { await this.local.deleteExpense(id); } catch (_) {}
   }
 
   // ----- Admin -----
