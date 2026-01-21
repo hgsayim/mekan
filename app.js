@@ -4187,8 +4187,7 @@ class MekanApp {
             description,
             amount,
             category,
-            expenseDate: expenseDate || new Date().toISOString().split('T')[0],
-            date: expenseDate || new Date().toISOString().split('T')[0]
+            expenseDate: expenseDate || new Date().toISOString().split('T')[0]
         };
         
         try {

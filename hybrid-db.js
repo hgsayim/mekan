@@ -459,11 +459,23 @@ export class HybridDatabase {
 
   // ----- Expenses -----
   async addExpense(expense) {
-    const id = await this.remote.addExpense(expense);
-    try { await this.local.updateExpense({ ...expense, id }); } catch (_) {
-      try { await this.local.addExpense({ ...expense, id }); } catch (_) {}
+    try {
+      const id = await this.remote.addExpense(expense);
+      try { await this.local.updateExpense({ ...expense, id }); } catch (_) {
+        try { await this.local.addExpense({ ...expense, id }); } catch (_) {}
+      }
+      return id;
+    } catch (error) {
+      console.error('addExpense remote error:', error);
+      // If remote fails, still try to save locally for offline support
+      try {
+        const localId = await this.local.addExpense(expense);
+        return localId;
+      } catch (localError) {
+        console.error('addExpense local error:', localError);
+        throw error; // Throw original remote error
+      }
     }
-    return id;
   }
   async getAllExpenses() {
     try { return await this.local.getAllExpenses(); } catch (_) { return await this.remote.getAllExpenses(); }
@@ -476,13 +488,36 @@ export class HybridDatabase {
     return await this.remote.getExpense(id);
   }
   async updateExpense(expense) {
-    const id = await this.remote.updateExpense(expense);
-    try { await this.local.updateExpense(expense); } catch (_) {}
-    return id;
+    try {
+      const id = await this.remote.updateExpense(expense);
+      try { await this.local.updateExpense(expense); } catch (_) {}
+      return id;
+    } catch (error) {
+      console.error('updateExpense remote error:', error);
+      // If remote fails, still try to update locally for offline support
+      try {
+        await this.local.updateExpense(expense);
+        return expense.id;
+      } catch (localError) {
+        console.error('updateExpense local error:', localError);
+        throw error; // Throw original remote error
+      }
+    }
   }
   async deleteExpense(id) {
-    await this.remote.deleteExpense(id);
-    try { await this.local.deleteExpense(id); } catch (_) {}
+    try {
+      await this.remote.deleteExpense(id);
+      try { await this.local.deleteExpense(id); } catch (_) {}
+    } catch (error) {
+      console.error('deleteExpense remote error:', error);
+      // If remote fails, still try to delete locally for offline support
+      try {
+        await this.local.deleteExpense(id);
+      } catch (localError) {
+        console.error('deleteExpense local error:', localError);
+        throw error; // Throw original remote error
+      }
+    }
   }
 
   // ----- Admin -----
