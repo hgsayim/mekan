@@ -858,7 +858,7 @@ class MekanApp {
         }
     }
 
-    switchView(viewName) {
+    async switchView(viewName) {
         this.updateHeaderViewTitle(viewName);
 
         // Update navigation (compact menu + bottom nav)
@@ -3123,6 +3123,9 @@ class MekanApp {
         } else if (tableName === 'customers') {
             if (current === 'customers') views.add('customers');
             if (current === 'sales') views.add('sales');
+            if (current === 'daily') views.add('daily');
+        } else if (tableName === 'expenses') {
+            if (current === 'expenses') views.add('expenses');
             if (current === 'daily') views.add('daily');
         } else if (tableName === 'manual_sessions') {
             if (current === 'daily') views.add('daily');

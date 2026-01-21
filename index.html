@@ -581,6 +581,49 @@
         </div>
     </div>
 
+    <!-- Expense Form Modal -->
+    <div id="expense-form-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="expense-form-modal-title">Gider Ekle</h2>
+            <form id="expense-form">
+                <input type="hidden" id="expense-id">
+                <label>
+                    Açıklama:
+                    <input type="text" id="expense-description" required>
+                </label>
+                <label>
+                    Tutar (₺):
+                    <input type="number" id="expense-amount" step="0.01" min="0" required>
+                </label>
+                <label>
+                    Kategori:
+                    <select id="expense-category" required>
+                        <option value="">Seçiniz</option>
+                        <option value="elektrik">⚡ Elektrik</option>
+                        <option value="toptanci">🍺 Toptancı (Bira)</option>
+                        <option value="bilardo">🎱 Bilardo Giderleri</option>
+                        <option value="playstation">🎮 PlayStation Giderleri</option>
+                        <option value="tamir">🔧 Tamir Tadilat</option>
+                        <option value="eleman">👤 Eleman Parası</option>
+                        <option value="kira">🏠 Kira</option>
+                        <option value="su">💧 Su</option>
+                        <option value="internet">🌐 İnternet</option>
+                        <option value="diger">📋 Diğer</option>
+                    </select>
+                </label>
+                <label>
+                    Tarih:
+                    <input type="date" id="expense-date" required>
+                </label>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" id="cancel-expense-btn">İptal</button>
+                    <button type="submit" class="btn btn-primary">Kaydet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- App Dialog (replaces browser alert/confirm) -->
     <div id="app-dialog" class="modal app-dialog-modal" aria-hidden="true">
         <div class="modal-content app-dialog-content" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title">
