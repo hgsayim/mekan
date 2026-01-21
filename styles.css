@@ -3812,7 +3812,8 @@ form select:focus {
         color: rgba(44, 62, 80, 0.95) !important;
         font-size: 0.68rem !important;
         line-height: 1.25 !important;
-        margin-bottom: 7px !important;
+        margin-bottom: 0px !important;
+        padding-bottom: 2px !important;
     }
     .product-mini-stock {
         font-size: 0.60rem !important;
