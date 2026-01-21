@@ -664,13 +664,7 @@ class MekanApp {
             });
         }
 
-        // Add expense button
-        const addExpenseBtn = document.getElementById('add-expense-btn');
-        if (addExpenseBtn) {
-            addExpenseBtn.addEventListener('click', () => {
-                this.openExpenseFormModal();
-            });
-        }
+        // Add expense button - now handled by add-card in loadExpenses()
 
         // Cancel expense button
         const cancelExpenseBtn = document.getElementById('cancel-expense-btn');
@@ -973,6 +967,7 @@ class MekanApp {
             tables: 'Masalar',
             products: 'Ürünler',
             customers: 'Müşteriler',
+            expenses: 'Giderler',
             sales: 'Satış Geçmişi',
             daily: 'Rapor'
         };
@@ -4089,11 +4084,16 @@ class MekanApp {
         });
         
         if (expenses.length === 0) {
-            container.innerHTML = '<div class="empty-state"><p>Henüz gider kaydı yok</p></div>';
+            container.innerHTML = this.createAddExpenseCard();
+            const addCard = document.getElementById('add-expense-card');
+            if (addCard) addCard.onclick = () => this.openExpenseFormModal();
             return;
         }
         
-        container.innerHTML = expenses.map(expense => this.createExpenseCard(expense)).join('');
+        container.innerHTML = this.createAddExpenseCard() + expenses.map(expense => this.createExpenseCard(expense)).join('');
+        
+        const addCard = document.getElementById('add-expense-card');
+        if (addCard) addCard.onclick = () => this.openExpenseFormModal();
         
         // Use event delegation for edit/delete buttons (rebind each time to get fresh expenses array)
         container.removeEventListener('click', this._expensesClickHandler);
@@ -4175,6 +4175,20 @@ class MekanApp {
                 <div class="expense-actions">
                     <button class="btn btn-icon" id="edit-expense-${expense.id}" title="Düzenle">✏️</button>
                     <button class="btn btn-icon btn-danger" id="delete-expense-${expense.id}" title="Sil">🗑️</button>
+                </div>
+            </div>
+        `;
+    }
+
+    createAddExpenseCard() {
+        return `
+            <div class="expense-card add-card" id="add-expense-card" title="Gider Ekle">
+                <div class="expense-icon add-card-icon">＋</div>
+                <div class="expense-content">
+                    <h3>Gider Ekle</h3>
+                    <div class="expense-details">
+                        <span class="expense-category add-card-sub">Yeni gider kaydı</span>
+                    </div>
                 </div>
             </div>
         `;
@@ -4505,13 +4519,20 @@ class MekanApp {
                 return;
             }
 
-            container.innerHTML = customers.map(customer => this.createCustomerCard(customer)).join('') + this.createAddCustomerCard();
+            // Sort customers by balance (debt) in descending order - highest debt first
+            const sortedCustomers = customers.sort((a, b) => {
+                const balanceA = a.balance || 0;
+                const balanceB = b.balance || 0;
+                return balanceB - balanceA; // Descending order
+            });
+
+            container.innerHTML = sortedCustomers.map(customer => this.createCustomerCard(customer)).join('') + this.createAddCustomerCard();
 
             const addCard = document.getElementById('add-customer-card');
             if (addCard) addCard.onclick = () => this.openCustomerFormModal();
             
             // Add event listeners
-            customers.forEach(customer => {
+            sortedCustomers.forEach(customer => {
                 const editBtn = document.getElementById(`edit-customer-${customer.id}`);
                 const deleteBtn = document.getElementById(`delete-customer-${customer.id}`);
                 const payBtn = document.getElementById(`pay-customer-${customer.id}`);
