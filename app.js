@@ -4064,36 +4064,38 @@ class MekanApp {
         
         container.innerHTML = expenses.map(expense => this.createExpenseCard(expense)).join('');
         
-        // Use event delegation for edit/delete buttons
-        if (!this._expensesDelegationBound) {
-            this._expensesDelegationBound = true;
-            container.addEventListener('click', (e) => {
-                const target = e.target.closest('[id^="edit-expense-"], [id^="delete-expense-"]');
-                if (!target) return;
-                
-                const extractId = (prefix) => {
-                    if (!target.id.startsWith(prefix)) return null;
-                    const idPart = target.id.slice(prefix.length);
-                    return idPart || null;
-                };
-                
-                const editPrefix = 'edit-expense-';
-                const deletePrefix = 'delete-expense-';
-                
-                if (target.id.startsWith(editPrefix)) {
-                    const id = extractId(editPrefix);
-                    if (!id) return;
-                    const expense = expenses.find(e => String(e.id) === String(id));
+        // Use event delegation for edit/delete buttons (rebind each time to get fresh expenses array)
+        container.removeEventListener('click', this._expensesClickHandler);
+        this._expensesClickHandler = (e) => {
+            const target = e.target.closest('[id^="edit-expense-"], [id^="delete-expense-"]');
+            if (!target) return;
+            
+            const extractId = (prefix) => {
+                if (!target.id.startsWith(prefix)) return null;
+                const idPart = target.id.slice(prefix.length);
+                return idPart || null;
+            };
+            
+            const editPrefix = 'edit-expense-';
+            const deletePrefix = 'delete-expense-';
+            
+            if (target.id.startsWith(editPrefix)) {
+                const id = extractId(editPrefix);
+                if (!id) return;
+                // Get fresh expenses list
+                this.db.getAllExpenses().then(allExpenses => {
+                    const expense = allExpenses.find(e => String(e.id) === String(id));
                     if (expense) {
                         this.openExpenseFormModal(expense);
                     }
-                } else if (target.id.startsWith(deletePrefix)) {
-                    const id = extractId(deletePrefix);
-                    if (!id) return;
-                    this.deleteExpense(id);
-                }
-            });
-        }
+                }).catch(err => console.error('Error loading expense:', err));
+            } else if (target.id.startsWith(deletePrefix)) {
+                const id = extractId(deletePrefix);
+                if (!id) return;
+                this.deleteExpense(id);
+            }
+        };
+        container.addEventListener('click', this._expensesClickHandler);
     }
 
     createExpenseCard(expense) {
@@ -4213,7 +4215,14 @@ class MekanApp {
         if (!(await this.appConfirm('Bu gideri silmek istediğinize emin misiniz?', { title: 'Silme Onayı', confirmText: 'Sil', cancelText: 'İptal', confirmVariant: 'danger' }))) return;
         
         try {
-            await this.db.deleteExpense(id);
+            // Ensure id is a number
+            const expenseId = typeof id === 'string' ? parseInt(id, 10) : id;
+            if (isNaN(expenseId)) {
+                await this.appAlert('Geçersiz gider ID\'si.', 'Hata');
+                return;
+            }
+            
+            await this.db.deleteExpense(expenseId);
             await this.loadExpenses();
             if (this.currentView === 'daily') {
                 await this.loadDailyDashboard();

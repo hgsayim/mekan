@@ -505,14 +505,20 @@ export class HybridDatabase {
     }
   }
   async deleteExpense(id) {
+    // Ensure id is a number
+    const expenseId = typeof id === 'string' ? parseInt(id, 10) : id;
+    if (isNaN(expenseId)) {
+      throw new Error('Invalid expense ID');
+    }
+    
     try {
-      await this.remote.deleteExpense(id);
-      try { await this.local.deleteExpense(id); } catch (_) {}
+      await this.remote.deleteExpense(expenseId);
+      try { await this.local.deleteExpense(expenseId); } catch (_) {}
     } catch (error) {
       console.error('deleteExpense remote error:', error);
       // If remote fails, still try to delete locally for offline support
       try {
-        await this.local.deleteExpense(id);
+        await this.local.deleteExpense(expenseId);
       } catch (localError) {
         console.error('deleteExpense local error:', localError);
         throw error; // Throw original remote error
