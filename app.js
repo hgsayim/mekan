@@ -4574,10 +4574,9 @@ class MekanApp {
     createAddCustomerCard() {
         return `
             <div class="customer-card add-card" id="add-customer-card" title="Müşteri Ekle">
-                <div class="customer-card-icon add-card-icon">＋</div>
                 <div class="customer-card-content">
                     <h3>Müşteri Ekle</h3>
-                    <div class="customer-card-balance balance-positive add-card-sub">Yeni müşteri</div>
+                    <div class="customer-card-balance add-card-sub">Yeni müşteri</div>
                 </div>
             </div>
         `;
@@ -4585,15 +4584,13 @@ class MekanApp {
 
     createCustomerCard(customer) {
         const balance = customer.balance || 0;
-        const balanceClass = balance > 0 ? 'balance-negative' : 'balance-positive';
         const balanceText = balance > 0 ? `${Math.round(balance)} ₺` : '0 ₺';
 
         return `
             <div class="customer-card" id="customer-${customer.id}">
-                <div class="customer-card-icon">👤</div>
                 <div class="customer-card-content">
                     <h3>${customer.name}</h3>
-                    <div class="customer-card-balance ${balanceClass}">
+                    <div class="customer-card-balance">
                         ${balanceText}
                     </div>
                 </div>
