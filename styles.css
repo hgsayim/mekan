@@ -479,6 +479,43 @@ header h1 {
     border-color: rgba(231, 76, 60, 0.3) !important;
 }
 
+/* Modal titles and headings */
+[data-theme="dark"] .modal-content h2,
+[data-theme="dark"] h2 {
+    color: var(--dark-text-primary) !important;
+}
+
+/* Customer selection buttons */
+[data-theme="dark"] .customer-selection-btn {
+    background: var(--dark-surface) !important;
+    color: var(--dark-text-primary) !important;
+    border-color: var(--dark-border) !important;
+}
+
+[data-theme="dark"] .customer-selection-btn:hover {
+    background: var(--dark-surface-elevated) !important;
+}
+
+/* Product mini name in dark mode */
+[data-theme="dark"] .product-mini-name {
+    color: var(--dark-text-primary) !important;
+}
+
+/* Loading message */
+[data-theme="dark"] .loading-message {
+    color: var(--dark-text-primary) !important;
+}
+
+/* Report date label strong */
+[data-theme="dark"] .report-date-label strong {
+    color: var(--dark-text-primary) !important;
+}
+
+/* Table info item strong */
+[data-theme="dark"] .table-info-item strong {
+    color: var(--dark-text-primary) !important;
+}
+
 .view {
     display: none;
 }
@@ -2637,6 +2674,14 @@ body:has(#auth-modal.modal.active) header {
     top: 15px;
 }
 
+[data-theme="dark"] .close {
+    color: var(--dark-text-secondary) !important;
+}
+
+[data-theme="dark"] .close:hover {
+    color: var(--dark-text-primary) !important;
+}
+
 .close:hover {
     color: var(--danger-color);
 }
@@ -2646,11 +2691,26 @@ body:has(#auth-modal.modal.active) header {
     color: var(--primary-color);
 }
 
+[data-theme="dark"] .modal-content h2 {
+    color: var(--dark-text-primary) !important;
+}
+
 form label {
     display: block;
     margin: 15px 0 5px;
     font-weight: bold;
     color: var(--dark-text);
+}
+
+[data-theme="dark"] form label {
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] form label strong,
+[data-theme="dark"] p,
+[data-theme="dark"] p strong,
+[data-theme="dark"] strong {
+    color: var(--dark-text-primary) !important;
 }
 
 form input,
@@ -2685,6 +2745,13 @@ form select:focus {
     border-radius: 12px;
     flex: 1;
     min-width: 0;
+}
+
+/* Make "TAMAMINI" button fit better on mobile */
+#pay-full-amount-btn {
+    font-size: 1rem;
+    padding: 16px 16px;
+    white-space: nowrap;
 }
 
 #pay-full-amount-btn {
@@ -3427,6 +3494,11 @@ form select:focus {
     border: 2px solid #e9ecef;
 }
 
+[data-theme="dark"] .stock-control-label {
+    background: var(--dark-surface-elevated) !important;
+    border-color: var(--dark-border) !important;
+}
+
 .stock-checkbox-group {
     display: flex;
     align-items: center;
@@ -3450,6 +3522,10 @@ form select:focus {
     cursor: pointer;
 }
 
+[data-theme="dark"] .stock-checkbox-group span {
+    color: var(--dark-text-primary) !important;
+}
+
 .stock-input-group {
     display: flex;
     align-items: center;
@@ -3463,6 +3539,10 @@ form select:focus {
     font-weight: 600;
     color: var(--dark-text);
     min-width: 60px;
+}
+
+[data-theme="dark"] .stock-input-group span {
+    color: var(--dark-text-primary) !important;
 }
 
 .stock-input {
