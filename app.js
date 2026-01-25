@@ -3043,22 +3043,47 @@ class MekanApp {
                 // to ensure accurate calculation before table closure
             }
 
-            // Step 10: Verify closure was successful
-            const verifyTable = await this.db.getTable(tableId);
-            if (verifyTable && (verifyTable.isActive || verifyTable.openTime)) {
-                // Force close if verification fails
-                verifyTable.isActive = false;
-                verifyTable.openTime = null;
-                verifyTable.closeTime = verifyTable.closeTime || closeTimeISO;
-                verifyTable.salesTotal = 0;
-                verifyTable.checkTotal = 0;
-                if (verifyTable.type === 'hourly') {
-                    verifyTable.hourlyTotal = 0;
+            // Step 10: Multiple verification passes to ensure table stays closed
+            // This prevents race conditions where realtime updates reopen the table
+            for (let verifyAttempt = 0; verifyAttempt < 3; verifyAttempt++) {
+                await new Promise(resolve => setTimeout(resolve, 200)); // Wait between attempts
+                
+                const verifyTable = await this.db.getTable(tableId);
+                if (verifyTable && (verifyTable.isActive || (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime))) {
+                    // Force close if verification fails
+                    console.log(`Verification attempt ${verifyAttempt + 1}: Table ${tableId} was reopened, forcing close again`);
+                    verifyTable.isActive = false;
+                    verifyTable.openTime = null;
+                    verifyTable.closeTime = verifyTable.closeTime || closeTimeISO;
+                    verifyTable.salesTotal = 0;
+                    verifyTable.checkTotal = 0;
+                    if (verifyTable.type === 'hourly') {
+                        verifyTable.hourlyTotal = 0;
+                    }
+                    await this.db.updateTable(verifyTable);
+                } else {
+                    // Table is properly closed, break verification loop
+                    break;
                 }
-                await this.db.updateTable(verifyTable);
             }
 
-            // Step 11: Verify no unpaid sales remain
+            // Step 11: Final verification - ensure table is closed
+            const finalVerifyTable = await this.db.getTable(tableId);
+            if (finalVerifyTable && (finalVerifyTable.isActive || (finalVerifyTable.type === 'hourly' && finalVerifyTable.openTime && !finalVerifyTable.closeTime))) {
+                // Last attempt: force close
+                console.log(`Final verification: Table ${tableId} still open, forcing close`);
+                finalVerifyTable.isActive = false;
+                finalVerifyTable.openTime = null;
+                finalVerifyTable.closeTime = finalVerifyTable.closeTime || closeTimeISO;
+                finalVerifyTable.salesTotal = 0;
+                finalVerifyTable.checkTotal = 0;
+                if (finalVerifyTable.type === 'hourly') {
+                    finalVerifyTable.hourlyTotal = 0;
+                }
+                await this.db.updateTable(finalVerifyTable);
+            }
+
+            // Step 12: Verify no unpaid sales remain
             const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
             if (remainingUnpaidSales.length > 0) {
                 console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after closure`);
@@ -3074,7 +3099,9 @@ class MekanApp {
                 }
             }
 
-            return { success: true, table: verifyTable || updatedTable };
+            // Step 13: Return final verified table state
+            const finalTableState = await this.db.getTable(tableId);
+            return { success: true, table: finalTableState || updatedTable };
         } catch (error) {
             console.error('Error closing table:', error);
             // Rollback: try to reopen table
@@ -3571,21 +3598,28 @@ class MekanApp {
                                 // Table was closed - if realtime update tries to reopen it, force it closed again
                                 if (payload?.new?.isActive || (payload?.new?.openTime && !payload?.new?.closeTime)) {
                                     console.log(`Realtime: Preventing closed table ${changedTableId} from being reopened`);
-                                    // Force close again using centralized function
-                                    const forceResult = await this._closeTableSafely(changedTableId, {
-                                        paymentTime: updatedTable.closeTime,
-                                        isCancel: false
-                                    });
-                                    if (forceResult.success && forceResult.table) {
-                                        this.setTableCardState(changedTableId, {
-                                            isActive: false,
-                                            type: forceResult.table.type,
-                                            openTime: null,
-                                            hourlyRate: forceResult.table.hourlyRate || 0,
-                                            salesTotal: 0,
-                                            checkTotal: 0
-                                        });
+                                    // Force close again - don't use _closeTableSafely to avoid recursion
+                                    const forceClosed = {
+                                        ...updatedTable,
+                                        isActive: false,
+                                        openTime: null,
+                                        closeTime: updatedTable.closeTime || new Date().toISOString(),
+                                        salesTotal: 0,
+                                        checkTotal: 0
+                                    };
+                                    if (forceClosed.type === 'hourly') {
+                                        forceClosed.hourlyTotal = 0;
                                     }
+                                    await this.db.updateTable(forceClosed);
+                                    // Update UI to show closed state
+                                    this.setTableCardState(changedTableId, {
+                                        isActive: false,
+                                        type: forceClosed.type,
+                                        openTime: null,
+                                        hourlyRate: forceClosed.hourlyRate || 0,
+                                        salesTotal: 0,
+                                        checkTotal: 0
+                                    });
                                     return; // Don't proceed with cleanup or refresh
                                 }
                                 
@@ -4349,20 +4383,38 @@ class MekanApp {
                 throw new Error(result.error || 'Masa kapatılamadı');
             }
 
+            // CRITICAL: Additional verification after closure
+            // Re-read table and force close if it was reopened by realtime updates
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const postClosureCheck = await this.db.getTable(tableId);
+            if (postClosureCheck && (postClosureCheck.isActive || (postClosureCheck.type === 'hourly' && postClosureCheck.openTime && !postClosureCheck.closeTime))) {
+                console.log(`Post-closure check: Table ${tableId} was reopened, forcing close again`);
+                postClosureCheck.isActive = false;
+                postClosureCheck.openTime = null;
+                postClosureCheck.closeTime = postClosureCheck.closeTime || new Date().toISOString();
+                postClosureCheck.salesTotal = 0;
+                postClosureCheck.checkTotal = 0;
+                if (postClosureCheck.type === 'hourly') {
+                    postClosureCheck.hourlyTotal = 0;
+                }
+                await this.db.updateTable(postClosureCheck);
+            }
+
             // Update UI with final state
-            if (result.table) {
+            const finalTableForUI = await this.db.getTable(tableId);
+            if (finalTableForUI) {
                 this.setTableCardState(tableId, {
                     isActive: false,
-                    type: result.table.type,
-                    openTime: result.table.type === 'hourly' ? null : result.table.openTime,
-                    hourlyRate: result.table.hourlyRate || 0,
+                    type: finalTableForUI.type,
+                    openTime: finalTableForUI.type === 'hourly' ? null : finalTableForUI.openTime,
+                    hourlyRate: finalTableForUI.hourlyRate || 0,
                     salesTotal: 0,
                     checkTotal: 0
                 });
             }
 
-            // Wait for DB operations to complete
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // Wait for DB operations to complete and realtime updates to propagate
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Hide loading overlay
             this.hideLoadingOverlay();
