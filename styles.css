@@ -581,6 +581,15 @@ header h1 {
     animation: spin 0.8s linear infinite;
 }
 
+.table-card-opening {
+    cursor: not-allowed !important;
+    user-select: none;
+}
+
+.table-card-opening .table-price {
+    color: var(--primary-color) !important;
+}
+
 .table-settle-overlay {
     position: absolute;
     left: 10px;

@@ -1255,7 +1255,14 @@ class MekanApp {
                         tapCount = 0;
                         
                         this.currentTableId = table.id;
-                        await this.openTable();
+                        // Show loading state before opening
+                        this.setTableCardOpening(table.id, true);
+                        try {
+                            await this.openTable();
+                        } finally {
+                            // Hide loading state after opening completes
+                            this.setTableCardOpening(table.id, false);
+                        }
                     }
                 });
             } else {
@@ -1453,6 +1460,41 @@ class MekanApp {
         }
     }
 
+    setTableCardOpening(tableId, isOpening) {
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+        
+        if (isOpening) {
+            // Disable card interactions
+            card.style.pointerEvents = 'none';
+            card.style.opacity = '0.7';
+            card.classList.add('table-card-opening');
+            
+            // Show "Süre başlatılıyor..." message
+            const priceEl = card.querySelector('.table-price');
+            if (priceEl) {
+                priceEl.dataset.originalText = priceEl.textContent;
+                priceEl.textContent = 'Süre başlatılıyor...';
+                priceEl.style.fontSize = '0.85rem';
+                priceEl.style.fontWeight = '600';
+            }
+        } else {
+            // Re-enable card interactions
+            card.style.pointerEvents = '';
+            card.style.opacity = '';
+            card.classList.remove('table-card-opening');
+            
+            // Restore original price text
+            const priceEl = card.querySelector('.table-price');
+            if (priceEl && priceEl.dataset.originalText) {
+                priceEl.textContent = priceEl.dataset.originalText;
+                priceEl.style.fontSize = '';
+                priceEl.style.fontWeight = '';
+                delete priceEl.dataset.originalText;
+            }
+        }
+    }
+
     setTableCardState(tableId, { isActive, type = null, openTime = null, hourlyRate = 0, salesTotal = 0, checkTotal = 0 } = {}) {
         const card = this.getTableCardEl(tableId);
         if (!card) return;
@@ -1483,6 +1525,11 @@ class MekanApp {
         // Price display
         const priceEl = card.querySelector('.table-price');
         if (!priceEl) return;
+
+        // If table is in opening state, don't update price (keep "Süre başlatılıyor..." message)
+        if (card.classList.contains('table-card-opening') && priceEl.dataset.originalText) {
+            return;
+        }
 
         // CRITICAL: If table is closed (not active), always show 0 total
         // This ensures cancelled/closed tables show 0 immediately on all devices
@@ -3625,9 +3672,12 @@ class MekanApp {
                 const fresh = await this.db.getTable(targetTableId);
                 if (fresh) this.setTableCardState(fresh.id, fresh);
             } catch (e) {
-                // ignore
+                // Ignore revert errors
             }
             await this.appAlert('Masayı açarken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+        } finally {
+            // Always clear opening state when done
+            this.setTableCardOpening(targetTableId, false);
         }
     }
 
