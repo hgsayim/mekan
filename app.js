@@ -5530,28 +5530,55 @@ class MekanApp {
         // Build content HTML
         let contentHTML = '';
         
-        // Add manual sessions section
+        // Add manual sessions section (grouped by date like receipts)
         if (customerSessions.length > 0) {
-            contentHTML += '<div style="margin-bottom: 20px;"><h3 style="margin-bottom: 10px; color: var(--primary-color);">Oyun Saatleri</h3>';
+            const sessionsByDate = new Map();
             customerSessions.forEach(session => {
-                const hours = (typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed)) || 0;
-                const amount = session.hourlyRate ? (hours * session.hourlyRate) : (session.amount || 0);
                 const date = session.closeTime ? new Date(session.closeTime) : (session.createdAt ? new Date(session.createdAt) : new Date());
-                const dateStr = date.toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
-                contentHTML += `
-                    <div style="padding: 10px; margin-bottom: 8px; background: #f8f9fa; border-radius: 8px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong>${session.tableName || 'Masa'}</strong>
-                                <div style="font-size: 0.9rem; color: #7f8c8d;">${dateStr}</div>
-                            </div>
-                            <div style="text-align: right;">
-                                <div><strong>${Math.round(hours * 10) / 10} saat</strong></div>
-                                <div style="color: var(--success-color); font-weight: 700;">${Math.round(amount)} ₺</div>
+                const dateKey = date.toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+                if (!sessionsByDate.has(dateKey)) {
+                    sessionsByDate.set(dateKey, []);
+                }
+                sessionsByDate.get(dateKey).push(session);
+            });
+            
+            const sortedSessionDates = Array.from(sessionsByDate.keys()).sort((a, b) => {
+                const dateA = new Date(a.split('.').reverse().join('-'));
+                const dateB = new Date(b.split('.').reverse().join('-'));
+                return dateB - dateA;
+            });
+            
+            contentHTML += '<div style="margin-bottom: 20px;"><h3 style="margin-bottom: 10px; color: var(--primary-color);">Oyun Saatleri</h3>';
+            sortedSessionDates.forEach(dateKey => {
+                const dateSessions = sessionsByDate.get(dateKey);
+                contentHTML += `<div style="margin-bottom: 15px;"><h4 style="margin-bottom: 8px; color: var(--secondary-color); font-size: 0.95rem;">${dateKey}</h4>`;
+                
+                dateSessions.forEach(session => {
+                    const hours = (typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed)) || 0;
+                    const amount = session.hourlyRate ? (hours * session.hourlyRate) : (session.amount || 0);
+                    const date = session.closeTime ? new Date(session.closeTime) : (session.createdAt ? new Date(session.createdAt) : new Date());
+                    const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                    const sessionBg = isDark ? 'var(--dark-surface-elevated)' : '#f8f9fa';
+                    const sessionText = isDark ? 'var(--dark-text-primary)' : 'inherit';
+                    const sessionTextSecondary = isDark ? 'var(--dark-text-secondary)' : '#7f8c8d';
+                    
+                    contentHTML += `
+                        <div style="padding: 10px; margin-bottom: 8px; background: ${sessionBg}; border-radius: 8px; color: ${sessionText};">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong style="color: ${sessionText};">${session.tableName || 'Masa'}</strong>
+                                    <div style="font-size: 0.9rem; color: ${sessionTextSecondary};">${timeStr}</div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div><strong style="color: ${sessionText};">${this.formatHoursToReadable(hours)}</strong></div>
+                                    <div style="color: var(--success-color); font-weight: 700;">${Math.round(amount)} ₺</div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                `;
+                    `;
+                });
+                contentHTML += '</div>';
             });
             contentHTML += '</div>';
         }
@@ -5635,24 +5662,62 @@ class MekanApp {
                             </div>
                     `;
                     
-                    // Show hourly sessions if exists
-                    if (hourlyTotal > 0) {
-                        const hoursText = hourlySessionsInfo.map(s => `${Math.round(s.hours * 10) / 10} saat`).join(', ');
-                        contentHTML += `
-                            <div style="margin-bottom: 10px; padding: 8px; background: #e8f8f5; border-radius: 6px;">
-                                <strong>Oyun:</strong> ${Math.round(hourlyTotal)} ₺
-                                ${hoursText ? `(${hoursText})` : ''}
-                            </div>
-                        `;
+                    // Group products by name (like receipt format)
+                    const productGroups = {};
+                    if (sale.items && sale.items.length > 0) {
+                        sale.items.forEach(item => {
+                            if (!productGroups[item.name]) {
+                                productGroups[item.name] = {
+                                    name: item.name,
+                                    amount: 0,
+                                    price: item.price,
+                                    total: 0
+                                };
+                            }
+                            productGroups[item.name].amount += item.amount;
+                            productGroups[item.name].total += item.price * item.amount;
+                        });
                     }
                     
-                    // Show products
-                    if (sale.items && sale.items.length > 0) {
-                        contentHTML += `<div style="margin-top: 10px;"><strong style="color: ${receiptText};">Ürünler:</strong><ul style="margin: 8px 0; padding-left: 20px; color: ${receiptText};">`;
-                        sale.items.forEach(item => {
-                            contentHTML += `<li style="margin: 4px 0;">${item.name} x${item.amount} = ${Math.round(item.price * item.amount)} ₺</li>`;
+                    // Build receipt-style items list
+                    const receiptItems = [];
+                    
+                    // Add hourly session if exists
+                    if (hourlyTotal > 0) {
+                        const totalHours = hourlySessionsInfo.reduce((sum, s) => sum + s.hours, 0);
+                        receiptItems.push({
+                            name: `Süre: ${this.formatHoursToReadable(totalHours)}`,
+                            amount: 1,
+                            total: hourlyTotal
                         });
-                        contentHTML += '</ul></div>';
+                    }
+                    
+                    // Add products
+                    Object.values(productGroups).forEach(group => {
+                        receiptItems.push({
+                            name: group.name,
+                            amount: group.amount,
+                            total: group.total
+                        });
+                    });
+                    
+                    // Display receipt-style items
+                    if (receiptItems.length > 0) {
+                        contentHTML += '<div style="margin-top: 10px;">';
+                        receiptItems.forEach(item => {
+                            const itemBg = isDark ? 'var(--dark-surface-elevated)' : '#f8f9fa';
+                            contentHTML += `
+                                <div class="receipt-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 8px; margin-bottom: 6px; border-radius: 6px; background: ${itemBg};">
+                                    <div class="receipt-item-name" style="flex: 1; font-size: 0.95rem; font-weight: 600; color: ${receiptText};">
+                                        ${item.amount > 1 ? `${item.amount}x ` : ''}${item.name}
+                                    </div>
+                                    <div class="receipt-item-price" style="font-weight: 700; font-size: 0.95rem; min-width: 90px; text-align: right; color: var(--secondary-color);">
+                                        ${Math.round(item.total)} ₺
+                                    </div>
+                                </div>
+                            `;
+                        });
+                        contentHTML += '</div>';
                     }
                     
                     contentHTML += '</div>';
@@ -5666,15 +5731,50 @@ class MekanApp {
         }
         
         contentEl.innerHTML = contentHTML;
-        modal.classList.add('active');
         
-        // Close button
+        // Setup action buttons
+        const payBtn = document.getElementById('customer-detail-pay-btn');
+        const editBtn = document.getElementById('customer-detail-edit-btn');
+        const deleteBtn = document.getElementById('customer-detail-delete-btn');
         const closeBtn = modal.querySelector('.close');
+        
+        // Show/hide pay button based on balance
+        if (payBtn) {
+            if (balance > 0) {
+                payBtn.style.display = 'inline-flex';
+                payBtn.onclick = () => {
+                    modal.classList.remove('active');
+                    this.openCustomerPaymentModal(customer);
+                };
+            } else {
+                payBtn.style.display = 'none';
+            }
+        }
+        
+        if (editBtn) {
+            editBtn.onclick = () => {
+                modal.classList.remove('active');
+                this.openCustomerFormModal(customer);
+            };
+        }
+        
+        if (deleteBtn) {
+            deleteBtn.onclick = async () => {
+                const confirmed = await this.appDialog('Bu müşteriyi silmek istediğinizden emin misiniz?', 'Müşteri Sil', ['İptal', 'Sil']);
+                if (confirmed === 'Sil') {
+                    modal.classList.remove('active');
+                    await this.deleteCustomer(customer.id);
+                }
+            };
+        }
+        
         if (closeBtn) {
             closeBtn.onclick = () => {
                 modal.classList.remove('active');
             };
         }
+        
+        modal.classList.add('active');
     }
 
     // Sales History
