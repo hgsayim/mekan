@@ -1601,17 +1601,24 @@ class MekanApp {
             const table = await this.db.getTable(tableId);
             if (!table) return;
             
-            // CRITICAL: If table was cancelled or closed (has closeTime, no openTime, not active), keep it closed
+            // CRITICAL: If table was cancelled or closed (has closeTime, not active), keep it closed
             // This prevents cancelled/closed tables from being reopened by realtime updates
             // Also check if table is currently being settled (prevent race conditions)
             const isSettling = this._isTableSettling(tableId);
-            if (table.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive) {
+            
+            // For hourly tables: closeTime + no openTime + not active = closed
+            // For regular tables: closeTime or not active = closed
+            const isTableClosed = table.type === 'hourly' 
+                ? (table.closeTime && !table.openTime && !table.isActive)
+                : (table.closeTime || !table.isActive);
+            
+            if (isTableClosed) {
                 // Table was cancelled/closed - keep it closed, show 0 total
                 // Don't allow realtime updates to reopen it
                 this.setTableCardState(tableId, {
                     isActive: false,
-                    type: 'hourly',
-                    openTime: null,
+                    type: table.type,
+                    openTime: table.type === 'hourly' ? null : table.openTime,
                     hourlyRate: table.hourlyRate || 0,
                     salesTotal: 0,
                     checkTotal: 0
@@ -1620,21 +1627,18 @@ class MekanApp {
             }
             
             // CRITICAL: If table is being settled, don't update it (prevent race conditions)
-            if (isSettling && table.type === 'hourly') {
+            if (isSettling) {
                 console.log(`Table ${tableId} is being settled, skipping refresh to prevent race condition`);
                 return;
             }
             
             const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
             
-            // For hourly tables: if closeTime exists and openTime is null, table is closed
-            // BUT: if table is actively opening (isActive: true, openTime exists), ignore closeTime
-            // This prevents flicker when table is opened on another device
-            const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive;
+            // Calculate isActive state (we already checked isClosed above, so table is open here)
             const isActive =
                 table.type === 'instant' ||
                 (table.type === 'hourly'
-                    ? Boolean(table.isActive && table.openTime && !isClosed)
+                    ? Boolean(table.isActive && table.openTime)
                     : (Boolean(table.isActive) || unpaidSales.length > 0));
 
             // CRITICAL: If table is closed, always show 0 total (regardless of unpaid sales)
@@ -2171,27 +2175,15 @@ class MekanApp {
         if (!this.currentTableId) return;
 
         const tableId = this.currentTableId;
-
-        // CRITICAL: Check if table is already being settled (prevents double-closing)
-        if (this._isTableSettling(tableId)) {
-            console.log(`Table ${tableId} is already being settled, skipping`);
+        const table = await this.db.getTable(tableId);
+        
+        if (!table || table.type !== 'hourly') {
+            await this.appAlert('Bu süreli masa değil.', 'Uyarı');
             return;
         }
 
-        // CRITICAL: Re-read table from DB to ensure we have the latest state
-        // This prevents race conditions when closing multiple tables quickly
-        const freshTable = await this.db.getTable(tableId);
-        if (!freshTable || freshTable.type !== 'hourly') return;
-
-        // Only meaningful if table is open
-        if (!freshTable.isActive || !freshTable.openTime) {
+        if (!table.isActive || !table.openTime) {
             await this.appAlert('Bu süreli masa açık değil.', 'Uyarı');
-            return;
-        }
-
-        // If table is already closed, skip
-        if (freshTable.closeTime) {
-            console.log(`Table ${tableId} already has closeTime, skipping`);
             return;
         }
 
@@ -2200,21 +2192,10 @@ class MekanApp {
         }
 
         try {
-            // Show loading overlay to block all UI interactions
+            // Show loading overlay
             this.showLoadingOverlay('İptal ediliyor...');
             
-            // Mark as settling IMMEDIATELY to prevent concurrent closures
-            this._markTableSettling(tableId);
-
-            // Make UI responsive immediately
-            const cancelBtn = document.getElementById('cancel-hourly-btn');
-            const prevCancelText = cancelBtn ? cancelBtn.textContent : null;
-            if (cancelBtn) {
-                cancelBtn.disabled = true;
-                cancelBtn.textContent = '...';
-            }
-
-            // Close modal ASAP so user sees result even if DB ops take time
+            // Close modal immediately
             this.closeTableModal();
             this.currentTableId = null;
 
@@ -2223,95 +2204,34 @@ class MekanApp {
                 isActive: false,
                 type: 'hourly',
                 openTime: null,
-                hourlyRate: freshTable.hourlyRate || 0,
+                hourlyRate: table.hourlyRate || 0,
                 salesTotal: 0,
                 checkTotal: 0
             });
 
-            // CRITICAL: Close table FIRST and write to DB immediately
-            // This prevents other devices from seeing the table as still open during sales deletion
-            const updatedTable = {
-                ...freshTable,
-                isActive: false,
-                openTime: null,
-                closeTime: new Date().toISOString(), // Mark as closed
-                hourlyTotal: 0,
-                salesTotal: 0,
-                checkTotal: 0
-            };
-            await this.db.updateTable(updatedTable);
+            // Use centralized closure function
+            const result = await this._closeTableSafely(tableId, {
+                isCancel: true
+            });
 
-            // THEN delete unpaid sales (after table is already closed in DB)
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            let salesDeleteFailed = false;
-            try {
-                for (const sale of unpaidSales) {
-                    if (sale?.items?.length) {
-                        for (const item of sale.items) {
-                            if (!item || item.isCancelled) continue;
-                            const product = await this.db.getProduct(item.productId);
-                            if (product && this.tracksStock(product)) {
-                                product.stock += item.amount;
-                                await this.db.updateProduct(product);
-                            }
-                        }
-                    }
-                    // Remove sale completely so it won't appear anywhere
-                    if (sale?.id) {
-                        await this.db.deleteSale(sale.id);
-                    }
-                }
-            } catch (deleteError) {
-                console.error('Error deleting sales:', deleteError);
-                salesDeleteFailed = true;
-                // Rollback: reopen table since sales deletion failed
-                updatedTable.isActive = true;
-                updatedTable.openTime = freshTable.openTime || new Date().toISOString();
-                updatedTable.closeTime = null;
-                await this.db.updateTable(updatedTable);
-                throw new Error('Sales silinirken hata oluştu. Masa tekrar açıldı.');
+            if (!result.success) {
+                throw new Error(result.error || 'Masa kapatılamadı');
             }
 
-            // CRITICAL: Verify all sales were deleted and recalculate table totals
-            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            if (remainingUnpaidSales.length > 0) {
-                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after cancel`);
-                // Force update table totals to reflect reality (should be 0)
-                const finalTable = await this.db.getTable(tableId);
-                if (finalTable) {
-                    finalTable.salesTotal = 0;
-                    finalTable.checkTotal = 0;
-                    finalTable.hourlyTotal = 0;
-                    await this.db.updateTable(finalTable);
-                }
-            }
-
-            // CRITICAL: Verify and force close (some devices can have timing quirks with IndexedDB writes)
-            // Also prevents realtime updates from reopening the table
-            const verify = await this.db.getTable(tableId);
-            if (verify) {
-                // Force close regardless of current state
-                verify.isActive = false;
-                verify.openTime = null;
-                verify.closeTime = verify.closeTime || new Date().toISOString();
-                verify.hourlyTotal = 0;
-                verify.salesTotal = 0;
-                verify.checkTotal = 0;
-                await this.db.updateTable(verify);
-                
-                // Update UI immediately to show closed state
+            // Update UI with final state
+            if (result.table) {
                 this.setTableCardState(tableId, {
                     isActive: false,
                     type: 'hourly',
                     openTime: null,
-                    hourlyRate: verify.hourlyRate || 0,
+                    hourlyRate: result.table.hourlyRate || 0,
                     salesTotal: 0,
                     checkTotal: 0
                 });
             }
 
-            // Wait longer to ensure DB operations complete and realtime updates propagate
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Wait for DB operations to complete
+            await new Promise(resolve => setTimeout(resolve, 1500));
             
             // Hide loading overlay
             this.hideLoadingOverlay();
@@ -2965,60 +2885,187 @@ class MekanApp {
     }
 
     /**
-     * Helper: Close hourly table and finalize session (used by processPayment and processCreditTable)
-     * @param {Object} table - Table object
-     * @param {Array} unpaidSales - Array of unpaid sales
-     * @param {string} paymentTime - ISO timestamp
-     * @param {boolean} isCredit - Whether this is a credit payment
-     * @param {string|null} customerId - Customer ID for credit payments
+     * CRITICAL: Central table closure function - ensures atomic, synchronized table closure
+     * This function handles all table closure operations (payment, credit, cancel) in a consistent way
+     * 
+     * @param {number} tableId - Table ID to close
+     * @param {Object} options - Closure options
+     * @param {string} options.paymentTime - ISO timestamp for payment/credit/cancel
+     * @param {boolean} options.isCredit - Whether this is a credit payment
+     * @param {string|null} options.customerId - Customer ID for credit payments
+     * @param {boolean} options.isCancel - Whether this is a cancellation (no payment)
+     * @returns {Promise<{success: boolean, error?: string, table?: Object}>}
      */
-    _closeHourlyTable(table, unpaidSales, paymentTime, isCredit = false, customerId = null) {
-        // CRITICAL: Double-check table state to prevent closing already-closed tables
-        if (table.type !== 'hourly' || !table.isActive || !table.openTime) {
-            console.log(`_closeHourlyTable: Table ${table.id} cannot be closed (type: ${table.type}, isActive: ${table.isActive}, openTime: ${table.openTime})`);
-            return;
-        }
+    async _closeTableSafely(tableId, options = {}) {
+        const { paymentTime, isCredit = false, customerId = null, isCancel = false } = options;
         
-        // Additional safety check: if closeTime already exists, table is already closed
-        if (table.closeTime) {
-            console.log(`_closeHourlyTable: Table ${table.id} already has closeTime, skipping`);
-            return;
+        // Step 1: Validate table state and prevent concurrent closures
+        if (this._isTableSettling(tableId)) {
+            console.log(`Table ${tableId} is already being settled, skipping`);
+            return { success: false, error: 'Table is already being settled' };
         }
 
-        const closeTimeISO = new Date().toISOString();
-        // Eğer hiç ürün yoksa süre fark etmeksizin ücretsiz kapat (dükkan sahibi kaybetti)
-        let finalHourlyTotal = 0;
-        if (unpaidSales.length === 0 && table.salesTotal === 0) {
-            // Hiç ürün olmadan kapanırsa 0 TL (süre fark etmez)
-            finalHourlyTotal = 0;
+        // Step 2: Re-read table from DB to ensure we have the latest state
+        let table = await this.db.getTable(tableId);
+        if (!table) {
+            return { success: false, error: 'Table not found' };
+        }
+
+        // Step 3: Validate table can be closed
+        if (table.type === 'hourly') {
+            if (!table.isActive || !table.openTime) {
+                return { success: false, error: 'Hourly table is not open' };
+            }
+            if (table.closeTime) {
+                return { success: false, error: 'Table is already closed' };
+            }
         } else {
-            // Normal hesaplama
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
-            finalHourlyTotal = hoursUsed * table.hourlyRate;
+            if (!table.isActive) {
+                return { success: false, error: 'Table is not active' };
+            }
         }
 
-        // Persist this session so reopening the table doesn't overwrite report history
-        table.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
-        const sessionHoursUsed = this.calculateHoursBetween(table.openTime, closeTimeISO);
-        const sessionHourlyTotal = finalHourlyTotal > 0 ? finalHourlyTotal : (sessionHoursUsed * table.hourlyRate);
-        
-        const session = {
-            openTime: table.openTime,
-            closeTime: closeTimeISO,
-            hoursUsed: sessionHoursUsed,
-            hourlyTotal: sessionHourlyTotal,
-            paymentTime,
-            isCredit
-        };
-        if (customerId) session.customerId = customerId;
-        
-        table.hourlySessions.push(session);
+        // Step 4: Mark as settling IMMEDIATELY to prevent race conditions
+        this._markTableSettling(tableId);
 
-        table.isActive = false;
-        table.closeTime = closeTimeISO;
-        table.openTime = null; // prevent "still open" state/flicker; history is in hourlySessions
-        // Reset totals: hourlyTotal is stored in hourlySessions, so we can reset it here
-        table.hourlyTotal = 0;
+        try {
+            // Step 5: Get unpaid sales BEFORE closing table
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+
+            // Step 6: Prepare table closure state
+            const closeTimeISO = paymentTime || new Date().toISOString();
+            const updatedTable = { ...table };
+
+            if (table.type === 'hourly') {
+                // Calculate hourly total
+                let finalHourlyTotal = 0;
+                if (!isCancel && (unpaidSales.length > 0 || table.salesTotal > 0)) {
+                    const hoursUsed = this.calculateHoursUsed(table.openTime);
+                    finalHourlyTotal = hoursUsed * table.hourlyRate;
+                }
+
+                // Persist session to hourlySessions
+                updatedTable.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
+                const sessionHoursUsed = this.calculateHoursBetween(table.openTime, closeTimeISO);
+                const sessionHourlyTotal = finalHourlyTotal > 0 ? finalHourlyTotal : (sessionHoursUsed * table.hourlyRate);
+                
+                const session = {
+                    openTime: table.openTime,
+                    closeTime: closeTimeISO,
+                    hoursUsed: sessionHoursUsed,
+                    hourlyTotal: sessionHourlyTotal,
+                    paymentTime: closeTimeISO,
+                    isCredit
+                };
+                if (customerId) session.customerId = customerId;
+                
+                updatedTable.hourlySessions.push(session);
+
+                // Close hourly table
+                updatedTable.isActive = false;
+                updatedTable.closeTime = closeTimeISO;
+                updatedTable.openTime = null;
+                updatedTable.hourlyTotal = 0;
+            } else {
+                // Close regular/instant table
+                updatedTable.isActive = false;
+            }
+
+            // Reset totals
+            updatedTable.salesTotal = 0;
+            updatedTable.checkTotal = 0;
+
+            // Step 7: Write table closure to DB FIRST (atomic operation)
+            // This ensures other devices see the table as closed immediately
+            await this.db.updateTable(updatedTable);
+
+            // Step 8: Wait a moment for DB write to propagate
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            // Step 9: Handle sales based on closure type
+            if (isCancel) {
+                // Cancel: Delete all unpaid sales and restore stock
+                for (const sale of unpaidSales) {
+                    if (sale?.items?.length) {
+                        for (const item of sale.items) {
+                            if (!item || item.isCancelled) continue;
+                            const product = await this.db.getProduct(item.productId);
+                            if (product && this.tracksStock(product)) {
+                                product.stock += item.amount;
+                                await this.db.updateProduct(product);
+                            }
+                        }
+                    }
+                    if (sale?.id) {
+                        await this.db.deleteSale(sale.id);
+                    }
+                }
+            } else {
+                // Payment/Credit: Mark sales as paid
+                for (const sale of unpaidSales) {
+                    sale.isPaid = true;
+                    sale.paymentTime = closeTimeISO;
+                    if (isCredit) {
+                        sale.isCredit = true;
+                        sale.customerId = customerId;
+                    }
+                    await this.db.updateSale(sale);
+                }
+
+                // Note: Customer balance update is handled by the caller (processCreditTable)
+                // to ensure accurate calculation before table closure
+            }
+
+            // Step 10: Verify closure was successful
+            const verifyTable = await this.db.getTable(tableId);
+            if (verifyTable && (verifyTable.isActive || verifyTable.openTime)) {
+                // Force close if verification fails
+                verifyTable.isActive = false;
+                verifyTable.openTime = null;
+                verifyTable.closeTime = verifyTable.closeTime || closeTimeISO;
+                verifyTable.salesTotal = 0;
+                verifyTable.checkTotal = 0;
+                if (verifyTable.type === 'hourly') {
+                    verifyTable.hourlyTotal = 0;
+                }
+                await this.db.updateTable(verifyTable);
+            }
+
+            // Step 11: Verify no unpaid sales remain
+            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            if (remainingUnpaidSales.length > 0) {
+                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after closure`);
+                // Force update table totals
+                const finalTable = await this.db.getTable(tableId);
+                if (finalTable) {
+                    finalTable.salesTotal = 0;
+                    finalTable.checkTotal = 0;
+                    if (finalTable.type === 'hourly') {
+                        finalTable.hourlyTotal = 0;
+                    }
+                    await this.db.updateTable(finalTable);
+                }
+            }
+
+            return { success: true, table: verifyTable || updatedTable };
+        } catch (error) {
+            console.error('Error closing table:', error);
+            // Rollback: try to reopen table
+            try {
+                const rollbackTable = await this.db.getTable(tableId);
+                if (rollbackTable) {
+                    rollbackTable.isActive = true;
+                    if (rollbackTable.type === 'hourly' && table.openTime) {
+                        rollbackTable.openTime = table.openTime;
+                        rollbackTable.closeTime = null;
+                    }
+                    await this.db.updateTable(rollbackTable);
+                }
+            } catch (rollbackError) {
+                console.error('Error rolling back table state:', rollbackError);
+            }
+            return { success: false, error: error.message || 'Unknown error' };
+        }
     }
 
     /**
@@ -3491,52 +3538,60 @@ class MekanApp {
                         const updatedTable = await this.db.getTable(changedTableId);
                         // Only clean up if table is truly closed (not active, no openTime, has closeTime)
                         // Don't clean if table is being opened (isActive: true, openTime exists)
-                        // CRITICAL: If table was cancelled/closed, prevent it from being reopened by realtime updates
-                        if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime && updatedTable.type === 'hourly') {
-                            // Table was cancelled - if realtime update tries to reopen it, force it closed again
-                            if (payload?.new?.isActive || payload?.new?.openTime) {
-                                console.log(`Realtime: Preventing cancelled table ${changedTableId} from being reopened`);
-                                // Force close again
-                                const forceClosed = {
-                                    ...updatedTable,
-                                    isActive: false,
-                                    openTime: null,
-                                    closeTime: updatedTable.closeTime || new Date().toISOString()
-                                };
-                                await this.db.updateTable(forceClosed);
-                                // Update UI to show closed state
-                                this.setTableCardState(changedTableId, {
-                                    isActive: false,
-                                    type: 'hourly',
-                                    openTime: null,
-                                    hourlyRate: forceClosed.hourlyRate || 0,
-                                    salesTotal: 0,
-                                    checkTotal: 0
-                                });
-                                return; // Don't proceed with cleanup or refresh
-                            }
-                            
-                            // Table was cancelled - check for unpaid sales and clean them up
-                            const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
-                            if (unpaidSales.length > 0) {
-                                console.log(`Realtime: Table ${changedTableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
-                                for (const sale of unpaidSales) {
-                                    if (sale?.items?.length) {
-                                        for (const item of sale.items) {
-                                            if (!item || item.isCancelled) continue;
-                                            const product = await this.db.getProduct(item.productId);
-                                            if (product && this.tracksStock(product)) {
-                                                product.stock += item.amount;
-                                                await this.db.updateProduct(product);
+                            // CRITICAL: If table was closed (payment/credit/cancel), ensure it stays closed
+                            // and clean up any remaining unpaid sales on this device
+                            if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime) {
+                                // Table was closed - if realtime update tries to reopen it, force it closed again
+                                if (payload?.new?.isActive || (payload?.new?.openTime && !payload?.new?.closeTime)) {
+                                    console.log(`Realtime: Preventing closed table ${changedTableId} from being reopened`);
+                                    // Force close again using centralized function
+                                    const forceResult = await this._closeTableSafely(changedTableId, {
+                                        paymentTime: updatedTable.closeTime,
+                                        isCancel: false
+                                    });
+                                    if (forceResult.success && forceResult.table) {
+                                        this.setTableCardState(changedTableId, {
+                                            isActive: false,
+                                            type: forceResult.table.type,
+                                            openTime: null,
+                                            hourlyRate: forceResult.table.hourlyRate || 0,
+                                            salesTotal: 0,
+                                            checkTotal: 0
+                                        });
+                                    }
+                                    return; // Don't proceed with cleanup or refresh
+                                }
+                                
+                                // Table was closed - clean up any remaining unpaid sales on this device
+                                const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
+                                if (unpaidSales.length > 0) {
+                                    console.log(`Realtime: Table ${changedTableId} was closed, cleaning up ${unpaidSales.length} unpaid sales on this device`);
+                                    for (const sale of unpaidSales) {
+                                        if (sale?.items?.length) {
+                                            for (const item of sale.items) {
+                                                if (!item || item.isCancelled) continue;
+                                                const product = await this.db.getProduct(item.productId);
+                                                if (product && this.tracksStock(product)) {
+                                                    product.stock += item.amount;
+                                                    await this.db.updateProduct(product);
+                                                }
                                             }
                                         }
+                                        if (sale?.id) {
+                                            await this.db.deleteSale(sale.id);
+                                        }
                                     }
-                                    if (sale?.id) {
-                                        await this.db.deleteSale(sale.id);
-                                    }
+                                    // Update UI to show closed state with 0 totals
+                                    this.setTableCardState(changedTableId, {
+                                        isActive: false,
+                                        type: updatedTable.type,
+                                        openTime: null,
+                                        hourlyRate: updatedTable.hourlyRate || 0,
+                                        salesTotal: 0,
+                                        checkTotal: 0
+                                    });
                                 }
                             }
-                        }
                     } catch (e) {
                         console.error('Error cleaning up sales in realtime handler:', e);
                     }
@@ -4226,118 +4281,66 @@ class MekanApp {
     async processPayment() {
         if (!this.currentTableId) return;
 
-        // CRITICAL: Check if table is already being settled (prevents double-closing)
-        if (this._isTableSettling(this.currentTableId)) {
-            console.log(`Table ${this.currentTableId} is already being settled, skipping`);
-            return;
-        }
-
-        const table = await this.db.getTable(this.currentTableId);
+        const tableId = this.currentTableId;
+        const table = await this.db.getTable(tableId);
         if (!table) return;
 
-        // CRITICAL: Re-read table from DB to ensure we have the latest state
-        // This prevents race conditions when closing multiple tables quickly
-        const freshTable = await this.db.getTable(this.currentTableId);
-        if (!freshTable) return;
-        
-        // If table is already closed, skip
-        if (freshTable.type === 'hourly' && (!freshTable.isActive || !freshTable.openTime || freshTable.closeTime)) {
-            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+        // Validate table can be closed
+        if (table.type === 'hourly' && (!table.isActive || !table.openTime || table.closeTime)) {
+            console.log(`Table ${tableId} is already closed, skipping`);
             return;
         }
-        if (freshTable.type !== 'hourly' && !freshTable.isActive) {
-            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+        if (table.type !== 'hourly' && !table.isActive) {
+            console.log(`Table ${tableId} is already closed, skipping`);
             return;
         }
-
-        const unpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
 
         try {
-            // Show loading overlay to block all UI interactions
+            // Show loading overlay
             this.showLoadingOverlay('Hesap alınıyor...');
             
-            // Mark as settling IMMEDIATELY to prevent concurrent closures
-            this._markTableSettling(this.currentTableId);
-            
-            // Optimistic UI: close modals + mark table visually as closed immediately
+            // Close modals immediately
             const receiptModal = document.getElementById('receipt-modal');
             if (receiptModal) receiptModal.classList.remove('active');
             this.closeTableModal();
 
-            // Predict final closed state (UI only)
-            const optimisticClosed = { ...freshTable, isActive: false, salesTotal: 0, checkTotal: 0 };
+            // Optimistic UI: mark table as closed immediately
+            const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
             if (optimisticClosed.type === 'hourly') {
-                // Keep closeTime/openTime snapshot in DB, but UI should show inactive
                 optimisticClosed.openTime = null;
             }
-            this.setTableCardState(optimisticClosed.id, optimisticClosed);
-            this.showTableSettlementEffect(optimisticClosed.id, 'Hesap Alındı');
+            this.setTableCardState(tableId, optimisticClosed);
+            this.showTableSettlementEffect(tableId, 'Hesap Alındı');
 
-            // CRITICAL: Close table FIRST and write to DB immediately
-            // This prevents other devices from seeing the table as still open during sales updates
-            const paymentTime = new Date().toISOString();
-            
-            // For hourly tables, close it and finalize hourly charges (Pay = Close for hourly tables)
-            // Use freshTable to ensure we're working with the latest state
-            this._closeHourlyTable(freshTable, unpaidSales, paymentTime, false);
+            // Use centralized closure function
+            const result = await this._closeTableSafely(tableId, {
+                paymentTime: new Date().toISOString(),
+                isCredit: false
+            });
 
-            // Regular/instant tables: payment should close the table (other devices must see it closed).
-            // (Hourly already handled above.)
-            if (freshTable.type !== 'hourly') {
-                freshTable.isActive = false;
+            if (!result.success) {
+                throw new Error(result.error || 'Masa kapatılamadı');
             }
 
-            // Reset totals (hourlyTotal already reset above for hourly tables)
-            freshTable.salesTotal = 0;
-            freshTable.checkTotal = 0;
-            
-            // Write table closure to DB FIRST - this ensures other devices see it as closed
-            await this.db.updateTable(freshTable);
-
-            // THEN update sales (after table is already closed in DB)
-            // Wrap in try-catch to ensure all sales are updated, or rollback table state
-            let salesUpdateFailed = false;
-            try {
-                for (const sale of unpaidSales) {
-                    sale.isPaid = true;
-                    sale.paymentTime = paymentTime; // Track when payment was made
-                    await this.db.updateSale(sale);
-                }
-            } catch (salesError) {
-                console.error('Error updating sales:', salesError);
-                salesUpdateFailed = true;
-                // Rollback: reopen table since sales update failed
-                freshTable.isActive = true;
-                if (freshTable.type === 'hourly') {
-                    freshTable.openTime = freshTable.openTime || new Date().toISOString();
-                    freshTable.closeTime = null;
-                }
-                await this.db.updateTable(freshTable);
-                throw new Error('Sales güncellenirken hata oluştu. Masa tekrar açıldı.');
+            // Update UI with final state
+            if (result.table) {
+                this.setTableCardState(tableId, {
+                    isActive: false,
+                    type: result.table.type,
+                    openTime: result.table.type === 'hourly' ? null : result.table.openTime,
+                    hourlyRate: result.table.hourlyRate || 0,
+                    salesTotal: 0,
+                    checkTotal: 0
+                });
             }
 
-            // CRITICAL: Verify all sales were updated and recalculate table totals
-            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
-            if (remainingUnpaidSales.length > 0) {
-                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after payment`);
-                // Force update table totals to reflect reality
-                const finalTable = await this.db.getTable(this.currentTableId);
-                if (finalTable) {
-                    finalTable.salesTotal = 0;
-                    finalTable.checkTotal = 0;
-                    if (finalTable.type === 'hourly') {
-                        finalTable.hourlyTotal = 0;
-                    }
-                    await this.db.updateTable(finalTable);
-                }
-            }
-            // Wait a bit to ensure DB operations complete
+            // Wait for DB operations to complete
             await new Promise(resolve => setTimeout(resolve, 1500));
             
             // Hide loading overlay
             this.hideLoadingOverlay();
             
-            // Background refresh instead of blocking the UI
+            // Background refresh
             setTimeout(() => {
                 const views = ['tables', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
@@ -4449,24 +4452,17 @@ class MekanApp {
     async processCreditTable(selectedCustomerId) {
         if (!this.currentTableId) return;
 
-        // CRITICAL: Check if table is already being settled (prevents double-closing)
-        if (this._isTableSettling(this.currentTableId)) {
-            console.log(`Table ${this.currentTableId} is already being settled, skipping`);
-            return;
-        }
+        const tableId = this.currentTableId;
+        const table = await this.db.getTable(tableId);
+        if (!table) return;
 
-        // CRITICAL: Re-read table from DB to ensure we have the latest state
-        // This prevents race conditions when closing multiple tables quickly
-        const freshTable = await this.db.getTable(this.currentTableId);
-        if (!freshTable) return;
-        
-        // If table is already closed, skip
-        if (freshTable.type === 'hourly' && (!freshTable.isActive || !freshTable.openTime || freshTable.closeTime)) {
-            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+        // Validate table can be closed
+        if (table.type === 'hourly' && (!table.isActive || !table.openTime || table.closeTime)) {
+            console.log(`Table ${tableId} is already closed, skipping`);
             return;
         }
-        if (freshTable.type !== 'hourly' && !freshTable.isActive) {
-            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+        if (table.type !== 'hourly' && !table.isActive) {
+            console.log(`Table ${tableId} is already closed, skipping`);
             return;
         }
 
@@ -4482,102 +4478,67 @@ class MekanApp {
             customerModal.classList.remove('active');
         }
 
-        const unpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
-        
-        // Calculate final check total (for hourly tables, include real-time calculation)
-        let finalCheckTotal = freshTable.checkTotal;
-        if (freshTable.type === 'hourly' && freshTable.isActive && freshTable.openTime) {
-            // Normal hesaplama - oyun ücreti her zaman hesaplanmalı
-            const hoursUsed = this.calculateHoursUsed(freshTable.openTime);
-            const hourlyTotal = hoursUsed * freshTable.hourlyRate;
-            finalCheckTotal = hourlyTotal + freshTable.salesTotal;
+        // Calculate final check total BEFORE closing (needed for customer balance)
+        const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+        let finalCheckTotal = 0;
+        if (table.type === 'hourly' && table.isActive && table.openTime) {
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hourlyTotal = hoursUsed * table.hourlyRate;
+            const salesTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            finalCheckTotal = hourlyTotal + salesTotal;
+        } else {
+            finalCheckTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
         }
         
-        // Allow credit if there's a check total (even if no unpaid sales - for hourly tables with only game charges)
+        // Allow credit if there's a check total
         if (finalCheckTotal === 0) {
             await this.appAlert('Bu masa için veresiye yazılacak tutar yok.', 'Uyarı');
             return;
         }
 
         try {
-            // Show loading overlay to block all UI interactions
+            // Show loading overlay
             this.showLoadingOverlay('Veresiye yazılıyor...');
             
-            // Mark as settling IMMEDIATELY to prevent concurrent closures
-            this._markTableSettling(this.currentTableId);
-            
-            // Optimistic UI: close table modal + mark card as closed immediately
+            // Close modal immediately
             this.closeTableModal();
-            const optimisticClosed = { ...freshTable, isActive: false, salesTotal: 0, checkTotal: 0 };
-            if (optimisticClosed.type === 'hourly') optimisticClosed.openTime = null;
-            this.setTableCardState(optimisticClosed.id, optimisticClosed);
-            this.showTableSettlementEffect(optimisticClosed.id, 'Veresiye');
-
-            // CRITICAL: Close table FIRST and write to DB immediately
-            // This prevents other devices from seeing the table as still open during sales updates
-            const creditTime = new Date().toISOString();
             
-            // For hourly tables, close it and finalize hourly charges
-            // Use freshTable to ensure we're working with the latest state
-            this._closeHourlyTable(freshTable, unpaidSales, creditTime, true, selectedCustomerId);
+            // Optimistic UI: mark table as closed immediately
+            const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
+            if (optimisticClosed.type === 'hourly') {
+                optimisticClosed.openTime = null;
+            }
+            this.setTableCardState(tableId, optimisticClosed);
+            this.showTableSettlementEffect(tableId, 'Veresiye');
 
-            // Regular/instant tables: credit should close the table (other devices must see it closed).
-            // (Hourly already handled above.)
-            if (freshTable.type !== 'hourly') {
-                freshTable.isActive = false;
+            // Use centralized closure function
+            const result = await this._closeTableSafely(tableId, {
+                paymentTime: new Date().toISOString(),
+                isCredit: true,
+                customerId: selectedCustomerId
+            });
+
+            if (!result.success) {
+                throw new Error(result.error || 'Masa kapatılamadı');
             }
 
-            // Reset totals (hourlyTotal already reset above for hourly tables)
-            freshTable.salesTotal = 0;
-            freshTable.checkTotal = 0;
-            
-            // Write table closure to DB FIRST - this ensures other devices see it as closed
-            await this.db.updateTable(freshTable);
+            // Update customer balance (use pre-calculated finalCheckTotal)
+            customer.balance = (customer.balance || 0) + finalCheckTotal;
+            await this.db.updateCustomer(customer);
 
-            // THEN update sales and customer (after table is already closed in DB)
-            // Wrap in try-catch to ensure all sales are updated, or rollback table state
-            let salesUpdateFailed = false;
-            try {
-                for (const sale of unpaidSales) {
-                    sale.isPaid = true;
-                    sale.isCredit = true;
-                    sale.customerId = selectedCustomerId;
-                    sale.paymentTime = creditTime; // Track when credit was given
-                    await this.db.updateSale(sale);
-                }
-
-                // Update customer balance
-                customer.balance = (customer.balance || 0) + finalCheckTotal;
-                await this.db.updateCustomer(customer);
-            } catch (salesError) {
-                console.error('Error updating sales/customer:', salesError);
-                salesUpdateFailed = true;
-                // Rollback: reopen table since sales update failed
-                freshTable.isActive = true;
-                if (freshTable.type === 'hourly') {
-                    freshTable.openTime = freshTable.openTime || new Date().toISOString();
-                    freshTable.closeTime = null;
-                }
-                await this.db.updateTable(freshTable);
-                throw new Error('Sales veya müşteri güncellenirken hata oluştu. Masa tekrar açıldı.');
+            // Update UI with final state
+            if (result.table) {
+                this.setTableCardState(tableId, {
+                    isActive: false,
+                    type: result.table.type,
+                    openTime: result.table.type === 'hourly' ? null : result.table.openTime,
+                    hourlyRate: result.table.hourlyRate || 0,
+                    salesTotal: 0,
+                    checkTotal: 0
+                });
             }
 
-            // CRITICAL: Verify all sales were updated and recalculate table totals
-            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
-            if (remainingUnpaidSales.length > 0) {
-                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after credit`);
-                // Force update table totals to reflect reality
-                const finalTable = await this.db.getTable(this.currentTableId);
-                if (finalTable) {
-                    finalTable.salesTotal = 0;
-                    finalTable.checkTotal = 0;
-                    if (finalTable.type === 'hourly') {
-                        finalTable.hourlyTotal = 0;
-                    }
-                    await this.db.updateTable(finalTable);
-                }
-            }
-            // Wait a bit to ensure DB operations complete
+            // Wait for DB operations to complete
             await new Promise(resolve => setTimeout(resolve, 1500));
             
             // Hide loading overlay
