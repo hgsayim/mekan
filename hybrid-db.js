@@ -231,6 +231,9 @@ export class HybridDatabase {
         if (this.syncEntities.includes('manualSessions')) {
           tasks.push(this.remote.getAllManualSessions().then((rows) => this._replaceStore('manualSessions', rows)).catch(() => {}));
         }
+        if (this.syncEntities.includes('expenses')) {
+          tasks.push(this.remote.getAllExpenses().then((rows) => this._replaceStore('expenses', rows)).catch(() => {}));
+        }
         await Promise.all(tasks);
         // Reset per-entity lastSync to "now" so subsequent delta syncs are cheap.
         const nowIso = new Date().toISOString();

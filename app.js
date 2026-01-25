@@ -4835,8 +4835,8 @@ class MekanApp {
                 </div>
                 <div class="expense-amount">${Math.round(expenseAmount)} ₺</div>
                 <div class="expense-actions">
-                    <button class="btn btn-icon" id="edit-expense-${expenseId}" title="Düzenle">✏️</button>
-                    <button class="btn btn-icon btn-danger" id="delete-expense-${expenseId}" title="Sil">🗑️</button>
+                    <button class="btn btn-icon" id="edit-expense-${expenseId}" title="Düzenle">✎</button>
+                    <button class="btn btn-icon btn-danger" id="delete-expense-${expenseId}" title="Sil">×</button>
                 </div>
             </div>
         `;
