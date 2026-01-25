@@ -570,12 +570,21 @@
         <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
             <div class="customer-detail-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 2px solid var(--border-color);">
                 <h2 id="customer-detail-title" style="margin: 0;">Müşteri Detayı</h2>
-                <div class="customer-detail-actions" style="display: flex; gap: 8px;">
-                    <button class="btn btn-success btn-icon" id="customer-detail-pay-btn" title="Ödeme Al" style="display: none;">₺</button>
-                    <button class="btn btn-primary btn-icon" id="customer-detail-edit-btn" title="Düzenle">✎</button>
-                    <button class="btn btn-danger btn-icon" id="customer-detail-delete-btn" title="Sil">×</button>
-                    <span class="close">&times;</span>
-                </div>
+                <span class="close">&times;</span>
+            </div>
+            <div class="customer-detail-actions" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
+                <button class="btn btn-success" id="customer-detail-pay-btn" style="display: none;">
+                    <span style="font-size: 1.2rem; margin-right: 5px;">₺</span>
+                    <span>Ödeme Al</span>
+                </button>
+                <button class="btn btn-primary" id="customer-detail-edit-btn">
+                    <span style="font-size: 1.2rem; margin-right: 5px;">✎</span>
+                    <span>Düzenle</span>
+                </button>
+                <button class="btn btn-danger" id="customer-detail-delete-btn">
+                    <span style="font-size: 1.2rem; margin-right: 5px;">×</span>
+                    <span>Sil</span>
+                </button>
             </div>
             <div id="customer-detail-body">
                 <div id="customer-detail-summary" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">

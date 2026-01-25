@@ -5649,16 +5649,13 @@ class MekanApp {
                     const receiptText = isDark ? 'var(--dark-text-primary)' : 'inherit';
                     const receiptTextSecondary = isDark ? 'var(--dark-text-secondary)' : '#7f8c8d';
                     
+                    // Calculate final total
+                    const finalTotal = hourlyTotal + productTotal;
+                    
                     contentHTML += `
-                        <div class="customer-receipt-item" style="padding: 15px; margin-bottom: 10px; background: ${receiptBg}; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid ${receiptBorder}; color: ${receiptText};">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid ${receiptBorder};">
-                                <div>
-                                    <strong style="font-size: 1.1rem; color: ${receiptText};">${timeStr}</strong>
-                                    ${tableName ? `<div style="font-size: 0.9rem; color: ${receiptTextSecondary};">Masa: ${tableName}</div>` : ''}
-                                </div>
-                                <div style="text-align: right;">
-                                    <div style="font-size: 1.2rem; font-weight: 700; color: var(--success-color);">${Math.round(sale.saleTotal || 0)} ₺</div>
-                                </div>
+                        <div class="customer-receipt-item" style="padding: 15px; margin-bottom: 20px; background: ${receiptBg}; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid ${receiptBorder}; color: ${receiptText};">
+                            <div class="receipt-section" style="margin-bottom: 15px;">
+                                <div style="margin-bottom: 10px; font-weight: bold; font-size: 1.1rem; color: ${receiptText};">${timeStr}${tableName ? ` - ${tableName}` : ''}</div>
                             </div>
                     `;
                     
@@ -5679,45 +5676,57 @@ class MekanApp {
                         });
                     }
                     
-                    // Build receipt-style items list
-                    const receiptItems = [];
+                    // Build receipt HTML using receipt-section and receipt-item classes (exactly like receipt modal)
+                    let receiptContentHTML = '';
                     
-                    // Add hourly session if exists
+                    // Hourly section (if exists) - shown first
                     if (hourlyTotal > 0) {
                         const totalHours = hourlySessionsInfo.reduce((sum, s) => sum + s.hours, 0);
-                        receiptItems.push({
-                            name: `Süre: ${this.formatHoursToReadable(totalHours)}`,
-                            amount: 1,
-                            total: hourlyTotal
-                        });
+                        receiptContentHTML += `<div class="receipt-section">`;
+                        receiptContentHTML += `<div class="receipt-section-title">OYUN</div>`;
+                        receiptContentHTML += `<div class="receipt-item">`;
+                        receiptContentHTML += `<div class="receipt-item-name">Süre: ${this.formatHoursToReadable(totalHours)}</div>`;
+                        receiptContentHTML += `<div class="receipt-item-price">${Math.round(hourlyTotal)} ₺</div>`;
+                        receiptContentHTML += `</div>`;
+                        receiptContentHTML += `</div>`;
                     }
                     
-                    // Add products
-                    Object.values(productGroups).forEach(group => {
-                        receiptItems.push({
-                            name: group.name,
-                            amount: group.amount,
-                            total: group.total
+                    // Products section
+                    if (Object.keys(productGroups).length > 0) {
+                        receiptContentHTML += `<div class="receipt-section">`;
+                        receiptContentHTML += `<div class="receipt-section-title">ÜRÜNLER</div>`;
+                        Object.values(productGroups).forEach(group => {
+                            receiptContentHTML += `<div class="receipt-item">`;
+                            receiptContentHTML += `<div class="receipt-item-name">${group.name} x${group.amount}</div>`;
+                            receiptContentHTML += `<div class="receipt-item-price">${Math.round(group.total)} ₺</div>`;
+                            receiptContentHTML += `</div>`;
                         });
-                    });
+                        receiptContentHTML += `</div>`;
+                    }
                     
-                    // Display receipt-style items
-                    if (receiptItems.length > 0) {
-                        contentHTML += '<div style="margin-top: 10px;">';
-                        receiptItems.forEach(item => {
-                            const itemBg = isDark ? 'var(--dark-surface-elevated)' : '#f8f9fa';
-                            contentHTML += `
-                                <div class="receipt-item" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 8px; margin-bottom: 6px; border-radius: 6px; background: ${itemBg};">
-                                    <div class="receipt-item-name" style="flex: 1; font-size: 0.95rem; font-weight: 600; color: ${receiptText};">
-                                        ${item.amount > 1 ? `${item.amount}x ` : ''}${item.name}
-                                    </div>
-                                    <div class="receipt-item-price" style="font-weight: 700; font-size: 0.95rem; min-width: 90px; text-align: right; color: var(--secondary-color);">
-                                        ${Math.round(item.total)} ₺
-                                    </div>
-                                </div>
-                            `;
-                        });
-                        contentHTML += '</div>';
+                    // Add receipt content to main content
+                    if (receiptContentHTML) {
+                        contentHTML += receiptContentHTML;
+                    }
+                    
+                    // Total section (like receipt modal)
+                    if (hourlyTotal > 0 || Object.keys(productGroups).length > 0) {
+                        contentHTML += `<div class="receipt-total">`;
+                        if (hourlyTotal > 0 && Object.keys(productGroups).length > 0) {
+                            contentHTML += `<div class="receipt-total-row">`;
+                            contentHTML += `<span>Oyun Toplam:</span>`;
+                            contentHTML += `<span>${Math.round(hourlyTotal)} ₺</span>`;
+                            contentHTML += `</div>`;
+                            contentHTML += `<div class="receipt-total-row">`;
+                            contentHTML += `<span>Ürün Toplam:</span>`;
+                            contentHTML += `<span>${Math.round(productTotal)} ₺</span>`;
+                            contentHTML += `</div>`;
+                        }
+                        contentHTML += `<div class="receipt-total-row final">`;
+                        contentHTML += `<span>GENEL TOPLAM:</span>`;
+                        contentHTML += `<span>${Math.round(finalTotal)} ₺</span>`;
+                        contentHTML += `</div>`;
+                        contentHTML += `</div>`;
                     }
                     
                     contentHTML += '</div>';
