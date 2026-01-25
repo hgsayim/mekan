@@ -1934,13 +1934,19 @@ class MekanApp {
         ].filter(Boolean);
         footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
 
+        // Track if modal data is fully loaded
+        let modalDataReady = false;
+
         const unlockModal = () => {
             if (loadingTimer) {
                 clearTimeout(loadingTimer);
                 loadingTimer = null;
             }
             if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
-            footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
+            // Only enable buttons if data is ready AND table is still open
+            if (modalDataReady) {
+                footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
+            }
         };
 
         let table = null;
@@ -2157,8 +2163,35 @@ class MekanApp {
         // Load products for selection
         await this.loadTableProducts(tableId);
 
-        // Products are ready: remove loading overlay + enable actions now
-        unlockModal();
+        // CRITICAL: Verify table is still open before enabling buttons
+        // Re-read table from DB to ensure we have the latest state
+        const finalTableCheck = await this.db.getTable(tableId);
+        if (finalTableCheck) {
+            // Check if table can still be closed
+            const canClose = finalTableCheck.type === 'hourly' 
+                ? (finalTableCheck.isActive && finalTableCheck.openTime && !finalTableCheck.closeTime)
+                : finalTableCheck.isActive;
+            
+            if (canClose) {
+                // Table is still open - mark data as ready and enable buttons
+                modalDataReady = true;
+                unlockModal();
+            } else {
+                // Table is already closed - keep buttons disabled and close modal
+                unlockModal(); // Remove loading overlay
+                footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
+                // Close modal after a brief delay to show user the table is closed
+                setTimeout(() => {
+                    this.closeTableModal();
+                }, 500);
+                return;
+            }
+        } else {
+            // Table not found - close modal
+            unlockModal();
+            this.closeTableModal();
+            return;
+        }
 
         // Load sales in the background to keep modal snappy
         Promise.resolve()
