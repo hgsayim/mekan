@@ -584,10 +584,22 @@ header h1 {
 .table-card-opening {
     cursor: not-allowed !important;
     user-select: none;
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
+    border-color: #27ae60 !important;
+    box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3) !important;
 }
 
 .table-card-opening .table-price {
-    color: var(--primary-color) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+.table-card-opening h3 {
+    color: #ffffff !important;
+}
+
+.table-card-opening .table-icon {
+    filter: brightness(0) invert(1);
 }
 
 .table-settle-overlay {

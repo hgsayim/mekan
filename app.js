@@ -1261,9 +1261,9 @@ class MekanApp {
                         try {
                             await this.openTable();
                         } finally {
-                            // Hide loading state after opening completes, but ensure minimum display time (1000ms)
+                            // Hide loading state after opening completes, but ensure minimum display time (2000ms)
                             const elapsed = Date.now() - startTime;
-                            const minDisplayTime = 1000; // Minimum 1 second
+                            const minDisplayTime = 2000; // Minimum 2 seconds
                             if (elapsed < minDisplayTime) {
                                 await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsed));
                             }
@@ -1473,7 +1473,6 @@ class MekanApp {
         if (isOpening) {
             // Disable card interactions
             card.style.pointerEvents = 'none';
-            card.style.opacity = '0.7';
             card.classList.add('table-card-opening');
             
             // Show "Süre başlatılıyor..." message
@@ -1487,7 +1486,6 @@ class MekanApp {
         } else {
             // Re-enable card interactions
             card.style.pointerEvents = '';
-            card.style.opacity = '';
             card.classList.remove('table-card-opening');
             
             // Restore original price text
