@@ -2481,7 +2481,7 @@ body:has(#auth-modal.modal.active) header {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 8px;
     padding: 0;
     background: transparent;
     border-radius: 0;
@@ -2498,6 +2498,10 @@ body:has(#auth-modal.modal.active) header {
     gap: 10px;
     min-width: 0;
     flex: 1 1 auto;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
 }
 
 /* Instant sale quantity controls (header) */
@@ -2584,8 +2588,7 @@ body:has(#auth-modal.modal.active) header {
 
 .table-modal-header h2 {
     margin: 0;
-    /* Keep perfectly aligned with the close button */
-    padding: 0 16px;
+    padding: 8px 12px;
     position: static;
     display: flex;
     align-items: center;
@@ -2603,10 +2606,10 @@ body:has(#auth-modal.modal.active) header {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     border: none;
     text-shadow: none;
-    height: 48px;
-    min-height: 48px;
+    height: 46px;
+    min-height: 46px;
     box-sizing: border-box;
-    max-width: 300px;
+    max-width: calc(100% - 60px);
     z-index: 1;
 }
 
@@ -2742,10 +2745,10 @@ body:has(#auth-modal.modal.active) header {
 }
 
 .close-header {
-    width: 48px;
-    height: 48px;
-    min-width: 48px;
-    min-height: 48px;
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
     flex-shrink: 0;
     display: flex;
     align-items: center;
@@ -2757,16 +2760,19 @@ body:has(#auth-modal.modal.active) header {
     font-size: 1rem;
     font-weight: 900;
     border: 2px solid rgba(243, 156, 18, 0.25);
-    border-radius: 14px;
+    border-radius: 0 12px 0 28px;
     cursor: pointer;
     transition: all 0.2s;
     box-sizing: border-box;
-    padding: 0 12px;
+    padding: 0;
     margin: 0;
-    margin-left: auto;
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
     line-height: 1;
     box-shadow: 0 6px 14px rgba(243, 156, 18, 0.25), 0 2px 6px rgba(0,0,0,0.08);
-    gap: 8px;
+    gap: 0;
 }
 
 .close-header:hover {
@@ -2784,10 +2790,7 @@ body:has(#auth-modal.modal.active) header {
 }
 
 .close-header .close-txt {
-    font-size: 0.95rem;
-    font-weight: 900;
-    line-height: 1;
-    color: rgba(255, 255, 255, 0.98);
+    display: none; /* Hide text on mobile, show only icon */
 }
 
 .btn-header {
@@ -3453,7 +3456,7 @@ form select:focus {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
-    margin-top: 15px;
+    margin-top: 8px;
 }
 
 .product-card-mini {
@@ -4138,7 +4141,7 @@ form select:focus {
     .products-grid-mini {
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 6px;
-        margin-top: 12px;
+        margin-top: 4px;
     }
 
     .product-card-mini {
@@ -4253,19 +4256,28 @@ form select:focus {
     .table-modal-header h2 {
         margin: 0;
         line-height: 1.1;
+        padding: 6px 10px;
+        height: 34px;
+        min-height: 34px;
+        font-size: 1rem;
+        max-width: calc(100% - 50px);
     }
 
     .close-header {
-        width: auto;
-        height: 40px;
+        width: 34px;
+        height: 34px;
+        min-width: 34px;
+        min-height: 34px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         line-height: 1;
-        padding: 0 12px;
-        /* Override generic `.close` (absolute positioning) to prevent clipping on scroll */
-        position: static;
-        top: auto;
+        padding: 0;
+        /* Position like table delay button - top right corner */
+        position: absolute;
+        top: 0;
+        right: 0;
+        border-radius: 0 12px 0 22px;
         right: auto;
         margin-left: auto;
     }
