@@ -409,6 +409,13 @@ header h1 {
     background-color: transparent;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    width: 100vw !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    min-height: -webkit-fill-available !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    overflow: hidden !important;
 }
 
 /* Auth inputs */
@@ -1796,6 +1803,29 @@ header h1 {
     justify-content: center;
 }
 
+[data-theme="dark"] .expense-actions .btn-icon {
+    color: var(--dark-text-primary) !important;
+    background: var(--dark-surface-elevated) !important;
+    border-color: var(--dark-border) !important;
+}
+
+[data-theme="dark"] .expense-actions .btn-icon:hover {
+    background: var(--dark-surface) !important;
+    color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+}
+
+[data-theme="dark"] .expense-actions .btn-icon.btn-danger {
+    color: #e74c3c !important;
+    border-color: rgba(231, 76, 60, 0.5) !important;
+}
+
+[data-theme="dark"] .expense-actions .btn-icon.btn-danger:hover {
+    background: rgba(231, 76, 60, 0.2) !important;
+    border-color: #e74c3c !important;
+    color: #e74c3c !important;
+}
+
 .customer-details {
     margin: 0;
     flex: 1;
@@ -2074,8 +2104,12 @@ header h1 {
     position: fixed;
     top: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
     background-color: transparent;
     z-index: 10000;
     display: flex;
@@ -2083,6 +2117,7 @@ header h1 {
     justify-content: center;
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    overflow: hidden;
 }
 
 .loading-content {
