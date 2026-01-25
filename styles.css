@@ -3054,9 +3054,11 @@ form select:focus {
 
 /* Make "TAMAMINI" button fit better on mobile */
 #pay-full-amount-btn {
-    font-size: 1rem;
-    padding: 16px 16px;
+    font-size: 0.9rem;
+    padding: 14px 12px;
     white-space: nowrap;
+    min-width: fit-content;
+    flex: 0 0 auto;
 }
 
 #pay-full-amount-btn {
@@ -4119,10 +4121,18 @@ form select:focus {
 
     .form-actions {
         flex-direction: row;
+        gap: 10px;
     }
 
     .form-actions .btn {
         flex: 1;
+        font-size: 0.9rem;
+        padding: 14px 10px;
+    }
+    
+    #pay-full-amount-btn {
+        font-size: 0.85rem;
+        padding: 14px 8px;
     }
 }
 

@@ -5371,6 +5371,7 @@ class MekanApp {
         customerIdInput.value = customer.id;
         paymentAmount.value = '';
         paymentAmount.max = roundedBalance;
+        paymentAmount.min = 1;
         paymentAmount.step = '1';
         
         modal.classList.add('active');
