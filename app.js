@@ -6148,13 +6148,42 @@ class MekanApp {
     }
 
     initDarkMode() {
-        const isDark = localStorage.getItem('darkMode') === 'true';
+        // Check if user has manually set a preference
+        const manualPreference = localStorage.getItem('darkMode');
+        
+        let isDark = false;
+        
+        if (manualPreference !== null) {
+            // User has manually set a preference, use it
+            isDark = manualPreference === 'true';
+        } else {
+            // No manual preference, check system preference
+            if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                isDark = true;
+            }
+        }
+        
         if (isDark) {
             document.documentElement.setAttribute('data-theme', 'dark');
         } else {
             document.documentElement.removeAttribute('data-theme');
         }
         this.updateDarkModeIcon();
+        
+        // Listen for system theme changes (only if no manual preference)
+        if (window.matchMedia && manualPreference === null) {
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                if (localStorage.getItem('darkMode') === null) {
+                    // Only auto-update if user hasn't manually set a preference
+                    if (e.matches) {
+                        document.documentElement.setAttribute('data-theme', 'dark');
+                    } else {
+                        document.documentElement.removeAttribute('data-theme');
+                    }
+                    this.updateDarkModeIcon();
+                }
+            });
+        }
     }
 
     toggleDarkMode() {
@@ -6254,6 +6283,33 @@ if ('serviceWorker' in navigator && (location.protocol === 'http:' || location.p
             });
     });
 }
+
+// Initialize dark mode early (before app loads) for auth screen
+function initDarkModeEarly() {
+    // Check if user has manually set a preference
+    const manualPreference = localStorage.getItem('darkMode');
+    
+    let isDark = false;
+    
+    if (manualPreference !== null) {
+        // User has manually set a preference, use it
+        isDark = manualPreference === 'true';
+    } else {
+        // No manual preference, check system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            isDark = true;
+        }
+    }
+    
+    if (isDark) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+        document.documentElement.removeAttribute('data-theme');
+    }
+}
+
+// Initialize dark mode immediately (before DOMContentLoaded)
+initDarkModeEarly();
 
 // Bootstrap Supabase + Auth + App
 document.addEventListener('DOMContentLoaded', async () => {
