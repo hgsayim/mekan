@@ -1,7 +1,7 @@
 // Main Application Logic
 // Loaded as a module (see index.html) for Supabase ESM import.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';git
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 import { HybridDatabase } from './hybrid-db.js';
 
@@ -1314,19 +1314,30 @@ class MekanApp {
             if (!card) continue;
 
             // Calculate current price from unpaid sales (avoid stale aggregated columns when 2 devices add simultaneously)
+            // CRITICAL: If table is closed, always show 0 total
+            // This ensures cancelled/closed tables show 0 immediately
+            const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime;
+            const isActive = table.type === 'instant' 
+                ? true 
+                : (table.type === 'hourly' 
+                    ? (table.isActive && table.openTime && !isClosed)
+                    : table.isActive);
+            
             let displayTotal = 0;
-            if (table.type === 'instant') {
-                // For instant sale table, show today's paid sales total
-                displayTotal = await this.getInstantTableDailyTotal(table.id);
-            } else {
-                const unpaid = await this.db.getUnpaidSalesByTable(table.id);
-                const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-                if (table.type === 'hourly' && table.isActive && table.openTime) {
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
-                    const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
-                    displayTotal = hourlyTotal + salesTotal;
+            if (isActive) {
+                if (table.type === 'instant') {
+                    // For instant sale table, show today's paid sales total
+                    displayTotal = await this.getInstantTableDailyTotal(table.id);
                 } else {
-                    displayTotal = salesTotal;
+                    const unpaid = await this.db.getUnpaidSalesByTable(table.id);
+                    const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                    if (table.type === 'hourly' && table.isActive && table.openTime) {
+                        const hoursUsed = this.calculateHoursUsed(table.openTime);
+                        const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                        displayTotal = hourlyTotal + salesTotal;
+                    } else {
+                        displayTotal = salesTotal;
+                    }
                 }
             }
 
@@ -1471,10 +1482,15 @@ class MekanApp {
         const priceEl = card.querySelector('.table-price');
         if (!priceEl) return;
 
-        let displayTotal = checkTotal;
-        if (type === 'hourly' && isActive && openTime) {
-            const hoursUsed = this.calculateHoursUsed(openTime);
-            displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
+        // CRITICAL: If table is closed (not active), always show 0 total
+        // This ensures cancelled/closed tables show 0 immediately on all devices
+        let displayTotal = 0;
+        if (isActive) {
+            displayTotal = checkTotal;
+            if (type === 'hourly' && isActive && openTime) {
+                const hoursUsed = this.calculateHoursUsed(openTime);
+                displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
+            }
         }
         priceEl.textContent = `${Math.round(displayTotal)} ₺`;
     }
