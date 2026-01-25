@@ -5583,51 +5583,73 @@ class MekanApp {
             contentHTML += '</div>';
         }
         
-        // Add sales by date - Each sale is a separate receipt (like receipt modal)
+        // Add sales by date - Group sales from same table closure into single receipt
         if (sortedDates.length > 0) {
             contentHTML += '<div><h3 style="margin-bottom: 10px; color: var(--primary-color);">Adisyonlar</h3>';
             sortedDates.forEach(dateKey => {
                 const dateSales = salesByDate.get(dateKey);
                 contentHTML += `<div style="margin-bottom: 20px;"><h4 style="margin-bottom: 10px; color: var(--secondary-color);">${dateKey}</h4>`;
                 
-                // Process each sale as a separate receipt (like receipt modal)
+                // Group sales by tableId and paymentTime (same table closure = same receipt)
+                // Sales with same tableId and paymentTime within 2 minutes are from same closure
+                const salesByClosure = new Map();
                 dateSales.forEach(sale => {
-                    const saleDate = new Date(sale.sellDateTime || sale.paymentTime || sale.createdAt);
+                    const salePaymentTime = sale.paymentTime ? new Date(sale.paymentTime).getTime() : (sale.sellDateTime ? new Date(sale.sellDateTime).getTime() : 0);
+                    const tableId = sale.tableId || 'no-table';
+                    // Create a key: tableId + rounded paymentTime (to nearest 2 minutes for better grouping)
+                    const closureKey = `${tableId}-${Math.floor(salePaymentTime / 120000)}`;
+                    
+                    if (!salesByClosure.has(closureKey)) {
+                        salesByClosure.set(closureKey, []);
+                    }
+                    salesByClosure.get(closureKey).push(sale);
+                });
+                
+                // Process each closure group as a single receipt (like receipt modal)
+                Array.from(salesByClosure.entries()).sort((a, b) => {
+                    // Sort by first sale's time
+                    const timeA = a[1][0].paymentTime || a[1][0].sellDateTime || a[1][0].createdAt;
+                    const timeB = b[1][0].paymentTime || b[1][0].sellDateTime || b[1][0].createdAt;
+                    return new Date(timeB) - new Date(timeA);
+                }).forEach(([closureKey, closureSales]) => {
+                    // Get the first sale for time and table info
+                    const firstSale = closureSales[0];
+                    const saleDate = new Date(firstSale.sellDateTime || firstSale.paymentTime || firstSale.createdAt);
                     const timeStr = saleDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
                     
-                    // Find table name
-                    let tableName = sale.tableName || null;
-                    if (sale.tableId && !tableName) {
-                        const table = allTables.find(t => String(t.id) === String(sale.tableId));
+                    // Find table name from first sale
+                    let tableName = firstSale.tableName || null;
+                    const tableId = firstSale.tableId;
+                    if (tableId && !tableName) {
+                        const table = allTables.find(t => String(t.id) === String(tableId));
                         if (table) tableName = table.name;
                     }
                     
-                    // Calculate hourly total from table's hourlySessions if sale has tableId
+                    // Calculate hourly total from table's hourlySessions if any sale has tableId
                     let hourlyTotal = 0;
                     let hourlySessionsInfo = [];
-                    if (sale.tableId) {
-                        const table = allTables.find(t => String(t.id) === String(sale.tableId));
+                    if (tableId) {
+                        const table = allTables.find(t => String(t.id) === String(tableId));
                         if (table && table.hourlySessions && Array.isArray(table.hourlySessions)) {
-                            // Find sessions that match this sale (by paymentTime or closeTime)
-                            const salePaymentTime = sale.paymentTime ? new Date(sale.paymentTime).toISOString() : null;
+                            // Find sessions that match this closure (by paymentTime or closeTime)
+                            const closurePaymentTime = firstSale.paymentTime ? new Date(firstSale.paymentTime).toISOString() : null;
                             table.hourlySessions.forEach(session => {
                                 if (session.customerId && String(session.customerId) === String(customer.id)) {
-                                    // Match by paymentTime or closeTime
                                     const sessionCloseTime = session.closeTime ? new Date(session.closeTime).toISOString() : null;
-                                    if (salePaymentTime && sessionCloseTime) {
+                                    if (closurePaymentTime && sessionCloseTime) {
                                         // Check if times are close (within 1 minute)
-                                        const timeDiff = Math.abs(new Date(salePaymentTime) - new Date(sessionCloseTime));
+                                        const timeDiff = Math.abs(new Date(closurePaymentTime) - new Date(sessionCloseTime));
                                         if (timeDiff < 60000) { // 1 minute
                                             const hours = typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed) || 0;
                                             const rate = session.hourlyRate || table.hourlyRate || 0;
                                             hourlyTotal += hours * rate;
                                             hourlySessionsInfo.push({ hours, rate, tableName: table.name });
                                         }
-                                    } else if (!salePaymentTime && sessionCloseTime) {
+                                    } else if (!closurePaymentTime && sessionCloseTime) {
                                         // If sale has no paymentTime, try to match by sellDateTime
-                                        const saleSellTime = sale.sellDateTime ? new Date(sale.sellDateTime).toISOString() : null;
-                                        if (saleSellTime) {
-                                            const timeDiff = Math.abs(new Date(saleSellTime) - new Date(sessionCloseTime));
+                                        const closureSellTime = firstSale.sellDateTime ? new Date(firstSale.sellDateTime).toISOString() : null;
+                                        if (closureSellTime) {
+                                            const timeDiff = Math.abs(new Date(closureSellTime) - new Date(sessionCloseTime));
                                             if (timeDiff < 60000) { // 1 minute
                                                 const hours = typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed) || 0;
                                                 const rate = session.hourlyRate || table.hourlyRate || 0;
@@ -5641,22 +5663,24 @@ class MekanApp {
                         }
                     }
                     
-                    // Group products by name (like receipt format) - from this sale only
+                    // Group products by name from ALL sales in this closure (like receipt modal)
                     const productGroups = {};
-                    if (sale.items && sale.items.length > 0) {
-                        sale.items.forEach(item => {
-                            if (!productGroups[item.name]) {
-                                productGroups[item.name] = {
-                                    name: item.name,
-                                    amount: 0,
-                                    price: item.price,
-                                    total: 0
-                                };
-                            }
-                            productGroups[item.name].amount += item.amount;
-                            productGroups[item.name].total += item.price * item.amount;
-                        });
-                    }
+                    closureSales.forEach(sale => {
+                        if (sale.items && sale.items.length > 0) {
+                            sale.items.forEach(item => {
+                                if (!productGroups[item.name]) {
+                                    productGroups[item.name] = {
+                                        name: item.name,
+                                        amount: 0,
+                                        price: item.price,
+                                        total: 0
+                                    };
+                                }
+                                productGroups[item.name].amount += item.amount;
+                                productGroups[item.name].total += item.price * item.amount;
+                            });
+                        }
+                    });
                     
                     // Calculate product total
                     const productTotal = Object.values(productGroups).reduce((sum, group) => sum + group.total, 0);
