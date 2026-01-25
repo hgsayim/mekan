@@ -2043,20 +2043,46 @@ class MekanApp {
 
             // THEN delete unpaid sales (after table is already closed in DB)
             const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            for (const sale of unpaidSales) {
-                if (sale?.items?.length) {
-                    for (const item of sale.items) {
-                        if (!item || item.isCancelled) continue;
-                        const product = await this.db.getProduct(item.productId);
-                        if (product && this.tracksStock(product)) {
-                            product.stock += item.amount;
-                            await this.db.updateProduct(product);
+            let salesDeleteFailed = false;
+            try {
+                for (const sale of unpaidSales) {
+                    if (sale?.items?.length) {
+                        for (const item of sale.items) {
+                            if (!item || item.isCancelled) continue;
+                            const product = await this.db.getProduct(item.productId);
+                            if (product && this.tracksStock(product)) {
+                                product.stock += item.amount;
+                                await this.db.updateProduct(product);
+                            }
                         }
                     }
+                    // Remove sale completely so it won't appear anywhere
+                    if (sale?.id) {
+                        await this.db.deleteSale(sale.id);
+                    }
                 }
-                // Remove sale completely so it won't appear anywhere
-                if (sale?.id) {
-                    await this.db.deleteSale(sale.id);
+            } catch (deleteError) {
+                console.error('Error deleting sales:', deleteError);
+                salesDeleteFailed = true;
+                // Rollback: reopen table since sales deletion failed
+                updatedTable.isActive = true;
+                updatedTable.openTime = freshTable.openTime || new Date().toISOString();
+                updatedTable.closeTime = null;
+                await this.db.updateTable(updatedTable);
+                throw new Error('Sales silinirken hata oluştu. Masa tekrar açıldı.');
+            }
+
+            // CRITICAL: Verify all sales were deleted and recalculate table totals
+            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            if (remainingUnpaidSales.length > 0) {
+                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after cancel`);
+                // Force update table totals to reflect reality (should be 0)
+                const finalTable = await this.db.getTable(tableId);
+                if (finalTable) {
+                    finalTable.salesTotal = 0;
+                    finalTable.checkTotal = 0;
+                    finalTable.hourlyTotal = 0;
+                    await this.db.updateTable(finalTable);
                 }
             }
 
@@ -3941,10 +3967,41 @@ class MekanApp {
             await this.db.updateTable(freshTable);
 
             // THEN update sales (after table is already closed in DB)
-            for (const sale of unpaidSales) {
-                sale.isPaid = true;
-                sale.paymentTime = paymentTime; // Track when payment was made
-                await this.db.updateSale(sale);
+            // Wrap in try-catch to ensure all sales are updated, or rollback table state
+            let salesUpdateFailed = false;
+            try {
+                for (const sale of unpaidSales) {
+                    sale.isPaid = true;
+                    sale.paymentTime = paymentTime; // Track when payment was made
+                    await this.db.updateSale(sale);
+                }
+            } catch (salesError) {
+                console.error('Error updating sales:', salesError);
+                salesUpdateFailed = true;
+                // Rollback: reopen table since sales update failed
+                freshTable.isActive = true;
+                if (freshTable.type === 'hourly') {
+                    freshTable.openTime = freshTable.openTime || new Date().toISOString();
+                    freshTable.closeTime = null;
+                }
+                await this.db.updateTable(freshTable);
+                throw new Error('Sales güncellenirken hata oluştu. Masa tekrar açıldı.');
+            }
+
+            // CRITICAL: Verify all sales were updated and recalculate table totals
+            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
+            if (remainingUnpaidSales.length > 0) {
+                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after payment`);
+                // Force update table totals to reflect reality
+                const finalTable = await this.db.getTable(this.currentTableId);
+                if (finalTable) {
+                    finalTable.salesTotal = 0;
+                    finalTable.checkTotal = 0;
+                    if (finalTable.type === 'hourly') {
+                        finalTable.hourlyTotal = 0;
+                    }
+                    await this.db.updateTable(finalTable);
+                }
             }
             // Background refresh instead of blocking the UI
             setTimeout(() => {
@@ -4140,17 +4197,48 @@ class MekanApp {
             await this.db.updateTable(freshTable);
 
             // THEN update sales and customer (after table is already closed in DB)
-            for (const sale of unpaidSales) {
-                sale.isPaid = true;
-                sale.isCredit = true;
-                sale.customerId = selectedCustomerId;
-                sale.paymentTime = creditTime; // Track when credit was given
-                await this.db.updateSale(sale);
+            // Wrap in try-catch to ensure all sales are updated, or rollback table state
+            let salesUpdateFailed = false;
+            try {
+                for (const sale of unpaidSales) {
+                    sale.isPaid = true;
+                    sale.isCredit = true;
+                    sale.customerId = selectedCustomerId;
+                    sale.paymentTime = creditTime; // Track when credit was given
+                    await this.db.updateSale(sale);
+                }
+
+                // Update customer balance
+                customer.balance = (customer.balance || 0) + finalCheckTotal;
+                await this.db.updateCustomer(customer);
+            } catch (salesError) {
+                console.error('Error updating sales/customer:', salesError);
+                salesUpdateFailed = true;
+                // Rollback: reopen table since sales update failed
+                freshTable.isActive = true;
+                if (freshTable.type === 'hourly') {
+                    freshTable.openTime = freshTable.openTime || new Date().toISOString();
+                    freshTable.closeTime = null;
+                }
+                await this.db.updateTable(freshTable);
+                throw new Error('Sales veya müşteri güncellenirken hata oluştu. Masa tekrar açıldı.');
             }
 
-            // Update customer balance
-            customer.balance = (customer.balance || 0) + finalCheckTotal;
-            await this.db.updateCustomer(customer);
+            // CRITICAL: Verify all sales were updated and recalculate table totals
+            const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
+            if (remainingUnpaidSales.length > 0) {
+                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after credit`);
+                // Force update table totals to reflect reality
+                const finalTable = await this.db.getTable(this.currentTableId);
+                if (finalTable) {
+                    finalTable.salesTotal = 0;
+                    finalTable.checkTotal = 0;
+                    if (finalTable.type === 'hourly') {
+                        finalTable.hourlyTotal = 0;
+                    }
+                    await this.db.updateTable(finalTable);
+                }
+            }
             // Background refresh (don't block UI)
             setTimeout(() => {
                 const views = ['tables', 'customers', 'sales'];
