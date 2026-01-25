@@ -1257,10 +1257,16 @@ class MekanApp {
                         this.currentTableId = table.id;
                         // Show loading state before opening
                         this.setTableCardOpening(table.id, true);
+                        const startTime = Date.now();
                         try {
                             await this.openTable();
                         } finally {
-                            // Hide loading state after opening completes
+                            // Hide loading state after opening completes, but ensure minimum display time (1000ms)
+                            const elapsed = Date.now() - startTime;
+                            const minDisplayTime = 1000; // Minimum 1 second
+                            if (elapsed < minDisplayTime) {
+                                await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsed));
+                            }
                             this.setTableCardOpening(table.id, false);
                         }
                     }
@@ -1550,6 +1556,11 @@ class MekanApp {
         if (this.currentView !== 'tables') return;
         const card = this.getTableCardEl(tableId);
         if (!card) return;
+
+        // If table is in opening state, don't update (keep "Süre başlatılıyor..." message)
+        if (card.classList.contains('table-card-opening')) {
+            return;
+        }
 
         try {
             const table = await this.db.getTable(tableId);
@@ -3575,7 +3586,8 @@ class MekanApp {
         // Optimistic UI: show as opening immediately (avoid perceived lag)
         const optimisticOpenTime = new Date().toISOString();
         this._markTableOpening(targetTableId, optimisticOpenTime);
-        this.setTableCardState(targetTableId, { isActive: true, type: 'hourly', openTime: optimisticOpenTime, hourlyRate: 0, salesTotal: 0, checkTotal: 0 });
+        // Don't call setTableCardState here - it will interfere with loading state
+        // Loading state is already set by the caller, and we'll update after DB write
 
         const table = await this.db.getTable(targetTableId);
         if (!table) {
@@ -3651,13 +3663,17 @@ class MekanApp {
             table.hourlyTotal = 0; // Reset hourly total when opening
             table.checkTotal = table.salesTotal; // Update check total
 
-            // Optimistic UI: reflect state immediately
-            this.setTableCardState(table.id, table);
-
             // Write to DB in foreground, but do NOT block UI with expensive reloads
             await this.db.updateTable(table);
             // DB confirmed; opening flicker guard no longer needed
             this._openingTables.delete(String(table.id));
+
+            // Update UI state AFTER DB write (but don't update if in opening state)
+            // The opening state will be cleared in the finally block of the caller
+            const card = this.getTableCardEl(table.id);
+            if (card && !card.classList.contains('table-card-opening')) {
+                this.setTableCardState(table.id, table);
+            }
 
             // Background refresh (keep other screens eventually consistent)
             setTimeout(() => {
