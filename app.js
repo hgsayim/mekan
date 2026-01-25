@@ -3393,7 +3393,7 @@ class MekanApp {
         this._realtimeChannel = null;
     }
 
-    handleRealtimeChange(tableName, payload) {
+    async handleRealtimeChange(tableName, payload) {
         // Decide which screens to refresh (debounced)
         const views = new Set();
         const current = this.currentView;
@@ -3466,75 +3466,79 @@ class MekanApp {
 
         // Apply change to local cache first, then schedule UI refresh (prevents race where UI reloads before IDB upsert).
         try {
-            const p = this.db?.applyRealtimeChange?.(tableName, payload);
-            if (p && typeof p.finally === 'function') {
-                p.finally(async () => {
-                    // CRITICAL: If table was closed (cancelled), clean up unpaid sales on this device
-                    // Also prevent realtime updates from reopening cancelled tables
-                    if (tableName === 'tables' && changedTableId) {
-                        try {
-                            const updatedTable = await this.db.getTable(changedTableId);
-                            // Only clean up if table is truly closed (not active, no openTime, has closeTime)
-                            // Don't clean if table is being opened (isActive: true, openTime exists)
-                            // CRITICAL: If table was cancelled/closed, prevent it from being reopened by realtime updates
-                            if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime && updatedTable.type === 'hourly') {
-                                // Table was cancelled - if realtime update tries to reopen it, force it closed again
-                                if (payload?.new?.isActive || payload?.new?.openTime) {
-                                    console.log(`Realtime: Preventing cancelled table ${changedTableId} from being reopened`);
-                                    // Force close again
-                                    const forceClosed = {
-                                        ...updatedTable,
-                                        isActive: false,
-                                        openTime: null,
-                                        closeTime: updatedTable.closeTime || new Date().toISOString()
-                                    };
-                                    await this.db.updateTable(forceClosed);
-                                    // Update UI to show closed state
-                                    this.setTableCardState(changedTableId, {
-                                        isActive: false,
-                                        type: 'hourly',
-                                        openTime: null,
-                                        hourlyRate: forceClosed.hourlyRate || 0,
-                                        salesTotal: 0,
-                                        checkTotal: 0
-                                    });
-                                    return; // Don't proceed with cleanup or refresh
-                                }
-                                
-                                // Table was cancelled - check for unpaid sales and clean them up
-                                // Table was cancelled - check for unpaid sales and clean them up
-                                const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
-                                if (unpaidSales.length > 0) {
-                                    console.log(`Realtime: Table ${changedTableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
-                                    for (const sale of unpaidSales) {
-                                        if (sale?.items?.length) {
-                                            for (const item of sale.items) {
-                                                if (!item || item.isCancelled) continue;
-                                                const product = await this.db.getProduct(item.productId);
-                                                if (product && this.tracksStock(product)) {
-                                                    product.stock += item.amount;
-                                                    await this.db.updateProduct(product);
-                                                }
+            // CRITICAL: Wait for applyRealtimeChange to complete before scheduling UI refresh
+            // This ensures IndexedDB is updated before we read from it
+            const changeApplied = await this.db?.applyRealtimeChange?.(tableName, payload);
+            if (changeApplied) {
+                // Small delay to ensure IndexedDB transaction is fully committed
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Additional cleanup for cancelled tables (before scheduling UI refresh)
+                if (tableName === 'tables' && changedTableId) {
+                    try {
+                        const updatedTable = await this.db.getTable(changedTableId);
+                        // Only clean up if table is truly closed (not active, no openTime, has closeTime)
+                        // Don't clean if table is being opened (isActive: true, openTime exists)
+                        // CRITICAL: If table was cancelled/closed, prevent it from being reopened by realtime updates
+                        if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime && updatedTable.type === 'hourly') {
+                            // Table was cancelled - if realtime update tries to reopen it, force it closed again
+                            if (payload?.new?.isActive || payload?.new?.openTime) {
+                                console.log(`Realtime: Preventing cancelled table ${changedTableId} from being reopened`);
+                                // Force close again
+                                const forceClosed = {
+                                    ...updatedTable,
+                                    isActive: false,
+                                    openTime: null,
+                                    closeTime: updatedTable.closeTime || new Date().toISOString()
+                                };
+                                await this.db.updateTable(forceClosed);
+                                // Update UI to show closed state
+                                this.setTableCardState(changedTableId, {
+                                    isActive: false,
+                                    type: 'hourly',
+                                    openTime: null,
+                                    hourlyRate: forceClosed.hourlyRate || 0,
+                                    salesTotal: 0,
+                                    checkTotal: 0
+                                });
+                                return; // Don't proceed with cleanup or refresh
+                            }
+                            
+                            // Table was cancelled - check for unpaid sales and clean them up
+                            const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
+                            if (unpaidSales.length > 0) {
+                                console.log(`Realtime: Table ${changedTableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
+                                for (const sale of unpaidSales) {
+                                    if (sale?.items?.length) {
+                                        for (const item of sale.items) {
+                                            if (!item || item.isCancelled) continue;
+                                            const product = await this.db.getProduct(item.productId);
+                                            if (product && this.tracksStock(product)) {
+                                                product.stock += item.amount;
+                                                await this.db.updateProduct(product);
                                             }
                                         }
-                                        if (sale?.id) {
-                                            await this.db.deleteSale(sale.id);
-                                        }
+                                    }
+                                    if (sale?.id) {
+                                        await this.db.deleteSale(sale.id);
                                     }
                                 }
                             }
-                        } catch (e) {
-                            console.error('Error cleaning up sales in realtime handler:', e);
                         }
+                    } catch (e) {
+                        console.error('Error cleaning up sales in realtime handler:', e);
                     }
-                    schedule();
-                });
+                }
+                
+                // Now schedule UI refresh after cache is updated and cleanup is done
+                await schedule();
                 return;
             }
         } catch (e) {
-            // ignore
+            console.error('Error applying realtime change:', e);
         }
-        schedule();
+        // Fallback: schedule even if applyRealtimeChange failed
+        await schedule();
     }
 
     scheduleRealtimeRefresh(views, refreshModal) {
