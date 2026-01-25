@@ -3872,14 +3872,10 @@ class MekanApp {
             this.setTableCardState(optimisticClosed.id, optimisticClosed);
             this.showTableSettlementEffect(optimisticClosed.id, 'Hesap Alındı');
 
-            // Mark all unpaid sales as paid and record payment time
+            // CRITICAL: Close table FIRST and write to DB immediately
+            // This prevents other devices from seeing the table as still open during sales updates
             const paymentTime = new Date().toISOString();
-            for (const sale of unpaidSales) {
-                sale.isPaid = true;
-                sale.paymentTime = paymentTime; // Track when payment was made
-                await this.db.updateSale(sale);
-            }
-
+            
             // For hourly tables, close it and finalize hourly charges (Pay = Close for hourly tables)
             this._closeHourlyTable(table, unpaidSales, paymentTime, false);
 
@@ -3893,7 +3889,15 @@ class MekanApp {
             table.salesTotal = 0;
             table.checkTotal = 0;
             
+            // Write table closure to DB FIRST - this ensures other devices see it as closed
             await this.db.updateTable(table);
+
+            // THEN update sales (after table is already closed in DB)
+            for (const sale of unpaidSales) {
+                sale.isPaid = true;
+                sale.paymentTime = paymentTime; // Track when payment was made
+                await this.db.updateSale(sale);
+            }
             // Background refresh instead of blocking the UI
             setTimeout(() => {
                 const views = ['tables', 'sales'];
@@ -4046,20 +4050,10 @@ class MekanApp {
             this.setTableCardState(optimisticClosed.id, optimisticClosed);
             this.showTableSettlementEffect(optimisticClosed.id, 'Veresiye');
 
-            // Mark all unpaid sales as credit (paid but on credit)
+            // CRITICAL: Close table FIRST and write to DB immediately
+            // This prevents other devices from seeing the table as still open during sales updates
             const creditTime = new Date().toISOString();
-            for (const sale of unpaidSales) {
-                sale.isPaid = true;
-                sale.isCredit = true;
-                sale.customerId = selectedCustomerId;
-                sale.paymentTime = creditTime; // Track when credit was given
-                await this.db.updateSale(sale);
-            }
-
-            // Update customer balance
-            customer.balance = (customer.balance || 0) + finalCheckTotal;
-            await this.db.updateCustomer(customer);
-
+            
             // For hourly tables, close it and finalize hourly charges
             this._closeHourlyTable(table, unpaidSales, creditTime, true, selectedCustomerId);
 
@@ -4073,7 +4067,21 @@ class MekanApp {
             table.salesTotal = 0;
             table.checkTotal = 0;
             
+            // Write table closure to DB FIRST - this ensures other devices see it as closed
             await this.db.updateTable(table);
+
+            // THEN update sales and customer (after table is already closed in DB)
+            for (const sale of unpaidSales) {
+                sale.isPaid = true;
+                sale.isCredit = true;
+                sale.customerId = selectedCustomerId;
+                sale.paymentTime = creditTime; // Track when credit was given
+                await this.db.updateSale(sale);
+            }
+
+            // Update customer balance
+            customer.balance = (customer.balance || 0) + finalCheckTotal;
+            await this.db.updateCustomer(customer);
             // Background refresh (don't block UI)
             setTimeout(() => {
                 const views = ['tables', 'customers', 'sales'];
