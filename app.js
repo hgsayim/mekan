@@ -1261,11 +1261,15 @@ class MekanApp {
                         try {
                             await this.openTable();
                         } finally {
-                            // Hide loading state after opening completes, but ensure minimum display time (2000ms)
+                            // CRITICAL: Always wait exactly 2 seconds before clearing loading state
+                            // This ensures "Süre başlatılıyor" message is always visible for 2 seconds
                             const elapsed = Date.now() - startTime;
-                            const minDisplayTime = 2000; // Minimum 2 seconds
+                            const minDisplayTime = 2000; // Always 2 seconds
                             if (elapsed < minDisplayTime) {
                                 await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsed));
+                            } else {
+                                // If already past 2 seconds, still wait a tiny bit to ensure smooth transition
+                                await new Promise(resolve => setTimeout(resolve, 50));
                             }
                             
                             // CRITICAL: Update table state BEFORE clearing loading state
@@ -1585,10 +1589,13 @@ class MekanApp {
             const table = await this.db.getTable(tableId);
             if (!table) return;
             
-            // CRITICAL: If table was cancelled (has closeTime, no openTime, not active), keep it closed
-            // This prevents cancelled tables from being reopened by realtime updates
+            // CRITICAL: If table was cancelled or closed (has closeTime, no openTime, not active), keep it closed
+            // This prevents cancelled/closed tables from being reopened by realtime updates
+            // Also check if table is currently being settled (prevent race conditions)
+            const isSettling = this._isTableSettling(tableId);
             if (table.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive) {
-                // Table was cancelled - keep it closed, show 0 total
+                // Table was cancelled/closed - keep it closed, show 0 total
+                // Don't allow realtime updates to reopen it
                 this.setTableCardState(tableId, {
                     isActive: false,
                     type: 'hourly',
@@ -1597,6 +1604,12 @@ class MekanApp {
                     salesTotal: 0,
                     checkTotal: 0
                 });
+                return;
+            }
+            
+            // CRITICAL: If table is being settled, don't update it (prevent race conditions)
+            if (isSettling && table.type === 'hourly') {
+                console.log(`Table ${tableId} is being settled, skipping refresh to prevent race condition`);
                 return;
             }
             
@@ -1669,7 +1682,7 @@ class MekanApp {
         }
     }
 
-    _markTableSettling(tableId, ms = 2600) {
+    _markTableSettling(tableId, ms = 5000) {
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
     }
@@ -2261,9 +2274,11 @@ class MekanApp {
                 }
             }
 
-            // Verify (some devices can have timing quirks with IndexedDB writes)
+            // CRITICAL: Verify and force close (some devices can have timing quirks with IndexedDB writes)
+            // Also prevents realtime updates from reopening the table
             const verify = await this.db.getTable(tableId);
-            if (verify && (verify.isActive || verify.openTime)) {
+            if (verify) {
+                // Force close regardless of current state
                 verify.isActive = false;
                 verify.openTime = null;
                 verify.closeTime = verify.closeTime || new Date().toISOString();
@@ -2271,10 +2286,20 @@ class MekanApp {
                 verify.salesTotal = 0;
                 verify.checkTotal = 0;
                 await this.db.updateTable(verify);
+                
+                // Update UI immediately to show closed state
+                this.setTableCardState(tableId, {
+                    isActive: false,
+                    type: 'hourly',
+                    openTime: null,
+                    hourlyRate: verify.hourlyRate || 0,
+                    salesTotal: 0,
+                    checkTotal: 0
+                });
             }
 
-            // Wait a bit to ensure DB operations complete
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // Wait longer to ensure DB operations complete and realtime updates propagate
+            await new Promise(resolve => setTimeout(resolve, 2000));
             
             // Hide loading overlay
             this.hideLoadingOverlay();
@@ -3445,12 +3470,38 @@ class MekanApp {
             if (p && typeof p.finally === 'function') {
                 p.finally(async () => {
                     // CRITICAL: If table was closed (cancelled), clean up unpaid sales on this device
+                    // Also prevent realtime updates from reopening cancelled tables
                     if (tableName === 'tables' && changedTableId) {
                         try {
                             const updatedTable = await this.db.getTable(changedTableId);
                             // Only clean up if table is truly closed (not active, no openTime, has closeTime)
                             // Don't clean if table is being opened (isActive: true, openTime exists)
+                            // CRITICAL: If table was cancelled/closed, prevent it from being reopened by realtime updates
                             if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime && updatedTable.type === 'hourly') {
+                                // Table was cancelled - if realtime update tries to reopen it, force it closed again
+                                if (payload?.new?.isActive || payload?.new?.openTime) {
+                                    console.log(`Realtime: Preventing cancelled table ${changedTableId} from being reopened`);
+                                    // Force close again
+                                    const forceClosed = {
+                                        ...updatedTable,
+                                        isActive: false,
+                                        openTime: null,
+                                        closeTime: updatedTable.closeTime || new Date().toISOString()
+                                    };
+                                    await this.db.updateTable(forceClosed);
+                                    // Update UI to show closed state
+                                    this.setTableCardState(changedTableId, {
+                                        isActive: false,
+                                        type: 'hourly',
+                                        openTime: null,
+                                        hourlyRate: forceClosed.hourlyRate || 0,
+                                        salesTotal: 0,
+                                        checkTotal: 0
+                                    });
+                                    return; // Don't proceed with cleanup or refresh
+                                }
+                                
+                                // Table was cancelled - check for unpaid sales and clean them up
                                 // Table was cancelled - check for unpaid sales and clean them up
                                 const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
                                 if (unpaidSales.length > 0) {
