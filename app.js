@@ -1077,7 +1077,8 @@ class MekanApp {
             table._computedSalesTotal = computedSalesTotal;
 
             // Compute check total (hourly tables include time when open)
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
+            // CRITICAL: Don't calculate hourly total if table is closed (has closeTime, no openTime)
+            if (table.type === 'hourly' && table.isActive && table.openTime && !table.closeTime) {
                 const hoursUsed = this.calculateHoursUsed(table.openTime);
                 table._computedHourlyTotal = hoursUsed * (table.hourlyRate || 0);
                 table._computedCheckTotal = table._computedHourlyTotal + computedSalesTotal;
@@ -1093,16 +1094,27 @@ class MekanApp {
             if (unpaidSales.length > 0 && !table.isActive) {
                 // Table has products but is not active - activate it only for regular tables
                 // Hourly tables must be manually opened via "Open Table" button
-                if (!isSettling && table.type !== 'hourly') {
+                // CRITICAL: Don't activate if table is closed (has closeTime)
+                if (!isSettling && table.type !== 'hourly' && !table.closeTime) {
                     table.isActive = true;
                     tableUpdated = true;
                 }
             } else if (unpaidSales.length === 0 && table.isActive) {
                 // Table has no unpaid sales.
-                // Hourly tables: if manually opened (have openTime), keep active and update totals.
-                // Regular tables: DO NOT auto-deactivate. They can be "occupied" with zero products,
-                // and that state must sync across devices (açılış / boş-dolu).
-                if (table.type === 'hourly' && table.openTime) {
+                // CRITICAL: If table is closed (has closeTime), don't keep it active
+                // This prevents closed tables from being reopened when loadTables is called
+                if (table.type === 'hourly' && table.closeTime && !table.openTime) {
+                    // Table was closed - ensure it stays closed
+                    table.isActive = false;
+                    table.openTime = null;
+                    table.hourlyTotal = 0;
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                    tableUpdated = true;
+                } else if (table.type === 'hourly' && table.openTime) {
+                    // Hourly tables: if manually opened (have openTime), keep active and update totals.
+                    // Regular tables: DO NOT auto-deactivate. They can be "occupied" with zero products,
+                    // and that state must sync across devices (açılış / boş-dolu).
                     if (isSettling) {
                         // Recent settle: prefer showing as closed while DB catches up
                         // (do not write to DB here; payment flow will persist state)
