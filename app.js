@@ -5403,6 +5403,17 @@ class MekanApp {
             customer.balance = Math.max(0, currentBalance - paymentAmount);
             await this.db.updateCustomer(customer);
 
+            // If balance becomes zero, delete all credit sales for this customer
+            if (customer.balance === 0) {
+                const customerSales = await this.db.getSalesByCustomer(customerId);
+                for (const sale of customerSales) {
+                    // Only delete credit sales (isCredit = true)
+                    if (sale.isCredit) {
+                        await this.db.deleteSale(sale.id);
+                    }
+                }
+            }
+
             // Create a payment record sale
             const paymentSale = {
                 tableId: null,
@@ -5612,8 +5623,20 @@ class MekanApp {
                     const timeB = b[1][0].paymentTime || b[1][0].sellDateTime || b[1][0].createdAt;
                     return new Date(timeB) - new Date(timeA);
                 }).forEach(([closureKey, closureSales]) => {
-                    // Get the first sale for time and table info
-                    const firstSale = closureSales[0];
+                    // Filter out sales with no items and no hourly total (empty sales)
+                    const validSales = closureSales.filter(sale => {
+                        const hasItems = sale.items && sale.items.length > 0;
+                        const hasTableId = sale.tableId;
+                        return hasItems || hasTableId;
+                    });
+                    
+                    // Skip if no valid sales in this closure
+                    if (validSales.length === 0) {
+                        return;
+                    }
+                    
+                    // Get the first valid sale for time and table info
+                    const firstSale = validSales[0];
                     const saleDate = new Date(firstSale.sellDateTime || firstSale.paymentTime || firstSale.createdAt);
                     const timeStr = saleDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
                     
@@ -5663,9 +5686,9 @@ class MekanApp {
                         }
                     }
                     
-                    // Group products by name from ALL sales in this closure (like receipt modal)
+                    // Group products by name from ALL valid sales in this closure (like receipt modal)
                     const productGroups = {};
-                    closureSales.forEach(sale => {
+                    validSales.forEach(sale => {
                         if (sale.items && sale.items.length > 0) {
                             sale.items.forEach(item => {
                                 if (!productGroups[item.name]) {
@@ -5685,6 +5708,11 @@ class MekanApp {
                     // Calculate product total
                     const productTotal = Object.values(productGroups).reduce((sum, group) => sum + group.total, 0);
                     const finalTotal = hourlyTotal + productTotal;
+                    
+                    // Skip if no products and no hourly total (empty receipt)
+                    if (Object.keys(productGroups).length === 0 && hourlyTotal === 0) {
+                        return;
+                    }
                     
                     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
                     const receiptBg = isDark ? 'var(--dark-surface)' : 'white';
