@@ -5583,13 +5583,14 @@ class MekanApp {
             contentHTML += '</div>';
         }
         
-        // Add sales by date
+        // Add sales by date - Each sale is a separate receipt (like receipt modal)
         if (sortedDates.length > 0) {
             contentHTML += '<div><h3 style="margin-bottom: 10px; color: var(--primary-color);">Adisyonlar</h3>';
             sortedDates.forEach(dateKey => {
                 const dateSales = salesByDate.get(dateKey);
                 contentHTML += `<div style="margin-bottom: 20px;"><h4 style="margin-bottom: 10px; color: var(--secondary-color);">${dateKey}</h4>`;
                 
+                // Process each sale as a separate receipt (like receipt modal)
                 dateSales.forEach(sale => {
                     const saleDate = new Date(sale.sellDateTime || sale.paymentTime || sale.createdAt);
                     const timeStr = saleDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -5640,26 +5641,7 @@ class MekanApp {
                         }
                     }
                     
-                    // Calculate product total
-                    const productTotal = sale.items ? sale.items.reduce((sum, item) => sum + (item.price * item.amount), 0) : 0;
-                    
-                    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-                    const receiptBg = isDark ? 'var(--dark-surface)' : 'white';
-                    const receiptBorder = isDark ? 'var(--dark-border)' : '#e0e0e0';
-                    const receiptText = isDark ? 'var(--dark-text-primary)' : 'inherit';
-                    const receiptTextSecondary = isDark ? 'var(--dark-text-secondary)' : '#7f8c8d';
-                    
-                    // Calculate final total
-                    const finalTotal = hourlyTotal + productTotal;
-                    
-                    contentHTML += `
-                        <div class="customer-receipt-item" style="padding: 15px; margin-bottom: 20px; background: ${receiptBg}; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid ${receiptBorder}; color: ${receiptText};">
-                            <div class="receipt-section" style="margin-bottom: 15px;">
-                                <div style="margin-bottom: 10px; font-weight: bold; font-size: 1.1rem; color: ${receiptText};">${timeStr}${tableName ? ` - ${tableName}` : ''}</div>
-                            </div>
-                    `;
-                    
-                    // Group products by name (like receipt format)
+                    // Group products by name (like receipt format) - from this sale only
                     const productGroups = {};
                     if (sale.items && sale.items.length > 0) {
                         sale.items.forEach(item => {
@@ -5675,6 +5657,24 @@ class MekanApp {
                             productGroups[item.name].total += item.price * item.amount;
                         });
                     }
+                    
+                    // Calculate product total
+                    const productTotal = Object.values(productGroups).reduce((sum, group) => sum + group.total, 0);
+                    const finalTotal = hourlyTotal + productTotal;
+                    
+                    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                    const receiptBg = isDark ? 'var(--dark-surface)' : 'white';
+                    const receiptBorder = isDark ? 'var(--dark-border)' : '#e0e0e0';
+                    const receiptText = isDark ? 'var(--dark-text-primary)' : 'inherit';
+                    const receiptTextSecondary = isDark ? 'var(--dark-text-secondary)' : '#7f8c8d';
+                    
+                    // Build receipt card for this sale (exactly like receipt modal)
+                    contentHTML += `
+                        <div class="customer-receipt-item" style="padding: 15px; margin-bottom: 20px; background: ${receiptBg}; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid ${receiptBorder}; color: ${receiptText};">
+                            <div class="receipt-section" style="margin-bottom: 15px;">
+                                <div style="margin-bottom: 10px; font-weight: bold; font-size: 1.1rem; color: ${receiptText};">${timeStr}${tableName ? ` - ${tableName}` : ''}</div>
+                            </div>
+                    `;
                     
                     // Build receipt HTML using receipt-section and receipt-item classes (exactly like receipt modal)
                     let receiptContentHTML = '';
@@ -5769,8 +5769,8 @@ class MekanApp {
         
         if (deleteBtn) {
             deleteBtn.onclick = async () => {
-                const confirmed = await this.appDialog('Bu müşteriyi silmek istediğinizden emin misiniz?', 'Müşteri Sil', ['İptal', 'Sil']);
-                if (confirmed === 'Sil') {
+                const confirmed = await this.appConfirm('Bu müşteriyi silmek istediğinizden emin misiniz?', { title: 'Müşteri Sil', confirmText: 'Sil', cancelText: 'İptal', confirmVariant: 'danger' });
+                if (confirmed) {
                     modal.classList.remove('active');
                     await this.deleteCustomer(customer.id);
                 }
