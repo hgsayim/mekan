@@ -2714,7 +2714,17 @@ class MekanApp {
      * @param {string|null} customerId - Customer ID for credit payments
      */
     _closeHourlyTable(table, unpaidSales, paymentTime, isCredit = false, customerId = null) {
-        if (table.type !== 'hourly' || !table.isActive || !table.openTime) return;
+        // CRITICAL: Double-check table state to prevent closing already-closed tables
+        if (table.type !== 'hourly' || !table.isActive || !table.openTime) {
+            console.log(`_closeHourlyTable: Table ${table.id} cannot be closed (type: ${table.type}, isActive: ${table.isActive}, openTime: ${table.openTime})`);
+            return;
+        }
+        
+        // Additional safety check: if closeTime already exists, table is already closed
+        if (table.closeTime) {
+            console.log(`_closeHourlyTable: Table ${table.id} already has closeTime, skipping`);
+            return;
+        }
 
         const closeTimeISO = new Date().toISOString();
         // Eğer hiç ürün yoksa süre fark etmeksizin ücretsiz kapat (dükkan sahibi kaybetti)
@@ -3851,24 +3861,47 @@ class MekanApp {
     async processPayment() {
         if (!this.currentTableId) return;
 
+        // CRITICAL: Check if table is already being settled (prevents double-closing)
+        if (this._isTableSettling(this.currentTableId)) {
+            console.log(`Table ${this.currentTableId} is already being settled, skipping`);
+            return;
+        }
+
         const table = await this.db.getTable(this.currentTableId);
         if (!table) return;
+
+        // CRITICAL: Re-read table from DB to ensure we have the latest state
+        // This prevents race conditions when closing multiple tables quickly
+        const freshTable = await this.db.getTable(this.currentTableId);
+        if (!freshTable) return;
+        
+        // If table is already closed, skip
+        if (freshTable.type === 'hourly' && (!freshTable.isActive || !freshTable.openTime || freshTable.closeTime)) {
+            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+            return;
+        }
+        if (freshTable.type !== 'hourly' && !freshTable.isActive) {
+            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+            return;
+        }
 
         const unpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
 
         try {
+            // Mark as settling IMMEDIATELY to prevent concurrent closures
+            this._markTableSettling(this.currentTableId);
+            
             // Optimistic UI: close modals + mark table visually as closed immediately
             const receiptModal = document.getElementById('receipt-modal');
             if (receiptModal) receiptModal.classList.remove('active');
             this.closeTableModal();
 
             // Predict final closed state (UI only)
-            const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
+            const optimisticClosed = { ...freshTable, isActive: false, salesTotal: 0, checkTotal: 0 };
             if (optimisticClosed.type === 'hourly') {
                 // Keep closeTime/openTime snapshot in DB, but UI should show inactive
                 optimisticClosed.openTime = null;
             }
-            this._markTableSettling(optimisticClosed.id);
             this.setTableCardState(optimisticClosed.id, optimisticClosed);
             this.showTableSettlementEffect(optimisticClosed.id, 'Hesap Alındı');
 
@@ -3877,20 +3910,21 @@ class MekanApp {
             const paymentTime = new Date().toISOString();
             
             // For hourly tables, close it and finalize hourly charges (Pay = Close for hourly tables)
-            this._closeHourlyTable(table, unpaidSales, paymentTime, false);
+            // Use freshTable to ensure we're working with the latest state
+            this._closeHourlyTable(freshTable, unpaidSales, paymentTime, false);
 
             // Regular/instant tables: payment should close the table (other devices must see it closed).
             // (Hourly already handled above.)
-            if (table.type !== 'hourly') {
-                table.isActive = false;
+            if (freshTable.type !== 'hourly') {
+                freshTable.isActive = false;
             }
 
             // Reset totals (hourlyTotal already reset above for hourly tables)
-            table.salesTotal = 0;
-            table.checkTotal = 0;
+            freshTable.salesTotal = 0;
+            freshTable.checkTotal = 0;
             
             // Write table closure to DB FIRST - this ensures other devices see it as closed
-            await this.db.updateTable(table);
+            await this.db.updateTable(freshTable);
 
             // THEN update sales (after table is already closed in DB)
             for (const sale of unpaidSales) {
@@ -4009,8 +4043,26 @@ class MekanApp {
     async processCreditTable(selectedCustomerId) {
         if (!this.currentTableId) return;
 
-        const table = await this.db.getTable(this.currentTableId);
-        if (!table) return;
+        // CRITICAL: Check if table is already being settled (prevents double-closing)
+        if (this._isTableSettling(this.currentTableId)) {
+            console.log(`Table ${this.currentTableId} is already being settled, skipping`);
+            return;
+        }
+
+        // CRITICAL: Re-read table from DB to ensure we have the latest state
+        // This prevents race conditions when closing multiple tables quickly
+        const freshTable = await this.db.getTable(this.currentTableId);
+        if (!freshTable) return;
+        
+        // If table is already closed, skip
+        if (freshTable.type === 'hourly' && (!freshTable.isActive || !freshTable.openTime || freshTable.closeTime)) {
+            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+            return;
+        }
+        if (freshTable.type !== 'hourly' && !freshTable.isActive) {
+            console.log(`Table ${this.currentTableId} is already closed, skipping`);
+            return;
+        }
 
         const customer = await this.db.getCustomer(selectedCustomerId);
         if (!customer) {
@@ -4027,12 +4079,12 @@ class MekanApp {
         const unpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
         
         // Calculate final check total (for hourly tables, include real-time calculation)
-        let finalCheckTotal = table.checkTotal;
-        if (table.type === 'hourly' && table.isActive && table.openTime) {
+        let finalCheckTotal = freshTable.checkTotal;
+        if (freshTable.type === 'hourly' && freshTable.isActive && freshTable.openTime) {
             // Normal hesaplama - oyun ücreti her zaman hesaplanmalı
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
-            const hourlyTotal = hoursUsed * table.hourlyRate;
-            finalCheckTotal = hourlyTotal + table.salesTotal;
+            const hoursUsed = this.calculateHoursUsed(freshTable.openTime);
+            const hourlyTotal = hoursUsed * freshTable.hourlyRate;
+            finalCheckTotal = hourlyTotal + freshTable.salesTotal;
         }
         
         // Allow credit if there's a check total (even if no unpaid sales - for hourly tables with only game charges)
@@ -4042,11 +4094,13 @@ class MekanApp {
         }
 
         try {
+            // Mark as settling IMMEDIATELY to prevent concurrent closures
+            this._markTableSettling(this.currentTableId);
+            
             // Optimistic UI: close table modal + mark card as closed immediately
             this.closeTableModal();
-            const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
+            const optimisticClosed = { ...freshTable, isActive: false, salesTotal: 0, checkTotal: 0 };
             if (optimisticClosed.type === 'hourly') optimisticClosed.openTime = null;
-            this._markTableSettling(optimisticClosed.id);
             this.setTableCardState(optimisticClosed.id, optimisticClosed);
             this.showTableSettlementEffect(optimisticClosed.id, 'Veresiye');
 
@@ -4055,20 +4109,21 @@ class MekanApp {
             const creditTime = new Date().toISOString();
             
             // For hourly tables, close it and finalize hourly charges
-            this._closeHourlyTable(table, unpaidSales, creditTime, true, selectedCustomerId);
+            // Use freshTable to ensure we're working with the latest state
+            this._closeHourlyTable(freshTable, unpaidSales, creditTime, true, selectedCustomerId);
 
             // Regular/instant tables: credit should close the table (other devices must see it closed).
             // (Hourly already handled above.)
-            if (table.type !== 'hourly') {
-                table.isActive = false;
+            if (freshTable.type !== 'hourly') {
+                freshTable.isActive = false;
             }
 
             // Reset totals (hourlyTotal already reset above for hourly tables)
-            table.salesTotal = 0;
-            table.checkTotal = 0;
+            freshTable.salesTotal = 0;
+            freshTable.checkTotal = 0;
             
             // Write table closure to DB FIRST - this ensures other devices see it as closed
-            await this.db.updateTable(table);
+            await this.db.updateTable(freshTable);
 
             // THEN update sales and customer (after table is already closed in DB)
             for (const sale of unpaidSales) {
