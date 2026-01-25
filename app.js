@@ -1974,12 +1974,27 @@ class MekanApp {
         if (!this.currentTableId) return;
 
         const tableId = this.currentTableId;
-        const table = await this.db.getTable(tableId);
-        if (!table || table.type !== 'hourly') return;
+
+        // CRITICAL: Check if table is already being settled (prevents double-closing)
+        if (this._isTableSettling(tableId)) {
+            console.log(`Table ${tableId} is already being settled, skipping`);
+            return;
+        }
+
+        // CRITICAL: Re-read table from DB to ensure we have the latest state
+        // This prevents race conditions when closing multiple tables quickly
+        const freshTable = await this.db.getTable(tableId);
+        if (!freshTable || freshTable.type !== 'hourly') return;
 
         // Only meaningful if table is open
-        if (!table.isActive || !table.openTime) {
+        if (!freshTable.isActive || !freshTable.openTime) {
             await this.appAlert('Bu süreli masa açık değil.', 'Uyarı');
+            return;
+        }
+
+        // If table is already closed, skip
+        if (freshTable.closeTime) {
+            console.log(`Table ${tableId} already has closeTime, skipping`);
             return;
         }
 
@@ -1988,6 +2003,9 @@ class MekanApp {
         }
 
         try {
+            // Mark as settling IMMEDIATELY to prevent concurrent closures
+            this._markTableSettling(tableId);
+
             // Make UI responsive immediately
             const cancelBtn = document.getElementById('cancel-hourly-btn');
             const prevCancelText = cancelBtn ? cancelBtn.textContent : null;
@@ -2005,14 +2023,26 @@ class MekanApp {
                 isActive: false,
                 type: 'hourly',
                 openTime: null,
-                hourlyRate: table.hourlyRate || 0,
+                hourlyRate: freshTable.hourlyRate || 0,
                 salesTotal: 0,
                 checkTotal: 0
             });
 
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            // CRITICAL: Close table FIRST and write to DB immediately
+            // This prevents other devices from seeing the table as still open during sales deletion
+            const updatedTable = {
+                ...freshTable,
+                isActive: false,
+                openTime: null,
+                closeTime: new Date().toISOString(), // Mark as closed
+                hourlyTotal: 0,
+                salesTotal: 0,
+                checkTotal: 0
+            };
+            await this.db.updateTable(updatedTable);
 
-            // Delete unpaid sales (and restore stock) so nothing remains on the table
+            // THEN delete unpaid sales (after table is already closed in DB)
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
             for (const sale of unpaidSales) {
                 if (sale?.items?.length) {
                     for (const item of sale.items) {
@@ -2030,32 +2060,16 @@ class MekanApp {
                 }
             }
 
-            // Close and reset hourly table WITHOUT recording any session for reporting
-            // IMPORTANT: re-fetch latest to avoid writing stale state
-            const latestTable = await this.db.getTable(tableId);
-            if (latestTable) {
-                const updatedTable = {
-                    ...latestTable,
-                    isActive: false,
-                    openTime: null,
-                    closeTime: null,
-                    hourlyTotal: 0,
-                    salesTotal: 0,
-                    checkTotal: 0
-                };
-                await this.db.updateTable(updatedTable);
-
-                // Verify (some devices can have timing quirks with IndexedDB writes)
-                const verify = await this.db.getTable(tableId);
-                if (verify && (verify.isActive || verify.openTime)) {
-                    verify.isActive = false;
-                    verify.openTime = null;
-                    verify.closeTime = null;
-                    verify.hourlyTotal = 0;
-                    verify.salesTotal = 0;
-                    verify.checkTotal = 0;
-                    await this.db.updateTable(verify);
-                }
+            // Verify (some devices can have timing quirks with IndexedDB writes)
+            const verify = await this.db.getTable(tableId);
+            if (verify && (verify.isActive || verify.openTime)) {
+                verify.isActive = false;
+                verify.openTime = null;
+                verify.closeTime = verify.closeTime || new Date().toISOString();
+                verify.hourlyTotal = 0;
+                verify.salesTotal = 0;
+                verify.checkTotal = 0;
+                await this.db.updateTable(verify);
             }
 
             // Background refresh (don't block UI)
