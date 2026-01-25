@@ -454,6 +454,12 @@ header h1 {
     background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
 }
 
+[data-theme="dark"] .table-card-opening::before {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.95) 0%, rgba(39, 174, 96, 0.95) 100%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
 /* Receipt modal */
 [data-theme="dark"] .receipt-modal-content {
     background: var(--dark-surface) !important;
@@ -953,22 +959,47 @@ header h1 {
 .table-card-opening {
     cursor: not-allowed !important;
     user-select: none;
+    position: relative;
     background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
     border-color: #27ae60 !important;
     box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3) !important;
+    overflow: hidden;
+}
+
+/* Blur overlay for loading state */
+.table-card-opening::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.95) 0%, rgba(39, 174, 96, 0.95) 100%);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* Ensure content is above blur overlay */
+.table-card-opening > * {
+    position: relative;
+    z-index: 2;
 }
 
 .table-card-opening .table-price {
     color: #ffffff !important;
     font-weight: 700 !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .table-card-opening h3 {
     color: #ffffff !important;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .table-card-opening .table-icon {
-    filter: brightness(0) invert(1);
+    filter: brightness(0) invert(1) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
 }
 
 .table-settle-overlay {

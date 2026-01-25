@@ -1569,12 +1569,14 @@ class MekanApp {
             card.style.pointerEvents = '';
             card.classList.remove('table-card-opening');
             
-            // Don't restore original price text here - setTableCardState will update it with correct values
+            // Immediately restore price text and styles when loading state ends
+            // This ensures "Süre başlatılıyor..." disappears as soon as green border is removed
             const priceEl = card.querySelector('.table-price');
             if (priceEl && priceEl.dataset.originalText) {
-                // Reset styles, but let setTableCardState update the text
+                // Reset styles immediately
                 priceEl.style.fontSize = '';
                 priceEl.style.fontWeight = '';
+                // setTableCardState will update the text with correct values
                 delete priceEl.dataset.originalText;
             }
         }
