@@ -1378,22 +1378,26 @@ class MekanApp {
         const statusClass = (effectiveTable.type === 'instant' || isActive) ? 'active' : 'inactive';
         
         // Calculate check total for display (prefer computed totals from unpaid sales)
-        const computedSalesTotal = Number(effectiveTable._computedSalesTotal);
-        const salesTotal = Number.isFinite(computedSalesTotal) ? computedSalesTotal : (effectiveTable.salesTotal || 0);
-        let displayTotal = (effectiveTable._computedCheckTotal != null) ? effectiveTable._computedCheckTotal : (effectiveTable.checkTotal || 0);
-        
-        // For hourly tables: only calculate hourly total if table is actually active (not closed)
-        if (effectiveTable.type === 'hourly' && isActive && effectiveTable.openTime) {
-            // For hourly tables, include hourly total
-            const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
-            const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
-            displayTotal = hourlyTotal + salesTotal;
-        } else if (effectiveTable.type === 'instant') {
-            // For instant sale table, show today's paid sales total
-            displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
-        } else {
-            // Regular tables: sum of unpaid sales
-            displayTotal = salesTotal;
+        // CRITICAL: If table is closed, always show 0 total (regardless of unpaid sales)
+        let displayTotal = 0;
+        if (isActive) {
+            const computedSalesTotal = Number(effectiveTable._computedSalesTotal);
+            const salesTotal = Number.isFinite(computedSalesTotal) ? computedSalesTotal : (effectiveTable.salesTotal || 0);
+            displayTotal = (effectiveTable._computedCheckTotal != null) ? effectiveTable._computedCheckTotal : (effectiveTable.checkTotal || 0);
+            
+            // For hourly tables: only calculate hourly total if table is actually active (not closed)
+            if (effectiveTable.type === 'hourly' && isActive && effectiveTable.openTime) {
+                // For hourly tables, include hourly total
+                const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
+                const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
+                displayTotal = hourlyTotal + salesTotal;
+            } else if (effectiveTable.type === 'instant') {
+                // For instant sale table, show today's paid sales total
+                displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
+            } else {
+                // Regular tables: sum of unpaid sales
+                displayTotal = salesTotal;
+            }
         }
 
         // Get icon from table data, or use default
@@ -1486,15 +1490,7 @@ class MekanApp {
             const table = await this.db.getTable(tableId);
             if (!table) return;
             const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-
-            let checkTotal = salesTotal;
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
-                const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
-                checkTotal = hourlyTotal + salesTotal;
-            }
-
+            
             // For hourly tables: if closeTime exists and openTime is null, table is closed
             // This prevents reopening closed tables via realtime updates
             const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime;
@@ -1503,6 +1499,19 @@ class MekanApp {
                 (table.type === 'hourly'
                     ? Boolean(table.isActive && table.openTime && !isClosed)
                     : (Boolean(table.isActive) || unpaidSales.length > 0));
+
+            // CRITICAL: If table is closed, always show 0 total (regardless of unpaid sales)
+            // This fixes the issue where cancelled tables show totals on other devices
+            let checkTotal = 0;
+            if (isActive) {
+                const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                checkTotal = salesTotal;
+                if (table.type === 'hourly' && table.isActive && table.openTime) {
+                    const hoursUsed = this.calculateHoursUsed(table.openTime);
+                    const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                    checkTotal = hourlyTotal + salesTotal;
+                }
+            }
 
             this.setTableCardState(tableId, {
                 isActive,
