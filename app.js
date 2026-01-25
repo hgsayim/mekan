@@ -5431,6 +5431,16 @@ class MekanApp {
             await this.appAlert(`Ödeme başarıyla alındı! Kalan bakiye: ${Math.round(customer.balance)} ₺`, 'Başarılı');
             
             document.getElementById('customer-payment-modal').classList.remove('active');
+            
+            // Reload customer detail modal if it's open
+            const customerDetailModal = document.getElementById('customer-detail-modal');
+            if (customerDetailModal && customerDetailModal.classList.contains('active')) {
+                const updatedCustomer = await this.db.getCustomer(customerId);
+                if (updatedCustomer) {
+                    await this.openCustomerDetailModal(updatedCustomer);
+                }
+            }
+            
             await this.loadCustomers();
             
             if (this.currentView === 'daily') {
@@ -5596,9 +5606,24 @@ class MekanApp {
         }
         
         // Add sales by date - Group sales from same table closure into single receipt
-        if (sortedDates.length > 0) {
+        // Filter out dates that have no valid sales (only credit sales, no items, no hourly)
+        const validDates = [];
+        sortedDates.forEach(dateKey => {
+            const dateSales = salesByDate.get(dateKey);
+            // Check if there are any valid sales (with items or tableId)
+            const hasValidSales = dateSales.some(sale => {
+                const hasItems = sale.items && sale.items.length > 0;
+                const hasTableId = sale.tableId;
+                return hasItems || hasTableId;
+            });
+            if (hasValidSales) {
+                validDates.push(dateKey);
+            }
+        });
+        
+        if (validDates.length > 0) {
             contentHTML += '<div><h3 style="margin-bottom: 10px; color: var(--primary-color);">Adisyonlar</h3>';
-            sortedDates.forEach(dateKey => {
+            validDates.forEach(dateKey => {
                 const dateSales = salesByDate.get(dateKey);
                 contentHTML += `<div style="margin-bottom: 20px;"><h4 style="margin-bottom: 10px; color: var(--secondary-color);">${dateKey}</h4>`;
                 
