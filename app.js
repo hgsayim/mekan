@@ -2244,12 +2244,6 @@ class MekanApp {
                 this.reloadViews(views);
             }, 100);
 
-            if (cancelBtn) {
-                cancelBtn.disabled = false;
-                cancelBtn.textContent = 'X';
-                cancelBtn.style.display = 'none';
-            }
-
             // Success: no alert (keep UX quiet)
         } catch (err) {
             console.error('Süreli oyun iptal edilirken hata:', err);
