@@ -12,7 +12,7 @@ import { SupabaseDatabase } from './supabase-db.js';
 
 export class HybridDatabase {
   /**
-   * @param {import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm').SupabaseClient} supabase
+   * @param {import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient} supabase
    * @param {{ syncEntities?: Array<'products'|'tables'|'sales'|'customers'|'manualSessions'|'expenses'> }} [opts]
    */
   constructor(supabase, opts = {}) {

@@ -3,7 +3,7 @@
 
 export class SupabaseDatabase {
   /**
-   * @param {import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm').SupabaseClient} supabase
+   * @param {import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient} supabase
    */
   constructor(supabase) {
     this.supabase = supabase;
