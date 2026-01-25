@@ -2163,35 +2163,38 @@ class MekanApp {
         // Load products for selection
         await this.loadTableProducts(tableId);
 
-        // CRITICAL: Verify table is still open before enabling buttons
+        // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
         const finalTableCheck = await this.db.getTable(tableId);
-        if (finalTableCheck) {
-            // Check if table can still be closed
-            const canClose = finalTableCheck.type === 'hourly' 
-                ? (finalTableCheck.isActive && finalTableCheck.openTime && !finalTableCheck.closeTime)
-                : finalTableCheck.isActive;
-            
-            if (canClose) {
-                // Table is still open - mark data as ready and enable buttons
-                modalDataReady = true;
-                unlockModal();
-            } else {
-                // Table is already closed - keep buttons disabled and close modal
-                unlockModal(); // Remove loading overlay
-                footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
-                // Close modal after a brief delay to show user the table is closed
-                setTimeout(() => {
-                    this.closeTableModal();
-                }, 500);
-                return;
-            }
-        } else {
+        if (!finalTableCheck) {
             // Table not found - close modal
             unlockModal();
             this.closeTableModal();
             return;
         }
+
+        // Check if table is closed (should not show modal for closed tables)
+        // For hourly tables: closed if has closeTime, no openTime, and not active
+        // For regular/instant tables: closed ONLY if has closeTime (user can add products even if no sales exist)
+        const isTableClosed = finalTableCheck.type === 'hourly'
+            ? (finalTableCheck.closeTime && !finalTableCheck.openTime && !finalTableCheck.isActive)
+            : (finalTableCheck.closeTime !== null && finalTableCheck.closeTime !== undefined);
+        
+        if (isTableClosed) {
+            // Table is already closed - keep buttons disabled and close modal
+            unlockModal(); // Remove loading overlay
+            footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
+            // Close modal after a brief delay to show user the table is closed
+            setTimeout(() => {
+                this.closeTableModal();
+            }, 500);
+            return;
+        }
+
+        // Table is open (or regular/instant table without closeTime) - mark data as ready and enable buttons
+        // Regular/instant tables can be opened even if they have no products (user wants to add products)
+        modalDataReady = true;
+        unlockModal();
 
         // Load sales in the background to keep modal snappy
         Promise.resolve()
