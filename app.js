@@ -2175,10 +2175,11 @@ class MekanApp {
 
         // Check if table is closed (should not show modal for closed tables)
         // For hourly tables: closed if has closeTime, no openTime, and not active
-        // For regular/instant tables: closed ONLY if has closeTime (user can add products even if no sales exist)
+        // For regular/instant tables: NEVER close modal - user can always add products
+        // Regular/instant tables don't use closeTime - they're always available for product addition
         const isTableClosed = finalTableCheck.type === 'hourly'
             ? (finalTableCheck.closeTime && !finalTableCheck.openTime && !finalTableCheck.isActive)
-            : (finalTableCheck.closeTime !== null && finalTableCheck.closeTime !== undefined);
+            : false; // Regular/instant: never close modal - always allow product addition
         
         if (isTableClosed) {
             // Table is already closed - keep buttons disabled and close modal
