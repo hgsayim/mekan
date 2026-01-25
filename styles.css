@@ -17,6 +17,30 @@
     --border-color: #bdc3c7;
     --shadow: 0 2px 10px rgba(0,0,0,0.1);
     --header-gap: 12px;
+    
+    /* Dark mode variables */
+    --dark-bg: #1a1a1a;
+    --dark-surface: #2d2d2d;
+    --dark-surface-elevated: #3a3a3a;
+    --dark-text-primary: #e0e0e0;
+    --dark-text-secondary: #b0b0b0;
+    --dark-border: #404040;
+    --dark-shadow: 0 2px 10px rgba(0,0,0,0.5);
+}
+
+/* Dark mode */
+[data-theme="dark"] {
+    --primary-color: #4a9eff;
+    --secondary-color: #5dade2;
+    --success-color: #2ecc71;
+    --danger-color: #e74c3c;
+    --warning-color: #f39c12;
+    --info-color: #1abc9c;
+    --light-bg: var(--dark-bg);
+    --dark-text: var(--dark-text-primary);
+    --light-text: var(--dark-text-primary);
+    --border-color: var(--dark-border);
+    --shadow: var(--dark-shadow);
 }
 
 body {
@@ -58,6 +82,12 @@ header {
     z-index: 3000;
     /* iOS safe-area */
     padding-top: calc(18px + env(safe-area-inset-top));
+}
+
+/* Hide header when auth modal is active (initial load and after) */
+#auth-modal.modal.active ~ * header,
+body:not(.auth-open) #auth-modal.modal.active ~ * header {
+    display: none !important;
 }
 
 header::before {
@@ -200,6 +230,11 @@ header h1 {
     overflow: hidden;
 }
 
+[data-theme="dark"] .menu-dropdown {
+    background: var(--dark-surface);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3);
+}
+
 .menu-dropdown.show {
     display: block;
 }
@@ -229,6 +264,219 @@ header h1 {
 .nav-btn-compact.active {
     background: var(--secondary-color);
     color: white;
+}
+
+[data-theme="dark"] .nav-btn-compact {
+    background: var(--dark-surface);
+    color: var(--dark-text-primary);
+    border-bottom-color: var(--dark-border);
+}
+
+[data-theme="dark"] .nav-btn-compact:hover {
+    background: var(--dark-surface-elevated);
+}
+
+[data-theme="dark"] .nav-btn-compact.active {
+    background: var(--secondary-color);
+    color: white;
+}
+
+.menu-divider {
+    height: 1px;
+    background: #eee;
+    margin: 8px 0;
+}
+
+[data-theme="dark"] .menu-divider {
+    background: var(--dark-border);
+}
+
+.dark-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.dark-mode-icon {
+    font-size: 1.1rem;
+}
+
+/* ============================================
+   DARK MODE STYLES - Comprehensive Coverage
+   ============================================ */
+
+/* General dark mode overrides */
+[data-theme="dark"] body {
+    background: var(--dark-bg);
+    color: var(--dark-text-primary);
+}
+
+[data-theme="dark"] html {
+    background: var(--dark-bg);
+}
+
+[data-theme="dark"] .app-container {
+    background: var(--dark-bg);
+}
+
+/* Cards */
+[data-theme="dark"] .table-card,
+[data-theme="dark"] .product-card,
+[data-theme="dark"] .customer-card,
+[data-theme="dark"] .expense-card,
+[data-theme="dark"] .sale-card,
+[data-theme="dark"] .stat-card {
+    background: var(--dark-surface);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+[data-theme="dark"] .table-card:hover,
+[data-theme="dark"] .product-card:hover,
+[data-theme="dark"] .customer-card:hover,
+[data-theme="dark"] .expense-card:hover,
+[data-theme="dark"] .sale-card:hover {
+    background: var(--dark-surface-elevated);
+}
+
+/* Modals */
+[data-theme="dark"] .modal-content {
+    background: var(--dark-surface);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+[data-theme="dark"] .modal {
+    background: rgba(0, 0, 0, 0.8);
+}
+
+/* Buttons */
+[data-theme="dark"] .btn {
+    color: var(--dark-text-primary);
+}
+
+[data-theme="dark"] .btn-primary {
+    background: var(--secondary-color);
+    color: white;
+}
+
+[data-theme="dark"] .btn-secondary {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+/* Inputs and selects */
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+[data-theme="dark"] input:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus {
+    border-color: var(--secondary-color);
+    background: var(--dark-surface-elevated);
+}
+
+/* View headers */
+[data-theme="dark"] .view-header {
+    background: var(--dark-surface);
+    border-color: var(--dark-border);
+}
+
+/* Report controls */
+[data-theme="dark"] .report-date-input {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+/* Menu toggle */
+[data-theme="dark"] .menu-toggle {
+    background: var(--dark-surface);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+/* Loading overlay */
+[data-theme="dark"] .loading-overlay {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+/* Auth inputs */
+[data-theme="dark"] .auth-input {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+[data-theme="dark"] .auth-toggle {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+/* Sale card icon background */
+[data-theme="dark"] .sale-card-icon {
+    background: var(--dark-surface-elevated);
+}
+
+/* Filter controls */
+[data-theme="dark"] .filter-controls select {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
+}
+
+/* Add card */
+[data-theme="dark"] .add-card {
+    background: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+}
+
+/* Table card opening state - adjust for dark mode */
+[data-theme="dark"] .table-card-opening {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
+}
+
+/* Receipt modal */
+[data-theme="dark"] .receipt-modal-content {
+    background: var(--dark-surface);
+}
+
+[data-theme="dark"] .receipt-header {
+    background: var(--dark-surface-elevated);
+    border-color: var(--dark-border);
+}
+
+/* Stats grid cards with custom backgrounds */
+[data-theme="dark"] .stat-card[style*="background"] {
+    background: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+}
+
+/* Chart containers */
+[data-theme="dark"] .chart-card {
+    background: var(--dark-surface);
+    border-color: var(--dark-border);
+}
+
+/* Table usage section */
+[data-theme="dark"] .table-usage-section {
+    background: var(--dark-surface);
+    border-color: var(--dark-border);
+}
+
+/* Customer balance badge */
+[data-theme="dark"] .customer-card-balance {
+    background: rgba(231, 76, 60, 0.2) !important;
+    color: #ff6b6b !important;
+    border-color: rgba(231, 76, 60, 0.3) !important;
 }
 
 .view {
@@ -1602,6 +1850,11 @@ header h1 {
     display: none !important;
 }
 
+/* Hide header when auth modal is active (initial load) */
+body:has(#auth-modal.modal.active) header {
+    display: none !important;
+}
+
 #auth-modal.modal {
     /* Look like an app screen (not a dark overlay modal) */
     background: var(--light-bg);
@@ -1622,18 +1875,76 @@ header h1 {
 
 .auth-modal-content {
     max-width: 460px;
-    padding: 26px 26px 22px 26px;
-    border-radius: 18px;
+    padding: 40px 32px 32px 32px;
+    border-radius: 24px;
     background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
     border: 1px solid rgba(44, 62, 80, 0.10);
-    box-shadow: 0 14px 50px rgba(0,0,0,0.22), 0 2px 10px rgba(0,0,0,0.10);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.12);
+}
+
+[data-theme="dark"] .auth-modal-content {
+    background: linear-gradient(135deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 100%);
+    border-color: var(--dark-border);
+}
+
+.auth-branding {
+    text-align: center;
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid rgba(44, 62, 80, 0.08);
+}
+
+[data-theme="dark"] .auth-branding {
+    border-bottom-color: var(--dark-border);
+}
+
+.auth-logo {
+    font-size: 4rem;
+    margin-bottom: 12px;
+    animation: float 3s ease-in-out infinite;
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+.auth-app-name {
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: var(--primary-color);
+    margin: 0 0 8px 0;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+[data-theme="dark"] .auth-app-name {
+    background: linear-gradient(135deg, #4a9eff 0%, #5dade2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.auth-tagline {
+    font-size: 0.95rem;
+    color: #6b7280;
+    font-weight: 600;
+    margin: 0;
+    letter-spacing: 0.3px;
+}
+
+[data-theme="dark"] .auth-tagline {
+    color: var(--dark-text-secondary);
 }
 
 .auth-header {
     display: flex;
     align-items: center;
     gap: 14px;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
 }
 
 .auth-badge {

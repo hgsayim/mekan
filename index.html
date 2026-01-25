@@ -23,7 +23,7 @@
 </head>
 <body>
     <div class="app-container">
-        <header>
+        <header id="main-header" style="display: none;">
             <div class="header-content">
                 <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span></h1>
                 <nav class="main-nav-compact">
@@ -35,6 +35,11 @@
                         <button class="nav-btn-compact" data-view="expenses">Giderler</button>
                         <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
                         <button class="nav-btn-compact" data-view="daily">Rapor</button>
+                        <div class="menu-divider"></div>
+                        <button class="nav-btn-compact dark-mode-toggle" id="dark-mode-toggle">
+                            <span class="dark-mode-icon">🌙</span>
+                            <span class="dark-mode-text">Karanlık Mod</span>
+                        </button>
                     </div>
                 </nav>
                 <button id="pwa-install-btn" class="btn btn-secondary install-btn" style="display: none;">📲 Ana Ekrana Ekle</button>
@@ -647,6 +652,11 @@
     <!-- Auth Modal (Supabase) -->
     <div id="auth-modal" class="modal active" style="display:none;">
         <div class="modal-content auth-modal-content" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+            <div class="auth-branding">
+                <div class="auth-logo">🍺</div>
+                <h1 class="auth-app-name">MekanApp</h1>
+                <p class="auth-tagline">Kafe Yönetim Sistemi</p>
+            </div>
             <div class="auth-header">
                 <div class="auth-badge">🔐</div>
                 <div class="auth-title-wrap">

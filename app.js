@@ -19,16 +19,21 @@ function setAuthError(message) {
 
 function showAuthModal(show) {
     const modal = document.getElementById('auth-modal');
+    const header = document.getElementById('main-header');
     if (!modal) return;
     // Use flex so modal content is truly centered (block breaks .modal.active layout)
     modal.style.display = show ? 'flex' : 'none';
     if (show) {
         modal.classList.add('active');
         document.body.classList.add('auth-open');
+        // Hide header when auth modal is shown
+        if (header) header.style.display = 'none';
     } else {
         modal.classList.remove('active');
         document.body.classList.remove('auth-open');
         setAuthError('');
+        // Show header when auth modal is closed
+        if (header) header.style.display = '';
     }
 }
 
@@ -171,6 +176,9 @@ class MekanApp {
 
     async init() {
         try {
+            // Initialize dark mode from localStorage
+            this.initDarkMode();
+            
             await this.db.init();
             this.setupEventListeners();
             this.updateHeaderViewTitle(this.currentView);
@@ -413,6 +421,18 @@ class MekanApp {
                 }
             });
         });
+
+        // Dark mode toggle
+        const darkModeToggle = document.getElementById('dark-mode-toggle');
+        if (darkModeToggle) {
+            darkModeToggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleDarkMode();
+                if (menuDropdown) {
+                    menuDropdown.classList.remove('show');
+                }
+            });
+        }
 
         // Add Customer button
         const addCustomerBtn = document.getElementById('add-customer-btn');
@@ -6125,6 +6145,35 @@ class MekanApp {
                 }
             }
         });
+    }
+
+    initDarkMode() {
+        const isDark = localStorage.getItem('darkMode') === 'true';
+        if (isDark) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.removeAttribute('data-theme');
+        }
+        this.updateDarkModeIcon();
+    }
+
+    toggleDarkMode() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        if (isDark) {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('darkMode', 'false');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('darkMode', 'true');
+        }
+        this.updateDarkModeIcon();
+    }
+
+    updateDarkModeIcon() {
+        const icon = document.querySelector('.dark-mode-icon');
+        if (!icon) return;
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        icon.textContent = isDark ? '☀️' : '🌙';
     }
 
     updateTableUsageList(tables) {
