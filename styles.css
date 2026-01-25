@@ -1463,6 +1463,70 @@ header h1 {
     z-index: 5000;
 }
 
+/* Loading Overlay (blocks all UI during critical operations) */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.7);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+}
+
+.loading-content {
+    background: white;
+    padding: 30px 40px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    min-width: 250px;
+}
+
+.loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid #e0e0e0;
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.loading-message {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--dark-text);
+    text-align: center;
+}
+
+@media (max-width: 768px) {
+    .loading-content {
+        padding: 25px 30px;
+        min-width: 200px;
+    }
+    
+    .loading-spinner {
+        width: 40px;
+        height: 40px;
+        border-width: 3px;
+    }
+    
+    .loading-message {
+        font-size: 1rem;
+    }
+}
+
 .app-dialog-content {
     max-width: 520px;
     padding: 22px 22px;

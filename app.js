@@ -847,6 +847,26 @@ class MekanApp {
         });
     }
 
+    showLoadingOverlay(message = 'İşleniyor...') {
+        const overlay = document.getElementById('loading-overlay');
+        const messageEl = document.getElementById('loading-message');
+        if (overlay) {
+            if (messageEl) messageEl.textContent = message;
+            overlay.style.display = 'flex';
+            // Prevent body scroll
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    hideLoadingOverlay() {
+        const overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            overlay.style.display = 'none';
+            // Restore body scroll
+            document.body.style.overflow = '';
+        }
+    }
+
     async loadInitialData() {
         try {
             await this.ensureInstantSaleTable();
@@ -2003,6 +2023,9 @@ class MekanApp {
         }
 
         try {
+            // Show loading overlay to block all UI interactions
+            this.showLoadingOverlay('İptal ediliyor...');
+            
             // Mark as settling IMMEDIATELY to prevent concurrent closures
             this._markTableSettling(tableId);
 
@@ -2098,13 +2121,19 @@ class MekanApp {
                 await this.db.updateTable(verify);
             }
 
+            // Wait a bit to ensure DB operations complete
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Hide loading overlay
+            this.hideLoadingOverlay();
+
             // Background refresh (don't block UI)
             setTimeout(() => {
                 const views = ['tables', 'sales'];
                 if (this.currentView === 'products') views.push('products');
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 0);
+            }, 100);
 
             if (cancelBtn) {
                 cancelBtn.disabled = false;
@@ -2115,6 +2144,7 @@ class MekanApp {
             // Success: no alert (keep UX quiet)
         } catch (err) {
             console.error('Süreli oyun iptal edilirken hata:', err);
+            this.hideLoadingOverlay();
             await this.appAlert('Oyunu iptal ederken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -3928,6 +3958,9 @@ class MekanApp {
         const unpaidSales = await this.db.getUnpaidSalesByTable(this.currentTableId);
 
         try {
+            // Show loading overlay to block all UI interactions
+            this.showLoadingOverlay('Hesap alınıyor...');
+            
             // Mark as settling IMMEDIATELY to prevent concurrent closures
             this._markTableSettling(this.currentTableId);
             
@@ -4003,14 +4036,21 @@ class MekanApp {
                     await this.db.updateTable(finalTable);
                 }
             }
+            // Wait a bit to ensure DB operations complete
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Hide loading overlay
+            this.hideLoadingOverlay();
+            
             // Background refresh instead of blocking the UI
             setTimeout(() => {
                 const views = ['tables', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 650);
+            }, 100);
         } catch (error) {
             console.error('Ödeme işlenirken hata:', error);
+            this.hideLoadingOverlay();
             await this.appAlert('Ödeme işlenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -4165,6 +4205,9 @@ class MekanApp {
         }
 
         try {
+            // Show loading overlay to block all UI interactions
+            this.showLoadingOverlay('Veresiye yazılıyor...');
+            
             // Mark as settling IMMEDIATELY to prevent concurrent closures
             this._markTableSettling(this.currentTableId);
             
@@ -4239,14 +4282,21 @@ class MekanApp {
                     await this.db.updateTable(finalTable);
                 }
             }
+            // Wait a bit to ensure DB operations complete
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Hide loading overlay
+            this.hideLoadingOverlay();
+            
             // Background refresh (don't block UI)
             setTimeout(() => {
                 const views = ['tables', 'customers', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 650);
+            }, 100);
         } catch (error) {
             console.error('Veresiye yazılırken hata:', error);
+            this.hideLoadingOverlay();
             await this.appAlert('Veresiye yazılırken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
