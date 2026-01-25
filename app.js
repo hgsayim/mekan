@@ -1342,19 +1342,28 @@ class MekanApp {
         // If user just opened an hourly table, keep it visually open for a couple seconds
         // to avoid "green -> red -> green" flicker while DB/realtime catches up.
         const opening = (table?.type === 'hourly') ? this._getTableOpening(table.id) : null;
-        const effectiveTable = opening
+        // For hourly tables: if closeTime exists and openTime is null, table is closed (don't use opening state)
+        const isClosed = table?.type === 'hourly' && table.closeTime && !table.openTime;
+        const effectiveTable = (opening && !isClosed)
             ? { ...table, isActive: true, openTime: opening.openTime || table.openTime }
             : table;
 
         // Instant sale table is always active
-        const statusClass = (effectiveTable.type === 'instant' || effectiveTable.isActive) ? 'active' : 'inactive';
+        // For hourly tables: respect closeTime to prevent showing as active when closed
+        const isActive = effectiveTable.type === 'instant' 
+            ? true 
+            : (effectiveTable.type === 'hourly' 
+                ? (effectiveTable.isActive && effectiveTable.openTime && !isClosed)
+                : effectiveTable.isActive);
+        const statusClass = (effectiveTable.type === 'instant' || isActive) ? 'active' : 'inactive';
         
         // Calculate check total for display (prefer computed totals from unpaid sales)
         const computedSalesTotal = Number(effectiveTable._computedSalesTotal);
         const salesTotal = Number.isFinite(computedSalesTotal) ? computedSalesTotal : (effectiveTable.salesTotal || 0);
         let displayTotal = (effectiveTable._computedCheckTotal != null) ? effectiveTable._computedCheckTotal : (effectiveTable.checkTotal || 0);
         
-        if (effectiveTable.type === 'hourly' && effectiveTable.isActive && effectiveTable.openTime) {
+        // For hourly tables: only calculate hourly total if table is actually active (not closed)
+        if (effectiveTable.type === 'hourly' && isActive && effectiveTable.openTime) {
             // For hourly tables, include hourly total
             const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
             const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
@@ -1466,10 +1475,13 @@ class MekanApp {
                 checkTotal = hourlyTotal + salesTotal;
             }
 
+            // For hourly tables: if closeTime exists and openTime is null, table is closed
+            // This prevents reopening closed tables via realtime updates
+            const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime;
             const isActive =
                 table.type === 'instant' ||
                 (table.type === 'hourly'
-                    ? Boolean(table.isActive && table.openTime)
+                    ? Boolean(table.isActive && table.openTime && !isClosed)
                     : (Boolean(table.isActive) || unpaidSales.length > 0));
 
             this.setTableCardState(tableId, {
@@ -3360,6 +3372,14 @@ class MekanApp {
             // Table is already open, just update UI quickly
             this.setTableCardState(table.id, table);
             return;
+        }
+
+        // Prevent reopening if table was recently closed (realtime race condition protection)
+        // If closeTime exists and openTime is null, table is closed and should not be reopened automatically
+        if (table.closeTime && !table.openTime && !table.isActive) {
+            // Table is closed - this is expected state after payment/credit
+            // Only allow manual reopening (user explicitly clicks open)
+            // But if we're here, user did click open, so proceed
         }
 
         try {
