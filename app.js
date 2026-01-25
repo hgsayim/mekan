@@ -1268,6 +1268,17 @@ class MekanApp {
                                 await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsed));
                             }
                             this.setTableCardOpening(table.id, false);
+                            
+                            // CRITICAL: Update table state after loading state is cleared
+                            // This ensures the table appears as open immediately after loading
+                            try {
+                                const updatedTable = await this.db.getTable(table.id);
+                                if (updatedTable) {
+                                    this.setTableCardState(table.id, updatedTable);
+                                }
+                            } catch (e) {
+                                console.error('Error updating table state after opening:', e);
+                            }
                         }
                     }
                 });
@@ -1488,10 +1499,10 @@ class MekanApp {
             card.style.pointerEvents = '';
             card.classList.remove('table-card-opening');
             
-            // Restore original price text
+            // Don't restore original price text here - setTableCardState will update it with correct values
             const priceEl = card.querySelector('.table-price');
             if (priceEl && priceEl.dataset.originalText) {
-                priceEl.textContent = priceEl.dataset.originalText;
+                // Reset styles, but let setTableCardState update the text
                 priceEl.style.fontSize = '';
                 priceEl.style.fontWeight = '';
                 delete priceEl.dataset.originalText;
@@ -3666,12 +3677,9 @@ class MekanApp {
             // DB confirmed; opening flicker guard no longer needed
             this._openingTables.delete(String(table.id));
 
-            // Update UI state AFTER DB write (but don't update if in opening state)
-            // The opening state will be cleared in the finally block of the caller
-            const card = this.getTableCardEl(table.id);
-            if (card && !card.classList.contains('table-card-opening')) {
-                this.setTableCardState(table.id, table);
-            }
+            // Don't update UI state here if in opening state
+            // The opening state will be cleared in the finally block of the caller, and state will be updated there
+            // This prevents the table from appearing closed during the loading animation
 
             // Background refresh (keep other screens eventually consistent)
             setTimeout(() => {
