@@ -44,7 +44,13 @@ async function ensureSignedIn(supabase) {
     }
     const session = data?.session || null;
     if (session) {
-        // Session exists, show header
+        // Session exists, ensure auth modal is closed and header is shown
+        const authModal = document.getElementById('auth-modal');
+        if (authModal) {
+            authModal.classList.remove('active');
+            authModal.style.display = 'none';
+        }
+        document.body.classList.remove('auth-open');
         const header = document.getElementById('main-header');
         if (header) header.style.display = '';
         return session;
@@ -183,6 +189,19 @@ class MekanApp {
         try {
             // Initialize dark mode from localStorage
             this.initDarkMode();
+            
+            // Ensure header is visible (session exists at this point)
+            // Remove any auth-related classes that might hide the header
+            const authModal = document.getElementById('auth-modal');
+            if (authModal) {
+                authModal.classList.remove('active');
+                authModal.style.display = 'none';
+            }
+            document.body.classList.remove('auth-open');
+            const header = document.getElementById('main-header');
+            if (header) {
+                header.style.display = '';
+            }
             
             await this.db.init();
             this.setupEventListeners();
