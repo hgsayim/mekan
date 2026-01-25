@@ -1373,8 +1373,10 @@ class MekanApp {
         // If user just opened an hourly table, keep it visually open for a couple seconds
         // to avoid "green -> red -> green" flicker while DB/realtime catches up.
         const opening = (table?.type === 'hourly') ? this._getTableOpening(table.id) : null;
-        // For hourly tables: if closeTime exists and openTime is null, table is closed (don't use opening state)
-        const isClosed = table?.type === 'hourly' && table.closeTime && !table.openTime;
+        // For hourly tables: if closeTime exists and openTime is null AND table is not active, table is closed
+        // BUT: if table is actively opening (isActive: true, openTime exists), ignore closeTime
+        // This prevents flicker when table is opened on another device
+        const isClosed = table?.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive;
         const effectiveTable = (opening && !isClosed)
             ? { ...table, isActive: true, openTime: opening.openTime || table.openTime }
             : table;
@@ -1508,8 +1510,9 @@ class MekanApp {
             const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
             
             // For hourly tables: if closeTime exists and openTime is null, table is closed
-            // This prevents reopening closed tables via realtime updates
-            const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime;
+            // BUT: if table is actively opening (isActive: true, openTime exists), ignore closeTime
+            // This prevents flicker when table is opened on another device
+            const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive;
             const isActive =
                 table.type === 'instant' ||
                 (table.type === 'hourly'
@@ -3336,7 +3339,9 @@ class MekanApp {
                     if (tableName === 'tables' && changedTableId) {
                         try {
                             const updatedTable = await this.db.getTable(changedTableId);
-                            if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && updatedTable.type === 'hourly') {
+                            // Only clean up if table is truly closed (not active, no openTime, has closeTime)
+                            // Don't clean if table is being opened (isActive: true, openTime exists)
+                            if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime && updatedTable.type === 'hourly') {
                                 // Table was cancelled - check for unpaid sales and clean them up
                                 const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
                                 if (unpaidSales.length > 0) {
