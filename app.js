@@ -1267,18 +1267,28 @@ class MekanApp {
                             if (elapsed < minDisplayTime) {
                                 await new Promise(resolve => setTimeout(resolve, minDisplayTime - elapsed));
                             }
-                            this.setTableCardOpening(table.id, false);
                             
-                            // CRITICAL: Update table state after loading state is cleared
-                            // This ensures the table appears as open immediately after loading
+                            // CRITICAL: Update table state BEFORE clearing loading state
+                            // This ensures the table appears as open immediately when loading state is cleared
                             try {
                                 const updatedTable = await this.db.getTable(table.id);
                                 if (updatedTable) {
-                                    this.setTableCardState(table.id, updatedTable);
+                                    // Update state optimistically - table should be open
+                                    this.setTableCardState(table.id, {
+                                        isActive: true,
+                                        type: 'hourly',
+                                        openTime: updatedTable.openTime || new Date().toISOString(),
+                                        hourlyRate: updatedTable.hourlyRate || 0,
+                                        salesTotal: updatedTable.salesTotal || 0,
+                                        checkTotal: updatedTable.checkTotal || 0
+                                    });
                                 }
                             } catch (e) {
                                 console.error('Error updating table state after opening:', e);
                             }
+                            
+                            // Clear loading state AFTER state is updated
+                            this.setTableCardOpening(table.id, false);
                         }
                     }
                 });
@@ -1574,6 +1584,22 @@ class MekanApp {
         try {
             const table = await this.db.getTable(tableId);
             if (!table) return;
+            
+            // CRITICAL: If table was cancelled (has closeTime, no openTime, not active), keep it closed
+            // This prevents cancelled tables from being reopened by realtime updates
+            if (table.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive) {
+                // Table was cancelled - keep it closed, show 0 total
+                this.setTableCardState(tableId, {
+                    isActive: false,
+                    type: 'hourly',
+                    openTime: null,
+                    hourlyRate: table.hourlyRate || 0,
+                    salesTotal: 0,
+                    checkTotal: 0
+                });
+                return;
+            }
+            
             const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
             
             // For hourly tables: if closeTime exists and openTime is null, table is closed
@@ -3389,10 +3415,26 @@ class MekanApp {
             String(changedTableId) === String(this.currentTableId)
         );
 
-        const schedule = () => {
+        const schedule = async () => {
             this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
             // Additionally update the one changed card instantly while on tables view
             if ((tableName === 'sales' || tableName === 'tables') && changedTableId) {
+                // CRITICAL: If table was cancelled (has closeTime, no openTime, not active),
+                // don't refresh the card - it should remain closed
+                // This prevents cancelled tables from being reopened by realtime updates
+                if (tableName === 'tables') {
+                    try {
+                        const updatedTable = this.db.getTable ? await this.db.getTable(changedTableId) : null;
+                        if (updatedTable && updatedTable.closeTime && !updatedTable.openTime && !updatedTable.isActive && updatedTable.type === 'hourly') {
+                            // Table was cancelled - don't refresh, keep it closed
+                            console.log(`Realtime: Table ${changedTableId} was cancelled, skipping card refresh to keep it closed`);
+                            return;
+                        }
+                    } catch (e) {
+                        // If we can't check, proceed with refresh (better to show stale data than nothing)
+                        console.error('Error checking table state in realtime handler:', e);
+                    }
+                }
                 this.refreshSingleTableCard(changedTableId);
             }
         };
