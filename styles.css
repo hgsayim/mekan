@@ -4595,7 +4595,7 @@ form select:focus {
         font-size: 0.68rem !important;
         line-height: 1.25 !important;
         margin-bottom: 0px !important;
-        padding-bottom: 2px !important;
+        padding-bottom: 8px !important;
     }
     .product-mini-stock {
         font-size: 0.60rem !important;
