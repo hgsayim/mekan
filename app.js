@@ -1532,7 +1532,16 @@ class MekanApp {
                             await this.db.deleteSale(sale.id);
                         }
                     }
+                    // After cleaning up sales, re-read to ensure totals are 0
+                    const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+                    if (remainingUnpaidSales.length === 0) {
+                        // All sales cleaned up - force totals to 0
+                        checkTotal = 0;
+                    }
                 }
+                // CRITICAL: If table is closed, always show 0 total regardless of unpaid sales
+                // This ensures cancelled tables show 0 on all devices immediately
+                checkTotal = 0;
             }
 
             this.setTableCardState(tableId, {
@@ -3306,7 +3315,39 @@ class MekanApp {
         try {
             const p = this.db?.applyRealtimeChange?.(tableName, payload);
             if (p && typeof p.finally === 'function') {
-                p.finally(schedule);
+                p.finally(async () => {
+                    // CRITICAL: If table was closed (cancelled), clean up unpaid sales on this device
+                    if (tableName === 'tables' && changedTableId) {
+                        try {
+                            const updatedTable = await this.db.getTable(changedTableId);
+                            if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && updatedTable.type === 'hourly') {
+                                // Table was cancelled - check for unpaid sales and clean them up
+                                const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
+                                if (unpaidSales.length > 0) {
+                                    console.log(`Realtime: Table ${changedTableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
+                                    for (const sale of unpaidSales) {
+                                        if (sale?.items?.length) {
+                                            for (const item of sale.items) {
+                                                if (!item || item.isCancelled) continue;
+                                                const product = await this.db.getProduct(item.productId);
+                                                if (product && this.tracksStock(product)) {
+                                                    product.stock += item.amount;
+                                                    await this.db.updateProduct(product);
+                                                }
+                                            }
+                                        }
+                                        if (sale?.id) {
+                                            await this.db.deleteSale(sale.id);
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.error('Error cleaning up sales in realtime handler:', e);
+                        }
+                    }
+                    schedule();
+                });
                 return;
             }
         } catch (e) {
