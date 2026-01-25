@@ -565,6 +565,25 @@
         </div>
     </div>
 
+    <!-- Customer Detail Modal -->
+    <div id="customer-detail-modal" class="modal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <span class="close">&times;</span>
+            <h2 id="customer-detail-title">Müşteri Detayı</h2>
+            <div id="customer-detail-body">
+                <div id="customer-detail-summary" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <p><strong>Müşteri:</strong> <span id="customer-detail-name"></span></p>
+                    <p><strong>Toplam Veresiye:</strong> <span id="customer-detail-balance" style="font-size: 1.3rem; font-weight: bold; color: #e74c3c;"></span></p>
+                    <p><strong>Toplam Oyun Saati:</strong> <span id="customer-detail-hours"></span></p>
+                    <p><strong>Toplam Adisyon:</strong> <span id="customer-detail-receipts"></span></p>
+                </div>
+                <div id="customer-detail-content">
+                    <!-- Sales and sessions will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Adisyon (Receipt) Modal -->
     <div id="receipt-modal" class="modal">
         <div class="modal-content receipt-modal-content">

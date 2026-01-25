@@ -1482,35 +1482,53 @@ header h1 {
 
 .customers-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 12px;
 }
 
 .customer-card {
-    background: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: var(--shadow);
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    padding: 12px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    aspect-ratio: 1;
     display: flex;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    gap: 15px;
-    transition: transform 0.3s, box-shadow 0.3s;
-    min-height: 60px;
-    min-width: 0;
+    text-align: center;
+    box-sizing: border-box;
+    position: relative;
     overflow: hidden;
 }
 
 .customer-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.1);
+    border-color: rgba(52, 152, 219, 0.3);
+}
+
+.customer-card.add-card {
+    border: 2px dashed rgba(52, 152, 219, 0.45);
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
+}
+
+.customer-card.add-card:hover {
+    border-color: rgba(52, 152, 219, 0.7);
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(52, 152, 219, 0.05) 100%);
 }
 
 /* Customer card icon removed - no longer used */
 
 .customer-card-content {
-    flex: 1;
+    width: 100%;
     display: flex;
     flex-direction: column;
+    align-items: center;
+    justify-content: center;
     gap: 8px;
     min-width: 0;
     overflow: hidden;
@@ -1519,9 +1537,11 @@ header h1 {
 .customer-card h3 {
     color: var(--primary-color);
     margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 0.95rem;
+    font-weight: 700;
     line-height: 1.2;
+    word-break: break-word;
+    letter-spacing: 0.3px;
 }
 
 .customer-card-balance {
@@ -1535,6 +1555,11 @@ header h1 {
     width: fit-content;
     line-height: 1;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-top: 4px;
+}
+
+.customer-actions {
+    display: none; /* Hide action buttons, card is clickable */
 }
 
 .customer-card-balance.add-card-sub {
@@ -1542,6 +1567,62 @@ header h1 {
     color: rgba(52, 152, 219, 0.95);
     font-weight: 700;
     font-size: 0.85rem;
+}
+
+[data-theme="dark"] .customer-card {
+    background: linear-gradient(135deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 100%) !important;
+    border-color: var(--dark-border) !important;
+}
+
+[data-theme="dark"] .customer-card:hover {
+    border-color: var(--secondary-color) !important;
+}
+
+[data-theme="dark"] .customer-card.add-card {
+    border-color: rgba(74, 158, 255, 0.4) !important;
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(74, 158, 255, 0.05) 100%) !important;
+}
+
+[data-theme="dark"] .customer-card h3 {
+    color: var(--dark-text-primary) !important;
+}
+
+/* Customer Detail Modal */
+#customer-detail-summary {
+    background: #f8f9fa;
+}
+
+[data-theme="dark"] #customer-detail-summary {
+    background: var(--dark-surface-elevated) !important;
+    color: var(--dark-text-primary) !important;
+}
+
+#customer-detail-content > div > div {
+    background: white;
+}
+
+[data-theme="dark"] #customer-detail-content > div > div {
+    background: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .customer-receipt-item {
+    background: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .customer-receipt-item strong {
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .customer-receipt-item ul {
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .customer-receipt-item li {
+    color: var(--dark-text-primary) !important;
 }
 
 /* Expenses List */
@@ -3926,6 +4007,25 @@ form select:focus {
         font-size: 0.85rem;
         min-width: 80px;
         height: fit-content;
+    }
+
+    .customers-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 7px;
+    }
+
+    .customer-card {
+        padding: 7px;
+        border-radius: 12px;
+    }
+
+    .customer-card h3 {
+        font-size: 0.85rem;
+    }
+
+    .customer-card-balance {
+        font-size: 0.9rem;
+        padding: 3px 6px;
     }
 
     .modal-content {

@@ -5149,34 +5149,12 @@ class MekanApp {
             const addCard = document.getElementById('add-customer-card');
             if (addCard) addCard.onclick = () => this.openCustomerFormModal();
             
-            // Add event listeners
+            // Add event listeners - card click opens detail modal
             sortedCustomers.forEach(customer => {
-                const editBtn = document.getElementById(`edit-customer-${customer.id}`);
-                const deleteBtn = document.getElementById(`delete-customer-${customer.id}`);
-                const payBtn = document.getElementById(`pay-customer-${customer.id}`);
-                const creditAddBtn = document.getElementById(`credit-add-customer-${customer.id}`);
-                
-                if (editBtn) {
-                    editBtn.addEventListener('click', () => {
-                        this.openCustomerFormModal(customer);
-                    });
-                }
-                
-                if (deleteBtn) {
-                    deleteBtn.addEventListener('click', () => {
-                        this.deleteCustomer(customer.id);
-                    });
-                }
-                
-                if (payBtn) {
-                    payBtn.addEventListener('click', () => {
-                        this.openCustomerPaymentModal(customer);
-                    });
-                }
-
-                if (creditAddBtn) {
-                    creditAddBtn.addEventListener('click', () => {
-                        this.openCustomerCreditAddModal(customer);
+                const card = document.getElementById(`customer-${customer.id}`);
+                if (card) {
+                    card.addEventListener('click', () => {
+                        this.openCustomerDetailModal(customer);
                     });
                 }
             });
@@ -5205,18 +5183,12 @@ class MekanApp {
         const balanceText = balance > 0 ? `${Math.round(balance)} ₺` : '0 ₺';
 
         return `
-            <div class="customer-card" id="customer-${customer.id}">
+            <div class="customer-card" id="customer-${customer.id}" data-customer-id="${customer.id}">
                 <div class="customer-card-content">
                     <h3>${customer.name}</h3>
                     <div class="customer-card-balance">
                         ${balanceText}
                     </div>
-                </div>
-                <div class="customer-actions">
-                    <button class="btn btn-primary btn-icon" id="edit-customer-${customer.id}" title="Düzenle">✎</button>
-                    <button class="btn btn-warning btn-icon" id="credit-add-customer-${customer.id}" title="Veresiye Ekle">+</button>
-                    ${balance > 0 ? `<button class="btn btn-success btn-icon" id="pay-customer-${customer.id}" title="Ödeme Al">₺</button>` : ''}
-                    <button class="btn btn-danger btn-icon" id="delete-customer-${customer.id}" title="Sil">×</button>
                 </div>
             </div>
         `;
@@ -5483,6 +5455,225 @@ class MekanApp {
         } catch (error) {
             console.error('Tamamını ödeme işlenirken hata:', error);
             await this.appAlert('Tamamını ödeme işlenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+        }
+    }
+
+    async openCustomerDetailModal(customer) {
+        const modal = document.getElementById('customer-detail-modal');
+        const title = document.getElementById('customer-detail-title');
+        const nameEl = document.getElementById('customer-detail-name');
+        const balanceEl = document.getElementById('customer-detail-balance');
+        const hoursEl = document.getElementById('customer-detail-hours');
+        const receiptsEl = document.getElementById('customer-detail-receipts');
+        const contentEl = document.getElementById('customer-detail-content');
+        
+        if (!modal || !title || !nameEl || !balanceEl || !hoursEl || !receiptsEl || !contentEl) return;
+        
+        // Set customer info
+        title.textContent = `${customer.name} - Detay`;
+        nameEl.textContent = customer.name;
+        const balance = customer.balance || 0;
+        balanceEl.textContent = `${Math.round(balance)} ₺`;
+        
+        // Get customer sales
+        const sales = await this.db.getSalesByCustomer(customer.id);
+        
+        // Get all tables to check hourly sessions
+        const allTables = await this.db.getAllTables();
+        
+        // Get manual sessions for this customer
+        const allManualSessions = await this.db.getAllManualSessions();
+        const customerSessions = (allManualSessions || []).filter(s => 
+            s.customerId && String(s.customerId) === String(customer.id)
+        );
+        
+        // Calculate total hours from manual sessions
+        let totalHours = 0;
+        customerSessions.forEach(s => {
+            const hours = (typeof s.hoursUsed === 'number' ? s.hoursUsed : parseFloat(s.hoursUsed)) || 0;
+            totalHours += hours;
+        });
+        
+        // Also check hourly sessions from tables (table closures with customerId)
+        allTables.forEach(table => {
+            if (table.hourlySessions && Array.isArray(table.hourlySessions)) {
+                table.hourlySessions.forEach(session => {
+                    if (session.customerId && String(session.customerId) === String(customer.id)) {
+                        const hours = typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed) || 0;
+                        totalHours += hours;
+                    }
+                });
+            }
+        });
+        
+        hoursEl.textContent = `${Math.round(totalHours * 10) / 10} saat`;
+        receiptsEl.textContent = `${sales.length} adet`;
+        
+        // Group sales by date
+        const salesByDate = new Map();
+        sales.forEach(sale => {
+            const saleDate = new Date(sale.sellDateTime || sale.paymentTime || sale.createdAt);
+            const dateKey = saleDate.toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+            if (!salesByDate.has(dateKey)) {
+                salesByDate.set(dateKey, []);
+            }
+            salesByDate.get(dateKey).push(sale);
+        });
+        
+        // Sort dates descending
+        const sortedDates = Array.from(salesByDate.keys()).sort((a, b) => {
+            const dateA = new Date(a.split('.').reverse().join('-'));
+            const dateB = new Date(b.split('.').reverse().join('-'));
+            return dateB - dateA;
+        });
+        
+        // Build content HTML
+        let contentHTML = '';
+        
+        // Add manual sessions section
+        if (customerSessions.length > 0) {
+            contentHTML += '<div style="margin-bottom: 20px;"><h3 style="margin-bottom: 10px; color: var(--primary-color);">Oyun Saatleri</h3>';
+            customerSessions.forEach(session => {
+                const hours = (typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed)) || 0;
+                const amount = session.hourlyRate ? (hours * session.hourlyRate) : (session.amount || 0);
+                const date = session.closeTime ? new Date(session.closeTime) : (session.createdAt ? new Date(session.createdAt) : new Date());
+                const dateStr = date.toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+                contentHTML += `
+                    <div style="padding: 10px; margin-bottom: 8px; background: #f8f9fa; border-radius: 8px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${session.tableName || 'Masa'}</strong>
+                                <div style="font-size: 0.9rem; color: #7f8c8d;">${dateStr}</div>
+                            </div>
+                            <div style="text-align: right;">
+                                <div><strong>${Math.round(hours * 10) / 10} saat</strong></div>
+                                <div style="color: var(--success-color); font-weight: 700;">${Math.round(amount)} ₺</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            contentHTML += '</div>';
+        }
+        
+        // Add sales by date
+        if (sortedDates.length > 0) {
+            contentHTML += '<div><h3 style="margin-bottom: 10px; color: var(--primary-color);">Adisyonlar</h3>';
+            sortedDates.forEach(dateKey => {
+                const dateSales = salesByDate.get(dateKey);
+                contentHTML += `<div style="margin-bottom: 20px;"><h4 style="margin-bottom: 10px; color: var(--secondary-color);">${dateKey}</h4>`;
+                
+                dateSales.forEach(sale => {
+                    const saleDate = new Date(sale.sellDateTime || sale.paymentTime || sale.createdAt);
+                    const timeStr = saleDate.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                    
+                    // Find table name
+                    let tableName = sale.tableName || null;
+                    if (sale.tableId && !tableName) {
+                        const table = allTables.find(t => String(t.id) === String(sale.tableId));
+                        if (table) tableName = table.name;
+                    }
+                    
+                    // Calculate hourly total from table's hourlySessions if sale has tableId
+                    let hourlyTotal = 0;
+                    let hourlySessionsInfo = [];
+                    if (sale.tableId) {
+                        const table = allTables.find(t => String(t.id) === String(sale.tableId));
+                        if (table && table.hourlySessions && Array.isArray(table.hourlySessions)) {
+                            // Find sessions that match this sale (by paymentTime or closeTime)
+                            const salePaymentTime = sale.paymentTime ? new Date(sale.paymentTime).toISOString() : null;
+                            table.hourlySessions.forEach(session => {
+                                if (session.customerId && String(session.customerId) === String(customer.id)) {
+                                    // Match by paymentTime or closeTime
+                                    const sessionCloseTime = session.closeTime ? new Date(session.closeTime).toISOString() : null;
+                                    if (salePaymentTime && sessionCloseTime) {
+                                        // Check if times are close (within 1 minute)
+                                        const timeDiff = Math.abs(new Date(salePaymentTime) - new Date(sessionCloseTime));
+                                        if (timeDiff < 60000) { // 1 minute
+                                            const hours = typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed) || 0;
+                                            const rate = session.hourlyRate || table.hourlyRate || 0;
+                                            hourlyTotal += hours * rate;
+                                            hourlySessionsInfo.push({ hours, rate, tableName: table.name });
+                                        }
+                                    } else if (!salePaymentTime && sessionCloseTime) {
+                                        // If sale has no paymentTime, try to match by sellDateTime
+                                        const saleSellTime = sale.sellDateTime ? new Date(sale.sellDateTime).toISOString() : null;
+                                        if (saleSellTime) {
+                                            const timeDiff = Math.abs(new Date(saleSellTime) - new Date(sessionCloseTime));
+                                            if (timeDiff < 60000) { // 1 minute
+                                                const hours = typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed) || 0;
+                                                const rate = session.hourlyRate || table.hourlyRate || 0;
+                                                hourlyTotal += hours * rate;
+                                                hourlySessionsInfo.push({ hours, rate, tableName: table.name });
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    
+                    // Calculate product total
+                    const productTotal = sale.items ? sale.items.reduce((sum, item) => sum + (item.price * item.amount), 0) : 0;
+                    
+                    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                    const receiptBg = isDark ? 'var(--dark-surface)' : 'white';
+                    const receiptBorder = isDark ? 'var(--dark-border)' : '#e0e0e0';
+                    const receiptText = isDark ? 'var(--dark-text-primary)' : 'inherit';
+                    const receiptTextSecondary = isDark ? 'var(--dark-text-secondary)' : '#7f8c8d';
+                    
+                    contentHTML += `
+                        <div class="customer-receipt-item" style="padding: 15px; margin-bottom: 10px; background: ${receiptBg}; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid ${receiptBorder}; color: ${receiptText};">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 10px; border-bottom: 1px solid ${receiptBorder};">
+                                <div>
+                                    <strong style="font-size: 1.1rem; color: ${receiptText};">${timeStr}</strong>
+                                    ${tableName ? `<div style="font-size: 0.9rem; color: ${receiptTextSecondary};">Masa: ${tableName}</div>` : ''}
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-size: 1.2rem; font-weight: 700; color: var(--success-color);">${Math.round(sale.saleTotal || 0)} ₺</div>
+                                </div>
+                            </div>
+                    `;
+                    
+                    // Show hourly sessions if exists
+                    if (hourlyTotal > 0) {
+                        const hoursText = hourlySessionsInfo.map(s => `${Math.round(s.hours * 10) / 10} saat`).join(', ');
+                        contentHTML += `
+                            <div style="margin-bottom: 10px; padding: 8px; background: #e8f8f5; border-radius: 6px;">
+                                <strong>Oyun:</strong> ${Math.round(hourlyTotal)} ₺
+                                ${hoursText ? `(${hoursText})` : ''}
+                            </div>
+                        `;
+                    }
+                    
+                    // Show products
+                    if (sale.items && sale.items.length > 0) {
+                        contentHTML += `<div style="margin-top: 10px;"><strong style="color: ${receiptText};">Ürünler:</strong><ul style="margin: 8px 0; padding-left: 20px; color: ${receiptText};">`;
+                        sale.items.forEach(item => {
+                            contentHTML += `<li style="margin: 4px 0;">${item.name} x${item.amount} = ${Math.round(item.price * item.amount)} ₺</li>`;
+                        });
+                        contentHTML += '</ul></div>';
+                    }
+                    
+                    contentHTML += '</div>';
+                });
+                
+                contentHTML += '</div>';
+            });
+            contentHTML += '</div>';
+        } else {
+            contentHTML += '<div style="text-align: center; padding: 20px; color: #7f8c8d;">Henüz adisyon yok</div>';
+        }
+        
+        contentEl.innerHTML = contentHTML;
+        modal.classList.add('active');
+        
+        // Close button
+        const closeBtn = modal.querySelector('.close');
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                modal.classList.remove('active');
+            };
         }
     }
 
