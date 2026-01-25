@@ -446,12 +446,72 @@ header h1 {
 
 /* Receipt modal */
 [data-theme="dark"] .receipt-modal-content {
-    background: var(--dark-surface);
+    background: var(--dark-surface) !important;
 }
 
 [data-theme="dark"] .receipt-header {
-    background: var(--dark-surface-elevated);
-    border-color: var(--dark-border);
+    background: linear-gradient(135deg, rgba(74, 158, 255, 0.15) 0%, rgba(74, 158, 255, 0.08) 100%) !important;
+    border-color: var(--dark-border) !important;
+}
+
+[data-theme="dark"] .receipt-header h2 {
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .receipt-date-time {
+    color: var(--dark-text-secondary) !important;
+}
+
+[data-theme="dark"] .receipt-section {
+    background: var(--dark-surface-elevated) !important;
+    border-color: var(--dark-border) !important;
+}
+
+[data-theme="dark"] .receipt-section-title {
+    color: var(--dark-text-primary) !important;
+    border-bottom-color: rgba(74, 158, 255, 0.3) !important;
+}
+
+[data-theme="dark"] .receipt-item {
+    background: rgba(74, 158, 255, 0.08) !important;
+}
+
+[data-theme="dark"] .receipt-item:hover {
+    background: rgba(74, 158, 255, 0.15) !important;
+}
+
+[data-theme="dark"] .receipt-item-name {
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .receipt-item-details {
+    color: var(--dark-text-secondary) !important;
+}
+
+[data-theme="dark"] .receipt-item-price {
+    color: var(--secondary-color) !important;
+}
+
+[data-theme="dark"] .receipt-total {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.25) 0%, rgba(46, 204, 113, 0.15) 100%) !important;
+    border-color: rgba(46, 204, 113, 0.5) !important;
+}
+
+[data-theme="dark"] .receipt-total-row {
+    color: var(--dark-text-primary) !important;
+}
+
+[data-theme="dark"] .receipt-total-row.final {
+    color: #2ecc71 !important;
+}
+
+[data-theme="dark"] .receipt-total-row.final:not(:first-child) {
+    border-top-color: rgba(46, 204, 113, 0.5) !important;
+}
+
+[data-theme="dark"] .receipt-actions {
+    background: var(--dark-surface) !important;
+    border-top-color: var(--dark-border) !important;
 }
 
 /* Stats grid cards with custom backgrounds */
@@ -2368,6 +2428,13 @@ body:has(#auth-modal.modal.active) header {
     overflow-y: auto;
     min-height: 0;
     margin-bottom: 10px;
+    /* Hide scrollbar but keep scrolling functionality */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+#table-modal-body::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
 }
 
 /* Table modal loading overlay (shown while content is being fetched/rendered) */
@@ -3459,7 +3526,7 @@ form select:focus {
 .product-mini-ico-lg {
     font-size: 2.2rem;
     line-height: 1;
-    margin-bottom: 8px;
+    margin-bottom: 4px;
     transform: translateY(0.5px);
     display: flex;
     align-items: center;
@@ -3492,7 +3559,8 @@ form select:focus {
     font-size: 0.88rem;
     font-weight: 800;
     line-height: 1.15;
-    margin-bottom: 6px;
+    margin-top: 0;
+    margin-bottom: 10px;
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3507,6 +3575,8 @@ form select:focus {
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     max-width: 100%;
     white-space: nowrap;
+    margin-top: 0;
+    margin-bottom: 0;
 }
 
 .product-card-mini .product-price-mini {
@@ -4156,6 +4226,13 @@ form select:focus {
         margin-bottom: 8px;
         overflow: auto;
         flex: 1 1 auto;
+        /* Hide scrollbar but keep scrolling functionality */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+    }
+
+    #table-modal-body::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
     }
 
     .table-modal-header {
@@ -4567,6 +4644,13 @@ form select:focus {
         overflow: auto;
         flex: 1 1 auto;
         min-height: 0;
+        /* Hide scrollbar but keep scrolling functionality */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+    }
+
+    .receipt-body::-webkit-scrollbar {
+        display: none; /* Chrome, Safari, Opera */
     }
 
     .receipt-section {
@@ -4626,6 +4710,11 @@ form select:focus {
         flex: 0 0 auto;
     }
 
+    [data-theme="dark"] .receipt-actions {
+        background: var(--dark-surface) !important;
+        border-top-color: var(--dark-border) !important;
+    }
+
     .receipt-actions .btn {
         min-height: 48px;
         padding: 12px 14px;
@@ -4678,6 +4767,13 @@ form select:focus {
     }
     #pay-table-btn:hover {
         background: #1e8b52 !important;
+    }
+
+    [data-theme="dark"] #pay-table-btn {
+        background: rgba(39, 174, 96, 0.7) !important;
+    }
+    [data-theme="dark"] #pay-table-btn:hover {
+        background: rgba(39, 174, 96, 0.85) !important;
     }
 
     /* Footer: prevent overlap on narrow screens */
