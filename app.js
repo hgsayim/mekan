@@ -43,7 +43,12 @@ async function ensureSignedIn(supabase) {
         console.error('Auth session error:', error);
     }
     const session = data?.session || null;
-    if (session) return session;
+    if (session) {
+        // Session exists, show header
+        const header = document.getElementById('main-header');
+        if (header) header.style.display = '';
+        return session;
+    }
 
     showAuthModal(true);
 
@@ -6169,6 +6174,7 @@ class MekanApp {
             document.documentElement.removeAttribute('data-theme');
         }
         this.updateDarkModeIcon();
+        this.updateThemeColor();
         
         // Listen for system theme changes (only if no manual preference)
         if (window.matchMedia && manualPreference === null) {
@@ -6181,6 +6187,7 @@ class MekanApp {
                         document.documentElement.removeAttribute('data-theme');
                     }
                     this.updateDarkModeIcon();
+                    this.updateThemeColor();
                 }
             });
         }
@@ -6196,6 +6203,23 @@ class MekanApp {
             localStorage.setItem('darkMode', 'true');
         }
         this.updateDarkModeIcon();
+        this.updateThemeColor();
+    }
+
+    updateThemeColor() {
+        const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        const lightColor = '#ecf0f1';
+        const darkColor = '#1a1a1a';
+        const themeColor = isDark ? darkColor : lightColor;
+        
+        // Update all theme-color meta tags
+        const metaTags = document.querySelectorAll('meta[name="theme-color"]');
+        metaTags.forEach(tag => {
+            tag.setAttribute('content', themeColor);
+        });
+        
+        // Update manifest theme_color (requires manifest update, but we can update meta tags)
+        // Note: manifest.json is static, but meta tags work for PWA status bar
     }
 
     updateDarkModeIcon() {
@@ -6306,6 +6330,15 @@ function initDarkModeEarly() {
     } else {
         document.documentElement.removeAttribute('data-theme');
     }
+    
+    // Update theme-color meta tags early
+    const lightColor = '#ecf0f1';
+    const darkColor = '#1a1a1a';
+    const themeColor = isDark ? darkColor : lightColor;
+    const metaTags = document.querySelectorAll('meta[name="theme-color"]');
+    metaTags.forEach(tag => {
+        tag.setAttribute('content', themeColor);
+    });
 }
 
 // Initialize dark mode immediately (before DOMContentLoaded)
