@@ -1511,6 +1511,28 @@ class MekanApp {
                     const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
                     checkTotal = hourlyTotal + salesTotal;
                 }
+            } else {
+                // CRITICAL: If table is closed (cancelled) and has unpaid sales, clean them up on this device
+                // This fixes the issue where cancelled tables still have sales on other devices
+                if (unpaidSales.length > 0 && table.closeTime) {
+                    // Table was cancelled - clean up unpaid sales on this device
+                    console.log(`Table ${tableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
+                    for (const sale of unpaidSales) {
+                        if (sale?.items?.length) {
+                            for (const item of sale.items) {
+                                if (!item || item.isCancelled) continue;
+                                const product = await this.db.getProduct(item.productId);
+                                if (product && this.tracksStock(product)) {
+                                    product.stock += item.amount;
+                                    await this.db.updateProduct(product);
+                                }
+                            }
+                        }
+                        if (sale?.id) {
+                            await this.db.deleteSale(sale.id);
+                        }
+                    }
+                }
             }
 
             this.setTableCardState(tableId, {
@@ -1518,7 +1540,7 @@ class MekanApp {
                 type: table.type,
                 openTime: table.openTime,
                 hourlyRate: table.hourlyRate || 0,
-                salesTotal,
+                salesTotal: isActive ? ((unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0)) : 0,
                 checkTotal
             });
         } catch (e) {
@@ -3467,6 +3489,27 @@ class MekanApp {
         // If closeTime exists and openTime is null, table is closed and should not be reopened automatically
         if (table.closeTime && !table.openTime && !table.isActive) {
             // Table is closed - this is expected state after payment/credit
+            // CRITICAL: Before reopening, clean up any leftover unpaid sales from cancellation
+            // This fixes the issue where cancelled tables still have sales on other devices
+            const unpaidSales = await this.db.getUnpaidSalesByTable(targetTableId);
+            if (unpaidSales.length > 0) {
+                console.log(`Table ${targetTableId} was closed, cleaning up ${unpaidSales.length} leftover unpaid sales before reopening`);
+                for (const sale of unpaidSales) {
+                    if (sale?.items?.length) {
+                        for (const item of sale.items) {
+                            if (!item || item.isCancelled) continue;
+                            const product = await this.db.getProduct(item.productId);
+                            if (product && this.tracksStock(product)) {
+                                product.stock += item.amount;
+                                await this.db.updateProduct(product);
+                            }
+                        }
+                    }
+                    if (sale?.id) {
+                        await this.db.deleteSale(sale.id);
+                    }
+                }
+            }
             // Only allow manual reopening (user explicitly clicks open)
             // But if we're here, user did click open, so proceed
         }
