@@ -4694,21 +4694,54 @@ class MekanApp {
             return;
         }
         
+        // Debug: Log all expenses to see what we're getting
+        console.log('All expenses from DB:', expenses);
+        
+        // Filter out any invalid expenses (missing required fields)
+        // Also handle backward compatibility with different field names
+        const validExpenses = expenses.filter(expense => {
+            // Check if expense has required fields (try multiple field name variations)
+            const hasId = expense.id != null;
+            const hasDescription = (expense.description || expense.desc || '').trim() !== '';
+            const hasAmount = (expense.amount != null && !isNaN(expense.amount)) || expense.amount === 0;
+            const hasDate = expense.expenseDate || expense.expense_date || expense.date;
+            
+            if (!hasId) {
+                console.warn('Expense missing ID:', expense);
+                return false;
+            }
+            if (!hasDescription) {
+                console.warn('Expense missing description:', expense);
+                return false;
+            }
+            if (!hasAmount && expense.amount !== 0) {
+                console.warn('Expense missing or invalid amount:', expense);
+                return false;
+            }
+            if (!hasDate) {
+                console.warn('Expense missing date:', expense);
+                return false;
+            }
+            return true;
+        });
+        
+        console.log('Valid expenses after filtering:', validExpenses);
+        
         // Sort by date (newest first)
-        expenses.sort((a, b) => {
+        validExpenses.sort((a, b) => {
             const dateA = new Date(a.expenseDate || a.date || 0);
             const dateB = new Date(b.expenseDate || b.date || 0);
             return dateB - dateA;
         });
         
-        if (expenses.length === 0) {
+        if (validExpenses.length === 0) {
             container.innerHTML = this.createAddExpenseCard();
             const addCard = document.getElementById('add-expense-card');
             if (addCard) addCard.onclick = () => this.openExpenseFormModal();
             return;
         }
         
-        container.innerHTML = this.createAddExpenseCard() + expenses.map(expense => this.createExpenseCard(expense)).join('');
+        container.innerHTML = this.createAddExpenseCard() + validExpenses.map(expense => this.createExpenseCard(expense)).join('');
         
         const addCard = document.getElementById('add-expense-card');
         if (addCard) addCard.onclick = () => this.openExpenseFormModal();
@@ -4776,23 +4809,34 @@ class MekanApp {
         
         const icon = categoryIcons[expense.category] || '📋';
         const label = categoryLabels[expense.category] || expense.category || 'Diğer';
-        const date = expense.expenseDate || expense.date || new Date().toISOString().split('T')[0];
+        // Try multiple date field names for backward compatibility
+        const date = expense.expenseDate || expense.expense_date || expense.date || new Date().toISOString().split('T')[0];
         const formattedDate = this.formatDateOnly(date);
+        
+        // Ensure we have valid data
+        const expenseId = expense.id;
+        const expenseDescription = expense.description || expense.desc || 'Gider';
+        const expenseAmount = expense.amount || 0;
+        
+        if (!expenseId) {
+            console.warn('Expense missing ID:', expense);
+            return '';
+        }
         
         return `
             <div class="expense-card">
                 <div class="expense-icon">${icon}</div>
                 <div class="expense-content">
-                    <h3>${expense.description || 'Gider'}</h3>
+                    <h3>${expenseDescription}</h3>
                     <div class="expense-details">
                         <span class="expense-category">${label}</span>
                         <span class="expense-date">${formattedDate}</span>
                     </div>
                 </div>
-                <div class="expense-amount">${Math.round(expense.amount || 0)} ₺</div>
+                <div class="expense-amount">${Math.round(expenseAmount)} ₺</div>
                 <div class="expense-actions">
-                    <button class="btn btn-icon" id="edit-expense-${expense.id}" title="Düzenle">✏️</button>
-                    <button class="btn btn-icon btn-danger" id="delete-expense-${expense.id}" title="Sil">🗑️</button>
+                    <button class="btn btn-icon" id="edit-expense-${expenseId}" title="Düzenle">✏️</button>
+                    <button class="btn btn-icon btn-danger" id="delete-expense-${expenseId}" title="Sil">🗑️</button>
                 </div>
             </div>
         `;
