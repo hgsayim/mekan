@@ -541,6 +541,7 @@ class MekanApp {
             addCustomerBtn.addEventListener('click', () => {
                 this.openCustomerFormModal();
             });
+        }
 
         // Instant sale button (header)
         const instantSaleBtn = document.getElementById('instant-sale-btn');
@@ -548,7 +549,6 @@ class MekanApp {
             instantSaleBtn.addEventListener('click', async () => {
                 await this.openInstantSaleTable();
             });
-        }
         }
 
         // Table form
@@ -1991,20 +1991,25 @@ class MekanApp {
     }
 
     async openInstantSaleTable() {
-        // Ensure instant sale table exists
-        await this.ensureInstantSaleTable();
-        
-        // Find instant sale table
-        const tables = await this.db.getAllTables();
-        const instantTable = tables.find(t => t.type === 'instant' && t.name === 'ANLIK SATIŞ');
-        
-        if (!instantTable) {
-            await this.appAlert('Anlık satış masası bulunamadı.', 'Hata');
-            return;
+        try {
+            // Ensure instant sale table exists
+            await this.ensureInstantSaleTable();
+            
+            // Find instant sale table
+            const tables = await this.db.getAllTables();
+            const instantTable = tables.find(t => t.type === 'instant' && t.name === 'ANLIK SATIŞ');
+            
+            if (!instantTable) {
+                await this.appAlert('Anlık satış masası bulunamadı.', 'Hata');
+                return;
+            }
+            
+            // Open the instant sale table modal
+            await this.openTableModal(instantTable.id, { preSync: true });
+        } catch (error) {
+            console.error('Error opening instant sale table:', error);
+            await this.appAlert('Anlık satış masası açılırken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
-        
-        // Open the instant sale table modal
-        await this.openTableModal(instantTable.id, { preSync: true });
     }
 
     async resetInstantSaleTable() {

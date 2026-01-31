@@ -4618,7 +4618,28 @@ form select:focus {
 
     .tables-grid {
         grid-template-columns: repeat(4, 1fr);
-        gap: 8px;
+        gap: 6px;
+    }
+
+    .table-card {
+        padding: 8px 6px;
+        min-height: 80px;
+    }
+
+    .table-icon {
+        font-size: 1.8rem;
+        margin-bottom: 4px;
+    }
+
+    .table-card h3 {
+        font-size: 0.75rem;
+        margin: 2px 0;
+        line-height: 1.2;
+    }
+
+    .table-price {
+        font-size: 0.7rem;
+        padding: 2px 4px;
     }
 
     header {
@@ -4642,10 +4663,10 @@ form select:focus {
         font-size: 0.9rem;
     }
 
-    /* Tables grid: 3 columns on phones (as requested) */
+    /* Tables grid: 4 columns on phones (as requested) */
     .tables-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 7px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
     }
 
     .table-card {
