@@ -4,6 +4,14 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 import { HybridDatabase } from './hybrid-db.js';
+import { debounce, throttle } from './src/utils/performance.js';
+import { formatDateTimeWithoutSeconds, formatTimeOnly, formatHoursToReadable } from './src/utils/formatters.js';
+import { calculateHoursUsed, calculateHoursBetween } from './src/utils/calculators.js';
+import { toast } from './src/utils/toast.js';
+import { setButtonLoading, removeButtonLoading, showSkeletons, hideSkeletons, showLoadingOverlay, hideLoadingOverlay } from './src/utils/loading.js';
+import { setupGlobalErrorHandlers, handleError, handleApiError, withErrorHandling } from './src/utils/error-handler.js';
+import { showEmptyState, emptyStates } from './src/utils/empty-state.js';
+import { TableService } from './src/services/TableService.js';
 
 // Debug mode: set to false in production
 const DEBUG_MODE = false;
@@ -172,6 +180,8 @@ class MekanApp {
         this.supabase = window.supabase;
         // Hybrid DB: Supabase + IndexedDB cache (instant reads + periodic sync)
         this.db = new HybridDatabase(this.supabase);
+        // Table Service for business logic
+        this.tableService = new TableService(this.db);
         this.currentView = 'tables';
         this.currentTableId = null;
         this.pendingDelayedStartTableId = null;
@@ -290,30 +300,7 @@ class MekanApp {
         }
     }
 
-    // Utility: Debounce function for input events
-    debounce(func, wait) {
-        let timeout;
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
-        };
-    }
-
-    // Utility: Throttle function for scroll/resize events
-    throttle(func, limit) {
-        let inThrottle;
-        return function executedFunction(...args) {
-            if (!inThrottle) {
-                func.apply(this, args);
-                inThrottle = true;
-                setTimeout(() => inThrottle = false, limit);
-            }
-        };
-    }
+    // Utility functions are now imported from src/utils/
 
     // Batch + serialize product additions per table/product to avoid stock races on rapid taps.
     queueQuickAddToTable(tableId, productId, deltaAmount = 1) {
@@ -987,14 +974,14 @@ class MekanApp {
         // Sales filters with debounce for better performance
         const salesTableFilter = document.getElementById('sales-table-filter');
         if (salesTableFilter) {
-            salesTableFilter.addEventListener('change', this.debounce(() => {
+            salesTableFilter.addEventListener('change', debounce(() => {
             this.filterSales();
             }, 300));
         }
 
         const salesStatusFilter = document.getElementById('sales-status-filter');
         if (salesStatusFilter) {
-            salesStatusFilter.addEventListener('change', this.debounce(() => {
+            salesStatusFilter.addEventListener('change', debounce(() => {
             this.filterSales();
             }, 300));
         }
@@ -1368,16 +1355,18 @@ class MekanApp {
         try {
             tables = await this.db.getAllTables();
             
+            // Filter out instant sale table from tables list (it will be in header)
+            tables = tables.filter(t => t.type !== 'instant');
+            
             if (tables.length === 0) {
-                container.innerHTML = this.createAddTableCard();
-                const addCard = document.getElementById('add-table-card');
-                if (addCard) addCard.onclick = () => this.openTableFormModal();
+                showEmptyState(container, {
+                    ...emptyStates.tables,
+                    onAction: () => this.openTableFormModal()
+                });
+                this.setTablesLoading(false);
                 return;
             }
 
-        // Filter out instant sale table from tables list (it will be in header)
-        tables = tables.filter(t => t.type !== 'instant');
-        
         // Sort tables: 
         // 1. Hourly tables first
         // 2. Then group by icon (same icons together)
@@ -1409,7 +1398,7 @@ class MekanApp {
             // Compute check total (hourly tables include time when open)
             // CRITICAL: Don't calculate hourly total if table is closed (has closeTime, no openTime)
             if (table.type === 'hourly' && table.isActive && table.openTime && !table.closeTime) {
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
+                const hoursUsed = calculateHoursUsed(table.openTime);
                 table._computedHourlyTotal = hoursUsed * (table.hourlyRate || 0);
                 table._computedCheckTotal = table._computedHourlyTotal + computedSalesTotal;
             } else {
@@ -1450,8 +1439,8 @@ class MekanApp {
                         // (do not write to DB here; payment flow will persist state)
                     } else {
                     // Manually opened hourly table - keep it active, just update totals
-                    table.hourlyTotal = this.calculateHourlyTotal(table);
-                    table.checkTotal = this.calculateCheckTotal(table);
+                    table.hourlyTotal = this.tableService.calculateHourlyTotal(table);
+                    table.checkTotal = this.tableService.calculateCheckTotal(table);
                     tableUpdated = true;
                     }
                 }
@@ -1746,7 +1735,7 @@ class MekanApp {
                     const unpaid = await this.db.getUnpaidSalesByTable(table.id);
                     const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                     if (table.type === 'hourly' && table.isActive && table.openTime) {
-                        const hoursUsed = this.calculateHoursUsed(table.openTime);
+                        const hoursUsed = calculateHoursUsed(table.openTime);
                         const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
                         displayTotal = hourlyTotal + salesTotal;
                     } else {
@@ -1815,7 +1804,7 @@ class MekanApp {
             // For hourly tables: only calculate hourly total if table is actually active (not closed)
             if (effectiveTable.type === 'hourly' && isActive && effectiveTable.openTime) {
             // For hourly tables, include hourly total
-            const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
+            const hoursUsed = calculateHoursUsed(effectiveTable.openTime);
             const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
                 displayTotal = hourlyTotal + salesTotal;
         } else if (effectiveTable.type === 'instant') {
@@ -1945,7 +1934,7 @@ class MekanApp {
         if (isActive) {
             displayTotal = checkTotal;
         if (type === 'hourly' && isActive && openTime) {
-            const hoursUsed = this.calculateHoursUsed(openTime);
+            const hoursUsed = calculateHoursUsed(openTime);
             displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
             }
         }
@@ -2034,7 +2023,7 @@ class MekanApp {
                 const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                 checkTotal = salesTotal;
                 if (table.type === 'hourly' && table.isActive && table.openTime) {
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
+                    const hoursUsed = calculateHoursUsed(table.openTime);
                     const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
                     checkTotal = hourlyTotal + salesTotal;
                 }
@@ -2576,7 +2565,7 @@ class MekanApp {
             // Hourly tables: if manually opened (have openTime), keep active and update totals.
             // Regular tables: Auto-close if no unpaid sales and checkTotal is 0
             if (table.type === 'hourly' && table.openTime) {
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
+                const hoursUsed = calculateHoursUsed(table.openTime);
                 table.hourlyTotal = hoursUsed * table.hourlyRate;
                 table.checkTotal = table.hourlyTotal + table.salesTotal;
                 tableUpdated = true;
@@ -2611,7 +2600,7 @@ class MekanApp {
 
         // Calculate check total (for hourly tables, include real-time hourly calculation)
         // Don't show total yet - wait until all data is loaded
-        const checkTotal = this.calculateCheckTotal(table);
+        const checkTotal = this.tableService.calculateCheckTotal(table);
         
         // Update modal title with table name only
         const modalTitle = document.getElementById('table-modal-title');
@@ -2638,9 +2627,9 @@ class MekanApp {
             if (instantInfo) instantInfo.style.display = 'none';
             
             if (table.isActive && table.openTime) {
-                document.getElementById('modal-open-time').textContent = this.formatTimeOnly(table.openTime);
+                document.getElementById('modal-open-time').textContent = formatTimeOnly(table.openTime);
                 
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
+                const hoursUsed = calculateHoursUsed(table.openTime);
                 const hourlyTotal = hoursUsed * table.hourlyRate;
                 document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
                 document.getElementById('modal-sales-total').textContent = Math.round(computedSalesTotal);
@@ -2659,7 +2648,7 @@ class MekanApp {
                     if (updatedTable && updatedTable.isActive && updatedTable.openTime) {
                         const unpaid = await this.db.getUnpaidSalesByTable(tableId);
                         const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-                        const hoursUsed = this.calculateHoursUsed(updatedTable.openTime);
+                        const hoursUsed = calculateHoursUsed(updatedTable.openTime);
                         const hourlyTotal = hoursUsed * updatedTable.hourlyRate;
                         document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
                         document.getElementById('modal-sales-total').textContent = Math.round(salesTotal);
@@ -2754,7 +2743,7 @@ class MekanApp {
         // Calculate actual check total from unpaid sales and hourly (if applicable)
         let actualCheckTotal = computedSalesTotal;
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hoursUsed = calculateHoursUsed(table.openTime);
             const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
             actualCheckTotal = hourlyTotal + computedSalesTotal;
         }
@@ -2844,12 +2833,12 @@ class MekanApp {
         // All data is now loaded - show content and unlock modal
         
         // Update check total now that all data is loaded
-        const finalCheckTotal = this.calculateCheckTotal(table);
+        const finalCheckTotal = this.tableService.calculateCheckTotal(table);
         if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(finalCheckTotal || 0)} ₺`;
         
         // Update hourly info totals if needed
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hoursUsed = calculateHoursUsed(table.openTime);
             const hourlyTotal = hoursUsed * table.hourlyRate;
             const unpaid = await this.db.getUnpaidSalesByTable(tableId);
             const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
@@ -2882,7 +2871,7 @@ class MekanApp {
         const finalComputedSalesTotal = (finalUnpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
         let finalActualCheckTotal = finalComputedSalesTotal;
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hoursUsed = calculateHoursUsed(table.openTime);
             const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
             finalActualCheckTotal = hourlyTotal + finalComputedSalesTotal;
         }
@@ -3356,7 +3345,7 @@ class MekanApp {
                 const saleId = it.actionSaleId;
                 const idx = it.actionItemIndex;
                 const iconHtml = this.renderProductIcon(it.icon || '📦');
-                const itemTime = it.firstTs ? this.formatTimeOnly(new Date(it.firstTs).toISOString()) : row.timeOnly;
+                const itemTime = it.firstTs ? formatTimeOnly(new Date(it.firstTs).toISOString()) : row.timeOnly;
                 
                 // Hidden action buttons (shown on long press)
                 const buttons = `
@@ -3400,38 +3389,7 @@ class MekanApp {
         `;
     }
 
-    formatDateTimeWithoutSeconds(dateString) {
-        const date = new Date(dateString);
-        const day = String(date.getDate()).padStart(2, '0');
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const year = date.getFullYear();
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${day}.${month}.${year} ${hours}:${minutes}`;
-    }
-
-    formatTimeOnly(dateString) {
-        const date = new Date(dateString);
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${hours}:${minutes}`;
-    }
-
-    formatHoursToReadable(hours) {
-        if (!hours || hours === 0) return '0 dk';
-        
-        const totalMinutes = Math.round(hours * 60);
-        const hoursPart = Math.floor(totalMinutes / 60);
-        const minutesPart = totalMinutes % 60;
-        
-        if (hoursPart === 0) {
-            return `${minutesPart} dk`;
-        } else if (minutesPart === 0) {
-            return `${hoursPart} saat`;
-        } else {
-            return `${hoursPart} saat ${minutesPart} dk`;
-        }
-    }
+    // Formatting functions are now imported from src/utils/formatters.js
 
     createTableSaleItem(sale, iconByProductId = {}) {
         // This function is kept for backward compatibility but should use createGroupedTableSaleRow
@@ -3585,7 +3543,8 @@ class MekanApp {
             if (table) {
                 // Recalculate table totals
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                await this._updateTableTotals(table, unpaidSales);
+                await this.tableService.updateTableTotals(table, unpaidSales);
+                await this.db.updateTable(table);
 
                 // If last unpaid item is gone, auto-close regular tables (otherwise they stay "open" with 0₺)
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -3660,7 +3619,8 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                await this._updateTableTotals(table, unpaidSales);
+                await this.tableService.updateTableTotals(table, unpaidSales);
+                await this.db.updateTable(table);
 
                 // If last unpaid item is gone, auto-close regular tables
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -3812,7 +3772,8 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (table) {
                 const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
-                await this._updateTableTotals(table, unpaidSales);
+                await this.tableService.updateTableTotals(table, unpaidSales);
+                await this.db.updateTable(table);
 
                 // If last unpaid item is gone, auto-close regular tables
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -3861,21 +3822,7 @@ class MekanApp {
         }
     }
 
-    calculateHoursUsed(openTime) {
-        if (!openTime) return 0;
-        const now = new Date();
-        const opened = new Date(openTime);
-        const diffMs = now - opened;
-        return diffMs / (1000 * 60 * 60); // Convert to hours
-    }
-
-    calculateHoursBetween(startTime, endTime) {
-        if (!startTime || !endTime) return 0;
-        const start = new Date(startTime);
-        const end = new Date(endTime);
-        const diffMs = end - start;
-        return Math.max(0, diffMs / (1000 * 60 * 60));
-    }
+    // Calculation functions are now imported from src/utils/calculators.js
 
     /**
      * CRITICAL: Central table closure function - ensures atomic, synchronized table closure
@@ -3934,13 +3881,13 @@ class MekanApp {
                 // Calculate hourly total
                 let finalHourlyTotal = 0;
                 if (!isCancel && (unpaidSales.length > 0 || table.salesTotal > 0)) {
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
+                    const hoursUsed = calculateHoursUsed(table.openTime);
                     finalHourlyTotal = hoursUsed * table.hourlyRate;
                 }
 
                 // Persist session to hourlySessions
                 updatedTable.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
-                const sessionHoursUsed = this.calculateHoursBetween(table.openTime, closeTimeISO);
+                const sessionHoursUsed = calculateHoursBetween(table.openTime, closeTimeISO);
                 const sessionHourlyTotal = finalHourlyTotal > 0 ? finalHourlyTotal : (sessionHoursUsed * table.hourlyRate);
                 
                 const session = {
@@ -4103,25 +4050,8 @@ class MekanApp {
         }
     }
 
-    /**
-     * Helper: Update table totals from unpaid sales (used in multiple places)
-     * @param {Object} table - Table object
-     * @param {Array} unpaidSales - Array of unpaid sales
-     */
-    async _updateTableTotals(table, unpaidSales) {
-        if (!table) return;
-        
-        const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-        table.salesTotal = salesTotal;
-        
-        if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
-            table.hourlyTotal = hoursUsed * table.hourlyRate;
-            table.checkTotal = table.hourlyTotal + salesTotal;
-        } else {
-            table.checkTotal = salesTotal;
-        }
-    }
+    // Table totals update is now handled by TableService
+    // Use: await this.tableService.updateTableTotals(table, unpaidSales);
 
     closeDelayedStartModal() {
         const modal = document.getElementById('delayed-start-modal');
@@ -4148,7 +4078,7 @@ class MekanApp {
 
         // Prefill with current open time if already active, otherwise now
         const defaultIso = (table.isActive && table.openTime) ? table.openTime : new Date().toISOString();
-        timeInput.value = this.formatTimeOnly(defaultIso);
+        timeInput.value = formatTimeOnly(defaultIso);
 
         // iOS-like opening animation
         if (modal.classList.contains('closing')) {
@@ -4208,7 +4138,7 @@ class MekanApp {
                 (s) => s && s.openTime === table.openTime && s.closeTime === table.closeTime
             );
             if (!alreadyRecorded) {
-                const hoursUsed = this.calculateHoursBetween(table.openTime, table.closeTime);
+                const hoursUsed = calculateHoursBetween(table.openTime, table.closeTime);
                 const hourlyTotal = (table.hourlyTotal || 0) > 0 ? table.hourlyTotal : (hoursUsed * table.hourlyRate);
                 table.hourlySessions.push({
                     openTime: table.openTime,
@@ -4286,9 +4216,9 @@ class MekanApp {
 
         const now = new Date();
         // Default: last 1 hour
-        const endTime = this.formatTimeOnly(now.toISOString());
+        const endTime = formatTimeOnly(now.toISOString());
         const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-        const startTime = this.formatTimeOnly(oneHourAgo.toISOString());
+        const startTime = formatTimeOnly(oneHourAgo.toISOString());
         startInput.value = startTime;
         endInput.value = endTime;
 
@@ -4406,17 +4336,8 @@ class MekanApp {
     }
 
     // Helper: Calculate hourly total for a table
-    calculateHourlyTotal(table) {
-        if (table.type !== 'hourly' || !table.isActive || !table.openTime) return 0;
-        const hoursUsed = this.calculateHoursUsed(table.openTime);
-        return hoursUsed * table.hourlyRate;
-    }
-
-    // Helper: Calculate check total for a table
-    calculateCheckTotal(table) {
-        const hourlyTotal = this.calculateHourlyTotal(table);
-        return hourlyTotal + (table.salesTotal || 0);
-    }
+    // Calculation methods are now in TableService
+    // Use this.tableService.calculateHourlyTotal() and this.tableService.calculateCheckTotal()
 
     // Helper: Update modal totals (reduces DOM queries)
     async updateModalTotals(table) {
@@ -4437,7 +4358,7 @@ class MekanApp {
         const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
         let actualCheckTotal = computedSalesTotal;
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hoursUsed = calculateHoursUsed(table.openTime);
             const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
             actualCheckTotal = hourlyTotal + computedSalesTotal;
         }
@@ -4980,7 +4901,7 @@ class MekanApp {
                     (s) => s && s.openTime === table.openTime && s.closeTime === table.closeTime
                 );
                 if (!alreadyRecorded) {
-                    const hoursUsed = this.calculateHoursBetween(table.openTime, table.closeTime);
+                    const hoursUsed = calculateHoursBetween(table.openTime, table.closeTime);
                     const hourlyTotal = (table.hourlyTotal || 0) > 0 ? table.hourlyTotal : (hoursUsed * table.hourlyRate);
                     table.hourlySessions.push({
                         openTime: table.openTime,
@@ -5124,12 +5045,12 @@ class MekanApp {
             const product = await this.db.getProduct(productId);
 
             if (!table || !product) {
-                await this.appAlert('Masa veya ürün bulunamadı', 'Hata');
+                toast.error('Masa veya ürün bulunamadı');
                 return;
             }
 
             if (this.tracksStock(product) && product.stock < amount) {
-                await this.appAlert(`Yetersiz stok. Mevcut: ${product.stock}`, 'Uyarı');
+                toast.warning(`Yetersiz stok. Mevcut: ${product.stock}`);
                 return;
             }
 
@@ -5196,7 +5117,7 @@ class MekanApp {
             }
             
             if (table.type === 'hourly' && table.isActive && table.openTime) {
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
+                const hoursUsed = calculateHoursUsed(table.openTime);
                 table.hourlyTotal = hoursUsed * table.hourlyRate;
             }
             table.checkTotal = table.hourlyTotal + table.salesTotal;
@@ -5217,15 +5138,7 @@ class MekanApp {
             // Ensure totals are computed from sales (avoid stale aggregated columns)
             try {
                 const unpaid = await this.db.getUnpaidSalesByTable(tableId);
-                const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-                updatedTable.salesTotal = salesTotal;
-                if (updatedTable.type === 'hourly' && updatedTable.isActive && updatedTable.openTime) {
-                    const hoursUsed = this.calculateHoursUsed(updatedTable.openTime);
-                    updatedTable.hourlyTotal = hoursUsed * (updatedTable.hourlyRate || 0);
-                } else {
-                    updatedTable.hourlyTotal = updatedTable.hourlyTotal || 0;
-                }
-                updatedTable.checkTotal = (updatedTable.hourlyTotal || 0) + salesTotal;
+                await this.tableService.updateTableTotals(updatedTable, unpaid);
             } catch (_) {
                 // ignore
             }
@@ -5249,9 +5162,11 @@ class MekanApp {
             if (this.currentView === 'products') reloadPromises.push(this.loadProducts());
             if (this.currentView === 'daily') reloadPromises.push(this.loadDailyDashboard());
             await Promise.all(reloadPromises);
+            
+            // Show success toast
+            toast.success(`${product.name} eklendi`);
         } catch (error) {
-            console.error('Ürün eklenirken hata:', error);
-            await this.appAlert('Ürün eklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+            handleApiError(error, 'Ürün ekleme');
             this.closeAddProductModal();
         } finally {
             this.setTableCardLoading(tableId, false);
@@ -5294,7 +5209,7 @@ class MekanApp {
                     // Manually opened hourly table - keep it active, just update salesTotal and checkTotal
                     table.salesTotal = 0;
                     // Update check total with real-time hourly calculation
-                    const hoursUsed = this.calculateHoursUsed(table.openTime);
+                    const hoursUsed = calculateHoursUsed(table.openTime);
                     table.hourlyTotal = hoursUsed * table.hourlyRate;
                     table.checkTotal = table.hourlyTotal;
                 } else {
@@ -5352,7 +5267,7 @@ class MekanApp {
         // Calculate final check total (for hourly tables, include real-time calculation)
         let finalCheckTotal = table.checkTotal;
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hoursUsed = calculateHoursUsed(table.openTime);
             const hourlyTotal = hoursUsed * table.hourlyRate;
             finalCheckTotal = hourlyTotal + table.salesTotal;
         }
@@ -5377,7 +5292,7 @@ class MekanApp {
 
         // Set date and time
         const now = new Date();
-        receiptDateTime.textContent = this.formatDateTimeWithoutSeconds(now.toISOString());
+        receiptDateTime.textContent = formatDateTimeWithoutSeconds(now.toISOString());
 
         // Show/hide buttons based on mode
         if (isCreditMode) {
@@ -5412,7 +5327,7 @@ class MekanApp {
         let productTotal = 0;
 
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            hoursUsed = this.calculateHoursUsed(table.openTime);
+            hoursUsed = calculateHoursUsed(table.openTime);
             hourlyTotal = hoursUsed * table.hourlyRate;
             hourlyMinutes = Math.round(hoursUsed * 60);
         }
@@ -5433,7 +5348,7 @@ class MekanApp {
             receiptHTML += `<div class="receipt-section">`;
             receiptHTML += `<div class="receipt-section-title">OYUN</div>`;
             receiptHTML += `<div class="receipt-item">`;
-            receiptHTML += `<div class="receipt-item-name">Süre: ${this.formatHoursToReadable(hoursUsed)}</div>`;
+            receiptHTML += `<div class="receipt-item-name">Süre: ${formatHoursToReadable(hoursUsed)}</div>`;
             receiptHTML += `<div class="receipt-item-price">${Math.round(hourlyTotal)} ₺</div>`;
             receiptHTML += `</div>`;
             receiptHTML += `</div>`;
@@ -5816,7 +5731,7 @@ class MekanApp {
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
         let finalCheckTotal = 0;
         if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hoursUsed = calculateHoursUsed(table.openTime);
             const hourlyTotal = hoursUsed * table.hourlyRate;
             const salesTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
             finalCheckTotal = hourlyTotal + salesTotal;
@@ -5943,9 +5858,10 @@ class MekanApp {
         });
         
         if (validExpenses.length === 0) {
-            container.innerHTML = this.createAddExpenseCard();
-            const addCard = document.getElementById('add-expense-card');
-            if (addCard) addCard.onclick = () => this.openExpenseFormModal();
+            showEmptyState(container, {
+                ...emptyStates.expenses,
+                onAction: () => this.openExpenseFormModal()
+            });
             return;
         }
         
@@ -6201,9 +6117,10 @@ class MekanApp {
         const products = this._allProducts;
         
         if (products.length === 0) {
-            container.innerHTML = this.createAddProductCard();
-            const addCard = document.getElementById('add-product-card');
-            if (addCard) addCard.onclick = () => this.openProductFormModal();
+            showEmptyState(container, {
+                ...emptyStates.products,
+                onAction: () => this.openProductFormModal()
+            });
             return;
         }
 
@@ -6518,9 +6435,10 @@ class MekanApp {
             const customers = this._customersAllData;
             
             if (customers.length === 0) {
-                container.innerHTML = this.createAddCustomerCard();
-                const addCard = document.getElementById('add-customer-card');
-                if (addCard) addCard.onclick = () => this.openCustomerFormModal();
+                showEmptyState(container, {
+                    ...emptyStates.customers,
+                    onAction: () => this.openCustomerFormModal()
+                });
                 return;
             }
 
@@ -7073,7 +6991,7 @@ class MekanApp {
                                     <div style="font-size: 0.9rem; color: ${sessionTextSecondary};">${timeStr}</div>
                                 </div>
                                 <div style="text-align: right;">
-                                    <div><strong style="color: ${sessionText};">${this.formatHoursToReadable(hours)}</strong></div>
+                                    <div><strong style="color: ${sessionText};">${formatHoursToReadable(hours)}</strong></div>
                                     <div style="color: var(--success-color); font-weight: 700;">${Math.round(amount)} ₺</div>
                                 </div>
                             </div>
@@ -7243,7 +7161,7 @@ class MekanApp {
                         receiptContentHTML += `<div class="receipt-section">`;
                         receiptContentHTML += `<div class="receipt-section-title">OYUN</div>`;
                         receiptContentHTML += `<div class="receipt-item">`;
-                        receiptContentHTML += `<div class="receipt-item-name">Süre: ${this.formatHoursToReadable(totalHours)}</div>`;
+                        receiptContentHTML += `<div class="receipt-item-name">Süre: ${formatHoursToReadable(totalHours)}</div>`;
                         receiptContentHTML += `<div class="receipt-item-price">${Math.round(hourlyTotal)} ₺</div>`;
                         receiptContentHTML += `</div>`;
                         receiptContentHTML += `</div>`;
@@ -7413,7 +7331,7 @@ class MekanApp {
         const container = document.getElementById('sales-container');
         
         if (sales.length === 0) {
-            container.innerHTML = '<div class="empty-state"><h3>Satış bulunamadı</h3></div>';
+            showEmptyState(container, emptyStates.sales);
             return;
         }
 
@@ -7559,7 +7477,7 @@ class MekanApp {
                 <div class="sale-header">
                         <h3>${tableName || 'Ödeme'}</h3>
                         <div class="sale-header-meta">
-                            <span>${this.formatDateTimeWithoutSeconds(sale.sellDateTime)}</span>
+                            <span>${formatDateTimeWithoutSeconds(sale.sellDateTime)}</span>
                             ${customerInfo ? `<span style="color: #3498db;">${customerInfo}</span>` : ''}
                             ${userInfo}
                         ${statusBadge}
@@ -7902,7 +7820,7 @@ class MekanApp {
         // Update stats cards
         document.getElementById('daily-income').textContent = `${Math.round(totalDailyIncome)} ₺`;
         document.getElementById('products-sold').textContent = totalProductsSold;
-        document.getElementById('table-hours').textContent = this.formatHoursToReadable(totalTableHours);
+        document.getElementById('table-hours').textContent = formatHoursToReadable(totalTableHours);
         document.getElementById('hourly-income').textContent = `${Math.round(totalHourlyIncome)} ₺`;
         document.getElementById('product-income').textContent = `${Math.round(totalProductIncome)} ₺`;
         document.getElementById('transactions-count').textContent = transactionsCount;
@@ -7965,9 +7883,9 @@ class MekanApp {
         const sorted = [...sessions].sort((a, b) => toSortDate(b) - toSortDate(a));
         container.innerHTML = sorted.map((s) => {
             const name = s.tableName || 'Manuel';
-            const startStr = s.openTime ? this.formatDateTimeWithoutSeconds(s.openTime) : '--';
-            const endStr = s.closeTime ? this.formatDateTimeWithoutSeconds(s.closeTime) : '--';
-            const hoursReadable = this.formatHoursToReadable(s.hoursUsed || 0);
+            const startStr = s.openTime ? formatDateTimeWithoutSeconds(s.openTime) : '--';
+            const endStr = s.closeTime ? formatDateTimeWithoutSeconds(s.closeTime) : '--';
+            const hoursReadable = formatHoursToReadable(s.hoursUsed || 0);
             const amount = Math.round(s.amount || 0);
             return `
                 <div class="usage-item">
@@ -8093,7 +8011,7 @@ class MekanApp {
             <div class="usage-item">
                 <div class="usage-info">
                     <strong>${table.name}</strong>
-                    <span>${this.formatHoursToReadable(table.hours)} ${table.isActive ? '(Aktif)' : ''}</span>
+                    <span>${formatHoursToReadable(table.hours)} ${table.isActive ? '(Aktif)' : ''}</span>
                 </div>
                 <div class="usage-income">${Math.round(table.income)} ₺</div>
             </div>
@@ -8195,6 +8113,9 @@ function initDarkModeEarly() {
 // Initialize dark mode immediately (before DOMContentLoaded)
 initDarkModeEarly();
 
+// Setup global error handlers (before app initialization)
+setupGlobalErrorHandlers();
+
 // Bootstrap Supabase + Auth + App
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -8214,18 +8135,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 )
             ]);
         } catch (authError) {
-            console.error('Auth error:', authError);
-            // If auth fails, show error but don't prevent app from initializing
-            // User can retry login
-            const errorMsg = document.createElement('div');
-            errorMsg.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; text-align: center; max-width: 90%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-            errorMsg.innerHTML = `
-                <p style="margin: 0 0 10px 0;">${authError.message || 'Giriş hatası'}</p>
-                <button onclick="location.reload()" style="background: white; color: #e74c3c; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                    Yeniden Dene
-                </button>
-            `;
-            document.body.appendChild(errorMsg);
+            // Use toast for auth errors
+            handleError(authError, 'Auth', true);
+            toast.error('Giriş yapılamadı. Sayfayı yenileyin.', 5000);
             // Don't proceed if auth fails - app needs authenticated user
             return;
         }
@@ -8233,17 +8145,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Initialize app with error handling
     window.app = new MekanApp();
     } catch (error) {
-        console.error('Uygulama başlatılırken kritik hata:', error);
-        // Show user-friendly error message
-        const errorMsg = document.createElement('div');
-        errorMsg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #e74c3c; color: white; padding: 20px; border-radius: 8px; z-index: 10000; text-align: center; max-width: 90%;';
-        errorMsg.innerHTML = `
-            <h2 style="margin: 0 0 10px 0;">Uygulama Başlatılamadı</h2>
-            <p style="margin: 0 0 15px 0;">${error.message || 'Bilinmeyen bir hata oluştu'}</p>
-            <button onclick="location.reload()" style="background: white; color: #e74c3c; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                Sayfayı Yenile
-            </button>
-        `;
-        document.body.appendChild(errorMsg);
+        // Use error handler for critical errors
+        handleError(error, 'App Initialization', true);
+        toast.error('Uygulama başlatılamadı. Sayfayı yenileyin.', 10000);
     }
 });
