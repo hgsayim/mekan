@@ -3020,165 +3020,19 @@ class MekanApp {
         }
         container.dataset.eventsBound = 'true';
         
-        // Track swipe state per product card
-        const swipeState = new Map();
-        
-        // Click handler
+        // Click handler - single tap adds 1 product
         container.addEventListener('click', async (e) => {
             const card = e.target.closest('.product-card-mini');
             if (!card) return;
             if (card.classList.contains('out-of-stock')) return;
             
-            // If there's a recent swipe, don't process click (swipe handles it)
             const cardId = card.getAttribute('data-product-id');
-            const state = swipeState.get(cardId);
-            if (state && state.recentSwipe) {
-                return; // Swipe already handled this
-            }
-            
-            const pid = cardId;
             const tid = container.getAttribute('data-table-id');
-            if (!pid || !tid) return;
+            if (!cardId || !tid) return;
             
             // Single tap = 1 item
-            this.queueQuickAddToTable(tid, pid, 1);
+            this.queueQuickAddToTable(tid, cardId, 1);
         });
-        
-        // Touch events for swipe gestures
-        let touchStartY = null;
-        let touchStartTime = null;
-        let currentCard = null;
-        let swipeCount = 0;
-        let swipeTimeout = null;
-        let swipeDirection = null; // 'up' or 'down'
-        
-        container.addEventListener('touchstart', (e) => {
-            const card = e.target.closest('.product-card-mini');
-            if (!card || card.classList.contains('out-of-stock')) {
-                touchStartY = null;
-                currentCard = null;
-                return;
-            }
-            
-            currentCard = card;
-            touchStartY = e.touches[0].clientY;
-            touchStartTime = Date.now();
-            swipeCount = 0;
-            swipeDirection = null;
-            
-            // Clear any existing timeout
-            if (swipeTimeout) {
-                clearTimeout(swipeTimeout);
-                swipeTimeout = null;
-            }
-        }, { passive: true });
-        
-        container.addEventListener('touchmove', (e) => {
-            if (!currentCard || touchStartY === null) return;
-            
-            const touchY = e.touches[0].clientY;
-            const deltaY = touchStartY - touchY; // Positive = swipe up, Negative = swipe down
-            
-            // Swipe up (at least 30px)
-            if (deltaY > 30) {
-                swipeDirection = 'up';
-                currentCard.classList.remove('swiping-down');
-                currentCard.classList.add('swiping-up');
-            }
-            // Swipe down (at least 30px)
-            else if (deltaY < -30) {
-                swipeDirection = 'down';
-                currentCard.classList.remove('swiping-up');
-                currentCard.classList.add('swiping-down');
-            }
-            else {
-                currentCard.classList.remove('swiping-up', 'swiping-down');
-                swipeDirection = null;
-            }
-        }, { passive: true });
-        
-        container.addEventListener('touchend', async (e) => {
-            if (!currentCard || touchStartY === null) return;
-            
-            const touchEndY = e.changedTouches[0].clientY;
-            const deltaY = touchStartY - touchEndY; // Positive = swipe up, Negative = swipe down
-            const deltaTime = Date.now() - touchStartTime;
-            
-            // Reset visual feedback
-            currentCard.classList.remove('swiping-up', 'swiping-down');
-            
-            const cardId = currentCard.getAttribute('data-product-id');
-            const tid = container.getAttribute('data-table-id');
-            
-            if (!cardId || !tid) {
-                touchStartY = null;
-                touchStartTime = null;
-                currentCard = null;
-                return;
-            }
-            
-            // Swipe up detected (at least 50px upward, within 300ms)
-            if (deltaY > 50 && deltaTime < 300 && swipeDirection === 'up') {
-                swipeCount++;
-                
-                // Mark as recent swipe to prevent click handler
-                const state = swipeState.get(cardId) || {};
-                state.recentSwipe = true;
-                swipeState.set(cardId, state);
-                
-                // Clear swipe flag after a short delay
-                setTimeout(() => {
-                    const s = swipeState.get(cardId);
-                    if (s) s.recentSwipe = false;
-                }, 300);
-                
-                // Add product with quantity = swipe count
-                this.queueQuickAddToTable(tid, cardId, swipeCount);
-                
-                // Reset swipe count after processing
-                swipeTimeout = setTimeout(() => {
-                    swipeCount = 0;
-                }, 500); // 500ms window for multiple swipes
-            }
-            // Swipe down detected (at least 50px downward, within 300ms)
-            else if (deltaY < -50 && deltaTime < 300 && swipeDirection === 'down') {
-                swipeCount++;
-                
-                // Mark as recent swipe to prevent click handler
-                const state = swipeState.get(cardId) || {};
-                state.recentSwipe = true;
-                swipeState.set(cardId, state);
-                
-                // Clear swipe flag after a short delay
-                setTimeout(() => {
-                    const s = swipeState.get(cardId);
-                    if (s) s.recentSwipe = false;
-                }, 300);
-                
-                // Get current quantity of product in table
-                const currentQty = await this.getProductQuantityInTable(tid, cardId);
-                
-                if (currentQty > 1) {
-                    // Reduce quantity by swipe count
-                    this.queueQuickAddToTable(tid, cardId, -swipeCount);
-                } else if (currentQty === 1) {
-                    // Cancel the entire product (remove it)
-                    await this.cancelLastProductFromTable(tid, cardId);
-                }
-                // If currentQty === 0, do nothing
-                
-                // Reset swipe count after processing
-                swipeTimeout = setTimeout(() => {
-                    swipeCount = 0;
-                }, 500);
-            }
-            
-            // Reset
-            touchStartY = null;
-            touchStartTime = null;
-            currentCard = null;
-            swipeDirection = null;
-        }, { passive: true });
     }
 
     async getProductQuantityInTable(tableId, productId) {
