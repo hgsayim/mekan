@@ -956,6 +956,69 @@ header h1 {
     border-top-color: var(--secondary-color) !important;
 }
 
+/* Table Card Loading State (for operations like cancel, payment, credit) */
+.table-card-loading-state {
+    cursor: not-allowed !important;
+    user-select: none;
+    pointer-events: none !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.table-card-loading-overlay {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 30;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+/* Danger (red) - for cancel operations */
+.table-card-loading-state[data-loading-type="danger"] .table-card-loading-overlay {
+    background: linear-gradient(135deg, rgba(231, 76, 60, 0.85) 0%, rgba(192, 57, 43, 0.9) 100%);
+}
+
+[data-theme="dark"] .table-card-loading-state[data-loading-type="danger"] .table-card-loading-overlay {
+    background: linear-gradient(135deg, rgba(231, 76, 60, 0.75) 0%, rgba(192, 57, 43, 0.85) 100%) !important;
+}
+
+/* Success (green) - for payment operations */
+.table-card-loading-state[data-loading-type="success"] .table-card-loading-overlay {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.85) 0%, rgba(39, 174, 96, 0.9) 100%);
+}
+
+[data-theme="dark"] .table-card-loading-state[data-loading-type="success"] .table-card-loading-overlay {
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.75) 0%, rgba(39, 174, 96, 0.85) 100%) !important;
+}
+
+/* Info (blue) - for credit operations */
+.table-card-loading-state[data-loading-type="info"] .table-card-loading-overlay {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.85) 0%, rgba(41, 128, 185, 0.9) 100%);
+}
+
+[data-theme="dark"] .table-card-loading-state[data-loading-type="info"] .table-card-loading-overlay {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.75) 0%, rgba(41, 128, 185, 0.85) 100%) !important;
+}
+
+.table-card-loading-message {
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 700;
+    text-align: center;
+    padding: 8px 16px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    letter-spacing: 0.3px;
+}
+
+[data-theme="dark"] .table-card-loading-message {
+    color: white !important;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
+}
+
 .table-card-opening {
     cursor: not-allowed !important;
     user-select: none;

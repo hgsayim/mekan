@@ -1690,6 +1690,53 @@ class MekanApp {
         }
     }
 
+    setTableCardLoading(tableId, message, type = 'info') {
+        // type: 'danger' (red), 'success' (green), 'info' (blue)
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+        
+        // Disable card interactions
+        card.style.pointerEvents = 'none';
+        card.classList.add('table-card-loading-state');
+        card.dataset.loadingType = type;
+        card.dataset.loadingMessage = message;
+        
+        // Create or update loading overlay inside card
+        let loadingOverlay = card.querySelector('.table-card-loading-overlay');
+        if (!loadingOverlay) {
+            loadingOverlay = document.createElement('div');
+            loadingOverlay.className = 'table-card-loading-overlay';
+            card.appendChild(loadingOverlay);
+        }
+        
+        const messageEl = loadingOverlay.querySelector('.table-card-loading-message');
+        if (messageEl) {
+            messageEl.textContent = message;
+        } else {
+            const msg = document.createElement('div');
+            msg.className = 'table-card-loading-message';
+            msg.textContent = message;
+            loadingOverlay.appendChild(msg);
+        }
+    }
+
+    clearTableCardLoading(tableId) {
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+        
+        // Re-enable card interactions
+        card.style.pointerEvents = '';
+        card.classList.remove('table-card-loading-state');
+        delete card.dataset.loadingType;
+        delete card.dataset.loadingMessage;
+        
+        // Remove loading overlay
+        const loadingOverlay = card.querySelector('.table-card-loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.remove();
+        }
+    }
+
     setTableCardState(tableId, { isActive, type = null, openTime = null, hourlyRate = 0, salesTotal = 0, checkTotal = 0 } = {}) {
         const card = this.getTableCardEl(tableId);
         if (!card) return;
@@ -2438,8 +2485,8 @@ class MekanApp {
         }
 
         try {
-            // Show loading overlay
-            this.showLoadingOverlay('İptal ediliyor...');
+            // Show loading state on table card (not full screen)
+            this.setTableCardLoading(tableId, 'İptal ediliyor...', 'danger');
             
             // Close modal immediately
             this.closeTableModal();
@@ -2493,7 +2540,7 @@ class MekanApp {
             // Success: no alert (keep UX quiet)
         } catch (err) {
             console.error('Süreli oyun iptal edilirken hata:', err);
-            this.hideLoadingOverlay();
+            this.clearTableCardLoading(tableId);
             await this.appAlert('Oyunu iptal ederken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -4730,8 +4777,8 @@ class MekanApp {
         }
 
         try {
-            // Show loading overlay
-            this.showLoadingOverlay('Hesap alınıyor...');
+            // Show loading state on table card (not full screen)
+            this.setTableCardLoading(tableId, 'Hesap alınıyor...', 'success');
             
             // Close modals immediately
             const receiptModal = document.getElementById('receipt-modal');
@@ -4789,8 +4836,8 @@ class MekanApp {
             // Wait for DB operations to complete and realtime updates to propagate
             await new Promise(resolve => setTimeout(resolve, 2000));
             
-            // Hide loading overlay
-            this.hideLoadingOverlay();
+            // Clear loading state from table card
+            this.clearTableCardLoading(tableId);
             
             // Background refresh
             setTimeout(() => {
@@ -4800,7 +4847,7 @@ class MekanApp {
             }, 100);
         } catch (error) {
             console.error('Ödeme işlenirken hata:', error);
-            this.hideLoadingOverlay();
+            this.clearTableCardLoading(tableId);
             await this.appAlert('Ödeme işlenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -4949,8 +4996,8 @@ class MekanApp {
         }
 
         try {
-            // Show loading overlay
-            this.showLoadingOverlay('Veresiye yazılıyor...');
+            // Show loading state on table card (not full screen)
+            this.setTableCardLoading(tableId, 'Veresiye yazılıyor...', 'info');
             
             // Close modal immediately
             this.closeTableModal();
@@ -5004,7 +5051,7 @@ class MekanApp {
             }, 100);
         } catch (error) {
             console.error('Veresiye yazılırken hata:', error);
-            this.hideLoadingOverlay();
+            this.clearTableCardLoading(tableId);
             await this.appAlert('Veresiye yazılırken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
