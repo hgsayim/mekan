@@ -8060,7 +8060,7 @@ class MekanApp {
     updateThemeColor() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const lightColor = '#ecf0f1';
-        const darkColor = '#1a1a1a';
+        const darkColor = '#000000';
         const themeColor = isDark ? darkColor : lightColor;
         
         // Update all theme-color meta tags
