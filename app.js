@@ -5,6 +5,23 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 import { HybridDatabase } from './hybrid-db.js';
 
+// Debug mode: set to false in production
+const DEBUG_MODE = false;
+
+// Helper function for debug logging
+const debugLog = (...args) => {
+    if (DEBUG_MODE) {
+        console.log(...args);
+    }
+};
+
+// Helper function for debug warnings
+const debugWarn = (...args) => {
+    if (DEBUG_MODE) {
+        console.warn(...args);
+    }
+};
+
 function setAuthError(message) {
     const el = document.getElementById('auth-error');
     if (!el) return;
@@ -148,6 +165,7 @@ class MekanApp {
         this._realtimePendingViews = new Set();
         this._productsDelegationBound = false;
         this._pollSyncInterval = null;
+        this._cachedProducts = null; // Cache products to avoid reloading on every modal open
         this.init();
     }
 
@@ -1652,6 +1670,13 @@ class MekanApp {
             // Also check if table is currently being settled (prevent race conditions)
             const isSettling = this._isTableSettling(tableId);
             
+            // CRITICAL: If table is being settled, don't update it (prevent race conditions)
+            // This check must come FIRST to prevent any updates during closure
+            if (isSettling) {
+                debugLog(`Table ${tableId} is being settled, skipping refresh to prevent race condition`);
+                return;
+            }
+            
             // For hourly tables: closeTime + no openTime + not active = closed
             // For regular tables: closeTime or not active = closed
             const isTableClosed = table.type === 'hourly' 
@@ -1661,6 +1686,24 @@ class MekanApp {
             if (isTableClosed) {
                 // Table was cancelled/closed - keep it closed, show 0 total
                 // Don't allow realtime updates to reopen it
+                // Also ensure DB state matches closed state (defensive programming)
+                if (table.isActive || (table.type === 'hourly' && table.openTime && !table.closeTime)) {
+                    // Table state in DB doesn't match closed state - force close
+                    debugLog(`Table ${tableId} state mismatch: DB shows open but should be closed, forcing close`);
+                    const forceClosed = {
+                        ...table,
+                        isActive: false,
+                        openTime: null,
+                        closeTime: table.closeTime || new Date().toISOString(),
+                        salesTotal: 0,
+                        checkTotal: 0
+                    };
+                    if (forceClosed.type === 'hourly') {
+                        forceClosed.hourlyTotal = 0;
+                    }
+                    await this.db.updateTable(forceClosed);
+                }
+                
                 this.setTableCardState(tableId, {
                     isActive: false,
                     type: table.type,
@@ -1669,12 +1712,6 @@ class MekanApp {
                     salesTotal: 0,
                     checkTotal: 0
                 });
-                return;
-            }
-            
-            // CRITICAL: If table is being settled, don't update it (prevent race conditions)
-            if (isSettling) {
-                console.log(`Table ${tableId} is being settled, skipping refresh to prevent race condition`);
                 return;
             }
             
@@ -1703,7 +1740,7 @@ class MekanApp {
                 // This fixes the issue where cancelled tables still have sales on other devices
                 if (unpaidSales.length > 0 && table.closeTime) {
                     // Table was cancelled - clean up unpaid sales on this device
-                    console.log(`Table ${tableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
+                    debugLog(`Table ${tableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
                     for (const sale of unpaidSales) {
                         if (sale?.items?.length) {
                             for (const item of sale.items) {
@@ -1744,7 +1781,9 @@ class MekanApp {
         }
     }
 
-    _markTableSettling(tableId, ms = 5000) {
+    _markTableSettling(tableId, ms = 10000) {
+        // Increased to 10 seconds to prevent realtime updates from reopening tables
+        // during the critical closure period
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
     }
@@ -2207,7 +2246,8 @@ class MekanApp {
         }
 
         // Load products for selection
-        await this.loadTableProducts(tableId);
+        // Load products from cache if available, otherwise load from DB
+        await this.loadTableProducts(tableId, { useCache: true });
 
         // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
@@ -2343,12 +2383,45 @@ class MekanApp {
         }
         document.getElementById('table-modal').classList.remove('active');
         document.body.classList.remove('table-modal-open');
+        
+        // Refresh products cache in background after modal closes
+        // This ensures products are up-to-date for the next modal open
+        this.refreshProductsCache();
     }
 
-    async loadTableProducts(tableId) {
-        const products = this.sortProductsByStock(await this.db.getAllProducts());
+    /**
+     * Refresh products cache in the background
+     * Called when table modal closes to ensure products are fresh for next open
+     */
+    async refreshProductsCache() {
+        try {
+            const products = this.sortProductsByStock(await this.db.getAllProducts());
+            this._cachedProducts = products;
+            debugLog('Products cache refreshed in background');
+        } catch (error) {
+            console.error('Error refreshing products cache:', error);
+            // Don't show error to user - this is a background operation
+        }
+    }
+
+    async loadTableProducts(tableId, opts = {}) {
+        const { useCache = false } = opts;
         const container = document.getElementById('table-products-grid');
         if (!container) return;
+
+        let products = null;
+
+        // Use cache if available and requested
+        if (useCache && this._cachedProducts) {
+            products = this._cachedProducts;
+            debugLog('Using cached products for table modal');
+        } else {
+            // Load fresh products from DB
+            products = this.sortProductsByStock(await this.db.getAllProducts());
+            // Update cache
+            this._cachedProducts = products;
+            debugLog('Loaded fresh products and updated cache');
+        }
 
         if (products.length === 0) {
             container.innerHTML = '<div class="empty-state"><p>Ürün bulunamadı</p></div>';
@@ -2978,7 +3051,7 @@ class MekanApp {
         
         // Step 1: Validate table state and prevent concurrent closures
         if (this._isTableSettling(tableId)) {
-            console.log(`Table ${tableId} is already being settled, skipping`);
+            debugLog(`Table ${tableId} is already being settled, skipping`);
             return { success: false, error: 'Table is already being settled' };
         }
 
@@ -3003,7 +3076,8 @@ class MekanApp {
         }
 
         // Step 4: Mark as settling IMMEDIATELY to prevent race conditions
-        this._markTableSettling(tableId);
+        // Extended duration to prevent realtime updates from interfering during closure
+        this._markTableSettling(tableId, 15000); // 15 seconds for closure operations
 
         try {
             // Step 5: Get unpaid sales BEFORE closing table
@@ -3095,13 +3169,14 @@ class MekanApp {
 
             // Step 10: Multiple verification passes to ensure table stays closed
             // This prevents race conditions where realtime updates reopen the table
-            for (let verifyAttempt = 0; verifyAttempt < 3; verifyAttempt++) {
-                await new Promise(resolve => setTimeout(resolve, 200)); // Wait between attempts
+            // Extended verification period to catch delayed realtime updates
+            for (let verifyAttempt = 0; verifyAttempt < 5; verifyAttempt++) {
+                await new Promise(resolve => setTimeout(resolve, 300)); // Wait between attempts
                 
                 const verifyTable = await this.db.getTable(tableId);
                 if (verifyTable && (verifyTable.isActive || (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime))) {
                     // Force close if verification fails
-                    console.log(`Verification attempt ${verifyAttempt + 1}: Table ${tableId} was reopened, forcing close again`);
+                    debugLog(`Verification attempt ${verifyAttempt + 1}: Table ${tableId} was reopened, forcing close again`);
                     verifyTable.isActive = false;
                     verifyTable.openTime = null;
                     verifyTable.closeTime = verifyTable.closeTime || closeTimeISO;
@@ -3112,8 +3187,11 @@ class MekanApp {
                     }
                     await this.db.updateTable(verifyTable);
                 } else {
-                    // Table is properly closed, break verification loop
-                    break;
+                    // Table is properly closed, but continue verification to catch delayed updates
+                    if (verifyAttempt >= 2) {
+                        // After 2 successful checks, we can be more confident
+                        break;
+                    }
                 }
             }
 
@@ -3121,7 +3199,7 @@ class MekanApp {
             const finalVerifyTable = await this.db.getTable(tableId);
             if (finalVerifyTable && (finalVerifyTable.isActive || (finalVerifyTable.type === 'hourly' && finalVerifyTable.openTime && !finalVerifyTable.closeTime))) {
                 // Last attempt: force close
-                console.log(`Final verification: Table ${tableId} still open, forcing close`);
+                debugLog(`Final verification: Table ${tableId} still open, forcing close`);
                 finalVerifyTable.isActive = false;
                 finalVerifyTable.openTime = null;
                 finalVerifyTable.closeTime = finalVerifyTable.closeTime || closeTimeISO;
@@ -3136,7 +3214,7 @@ class MekanApp {
             // Step 12: Verify no unpaid sales remain
             const remainingUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
             if (remainingUnpaidSales.length > 0) {
-                console.warn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after closure`);
+                debugWarn(`Warning: ${remainingUnpaidSales.length} unpaid sales still exist after closure`);
                 // Force update table totals
                 const finalTable = await this.db.getTable(tableId);
                 if (finalTable) {
@@ -3151,6 +3229,12 @@ class MekanApp {
 
             // Step 13: Return final verified table state
             const finalTableState = await this.db.getTable(tableId);
+            
+            // Step 14: Keep table marked as settling for additional time after closure
+            // This prevents realtime updates from interfering immediately after closure
+            // The settling period will naturally expire after the extended duration
+            // No need to manually clear it - it will expire on its own
+            
             return { success: true, table: finalTableState || updatedTable };
         } catch (error) {
             console.error('Error closing table:', error);
@@ -3508,7 +3592,7 @@ class MekanApp {
             // If a table modal is open, do NOT refresh it here (user requested no DB refresh while inside)
         } catch (e) {
             // Silent: refresh is best-effort
-            console.log('DB refresh skipped:', e?.message || e);
+            debugLog('DB refresh skipped:', e?.message || e);
         }
     }
 
@@ -3613,9 +3697,28 @@ class MekanApp {
                 if (tableName === 'tables') {
                     try {
                         const updatedTable = this.db.getTable ? await this.db.getTable(changedTableId) : null;
-                        if (updatedTable && updatedTable.closeTime && !updatedTable.openTime && !updatedTable.isActive && updatedTable.type === 'hourly') {
-                            // Table was cancelled - don't refresh, keep it closed
-                            console.log(`Realtime: Table ${changedTableId} was cancelled, skipping card refresh to keep it closed`);
+                        // Check if table is currently being settled (prevent interference during closure)
+                        const isSettling = this._isTableSettling(changedTableId);
+                        
+                        // If table is being settled, skip refresh to prevent race conditions
+                        if (isSettling) {
+                            debugLog(`Realtime: Table ${changedTableId} is being settled, skipping card refresh`);
+                            return;
+                        }
+                        
+                        // If table was closed (has closeTime, no openTime, not active), don't refresh
+                        if (updatedTable && updatedTable.closeTime && !updatedTable.openTime && !updatedTable.isActive) {
+                            // Table was cancelled/closed - don't refresh, keep it closed
+                            debugLog(`Realtime: Table ${changedTableId} was closed, skipping card refresh to keep it closed`);
+                            // Ensure UI shows closed state
+                            this.setTableCardState(changedTableId, {
+                                isActive: false,
+                                type: updatedTable.type,
+                                openTime: null,
+                                hourlyRate: updatedTable.hourlyRate || 0,
+                                salesTotal: 0,
+                                checkTotal: 0
+                            });
                             return;
                         }
                     } catch (e) {
@@ -3640,14 +3743,18 @@ class MekanApp {
                 if (tableName === 'tables' && changedTableId) {
                     try {
                         const updatedTable = await this.db.getTable(changedTableId);
+                        // Check if table is currently being settled (prevent interference during closure)
+                        const isSettling = this._isTableSettling(changedTableId);
+                        
                         // Only clean up if table is truly closed (not active, no openTime, has closeTime)
                         // Don't clean if table is being opened (isActive: true, openTime exists)
                             // CRITICAL: If table was closed (payment/credit/cancel), ensure it stays closed
                             // and clean up any remaining unpaid sales on this device
                             if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime) {
                                 // Table was closed - if realtime update tries to reopen it, force it closed again
-                                if (payload?.new?.isActive || (payload?.new?.openTime && !payload?.new?.closeTime)) {
-                                    console.log(`Realtime: Preventing closed table ${changedTableId} from being reopened`);
+                                // Also check if table is being settled (additional protection)
+                                if (isSettling || payload?.new?.isActive || (payload?.new?.openTime && !payload?.new?.closeTime)) {
+                                    debugLog(`Realtime: Preventing closed table ${changedTableId} from being reopened (isSettling: ${isSettling})`);
                                     // Force close again - don't use _closeTableSafely to avoid recursion
                                     const forceClosed = {
                                         ...updatedTable,
@@ -3676,7 +3783,7 @@ class MekanApp {
                                 // Table was closed - clean up any remaining unpaid sales on this device
                                 const unpaidSales = await this.db.getUnpaidSalesByTable(changedTableId);
                                 if (unpaidSales.length > 0) {
-                                    console.log(`Realtime: Table ${changedTableId} was closed, cleaning up ${unpaidSales.length} unpaid sales on this device`);
+                                    debugLog(`Realtime: Table ${changedTableId} was closed, cleaning up ${unpaidSales.length} unpaid sales on this device`);
                                     for (const sale of unpaidSales) {
                                         if (sale?.items?.length) {
                                             for (const item of sale.items) {
@@ -3898,7 +4005,7 @@ class MekanApp {
             // This fixes the issue where cancelled tables still have sales on other devices
             const unpaidSales = await this.db.getUnpaidSalesByTable(targetTableId);
             if (unpaidSales.length > 0) {
-                console.log(`Table ${targetTableId} was closed, cleaning up ${unpaidSales.length} leftover unpaid sales before reopening`);
+                debugLog(`Table ${targetTableId} was closed, cleaning up ${unpaidSales.length} leftover unpaid sales before reopening`);
                 for (const sale of unpaidSales) {
                     if (sale?.items?.length) {
                         for (const item of sale.items) {
@@ -4136,8 +4243,9 @@ class MekanApp {
             this.closeAddProductModal();
 
             // Reload modal content in parallel
+            // Don't use cache here - we need fresh data after adding a product
             await Promise.all([
-                this.loadTableProducts(tableId),
+                this.loadTableProducts(tableId, { useCache: false }),
                 this.loadTableSales(tableId)
             ]);
             
@@ -4239,7 +4347,8 @@ class MekanApp {
             await this.db.updateTable(table);
 
             // Reload products list in the modal and refresh modal content
-            await this.loadTableProducts(sale.tableId);
+            // Don't use cache here - we need fresh data after deleting a product
+            await this.loadTableProducts(sale.tableId, { useCache: false });
             await this.openTableModal(sale.tableId);
             await this.loadTables();
             
@@ -4398,11 +4507,11 @@ class MekanApp {
 
         // Validate table can be closed
         if (table.type === 'hourly' && (!table.isActive || !table.openTime || table.closeTime)) {
-            console.log(`Table ${tableId} is already closed, skipping`);
+            debugLog(`Table ${tableId} is already closed, skipping`);
             return;
         }
         if (table.type !== 'hourly' && !table.isActive) {
-            console.log(`Table ${tableId} is already closed, skipping`);
+            debugLog(`Table ${tableId} is already closed, skipping`);
             return;
         }
 
@@ -4438,7 +4547,7 @@ class MekanApp {
             await new Promise(resolve => setTimeout(resolve, 500));
             const postClosureCheck = await this.db.getTable(tableId);
             if (postClosureCheck && (postClosureCheck.isActive || (postClosureCheck.type === 'hourly' && postClosureCheck.openTime && !postClosureCheck.closeTime))) {
-                console.log(`Post-closure check: Table ${tableId} was reopened, forcing close again`);
+                debugLog(`Post-closure check: Table ${tableId} was reopened, forcing close again`);
                 postClosureCheck.isActive = false;
                 postClosureCheck.openTime = null;
                 postClosureCheck.closeTime = postClosureCheck.closeTime || new Date().toISOString();
@@ -4587,11 +4696,11 @@ class MekanApp {
 
         // Validate table can be closed
         if (table.type === 'hourly' && (!table.isActive || !table.openTime || table.closeTime)) {
-            console.log(`Table ${tableId} is already closed, skipping`);
+            debugLog(`Table ${tableId} is already closed, skipping`);
             return;
         }
         if (table.type !== 'hourly' && !table.isActive) {
-            console.log(`Table ${tableId} is already closed, skipping`);
+            debugLog(`Table ${tableId} is already closed, skipping`);
             return;
         }
 
@@ -4697,7 +4806,7 @@ class MekanApp {
         }
         
         // Debug: Log all expenses to see what we're getting
-        console.log('All expenses from DB:', expenses);
+        debugLog('All expenses from DB:', expenses);
         
         // Filter out any invalid expenses (missing required fields)
         // Also handle backward compatibility with different field names
@@ -4709,25 +4818,25 @@ class MekanApp {
             const hasDate = expense.expenseDate || expense.expense_date || expense.date;
             
             if (!hasId) {
-                console.warn('Expense missing ID:', expense);
+                debugWarn('Expense missing ID:', expense);
                 return false;
             }
             if (!hasDescription) {
-                console.warn('Expense missing description:', expense);
+                debugWarn('Expense missing description:', expense);
                 return false;
             }
             if (!hasAmount && expense.amount !== 0) {
-                console.warn('Expense missing or invalid amount:', expense);
+                debugWarn('Expense missing or invalid amount:', expense);
                 return false;
             }
             if (!hasDate) {
-                console.warn('Expense missing date:', expense);
+                debugWarn('Expense missing date:', expense);
                 return false;
             }
             return true;
         });
         
-        console.log('Valid expenses after filtering:', validExpenses);
+        debugLog('Valid expenses after filtering:', validExpenses);
         
         // Sort by date (newest first)
         validExpenses.sort((a, b) => {
@@ -4821,7 +4930,7 @@ class MekanApp {
         const expenseAmount = expense.amount || 0;
         
         if (!expenseId) {
-            console.warn('Expense missing ID:', expense);
+            debugWarn('Expense missing ID:', expense);
             return '';
         }
         
