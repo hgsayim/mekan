@@ -43,11 +43,32 @@
     --shadow: var(--dark-shadow);
 }
 
+/* SF Pro Font (Apple System Font) */
+@supports (font-variation-settings: normal) {
+    @font-face {
+        font-family: 'SF Pro Display';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: local('-apple-system'), local('BlinkMacSystemFont');
+    }
+    
+    @font-face {
+        font-family: 'SF Pro Text';
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: local('-apple-system'), local('BlinkMacSystemFont');
+    }
+}
+
 body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: var(--light-bg);
     color: var(--dark-text);
     line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* Ensure any browser/OS gaps (overscroll / PWA chrome) match the app theme */
@@ -2356,6 +2377,28 @@ header h1 {
     overflow-y: auto;
     box-shadow: 0 4px 30px rgba(0,0,0,0.3);
     position: relative;
+    /* iOS-like animation properties */
+    transform-origin: center center;
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Modal opening animation - start from small scale */
+.modal:not(.active) .modal-content {
+    transform: scale(0.85);
+    opacity: 0;
+}
+
+/* Modal active state - full scale */
+.modal.active .modal-content {
+    transform: scale(1);
+    opacity: 1;
+}
+
+/* Modal closing animation */
+.modal.closing .modal-content {
+    transform: scale(0.85);
+    opacity: 0;
+    transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Auth modal */
@@ -4677,9 +4720,6 @@ form select:focus {
     }
 
     /* When table (product add) modal is open, hide main header so it doesn't cover title/close */
-    body.table-modal-open header {
-        display: none !important;
-    }
 
     header h1 {
         font-size: 1.25rem;

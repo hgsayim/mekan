@@ -41,7 +41,22 @@ function showAuthModal(show) {
     // Use flex so modal content is truly centered (block breaks .modal.active layout)
     modal.style.display = show ? 'flex' : 'none';
     if (show) {
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
         document.body.classList.add('auth-open');
         // Hide header when auth modal is shown
         if (header) header.style.display = 'none';
@@ -927,7 +942,13 @@ class MekanApp {
                 if (modal && modal.id === 'table-modal') {
                     this.closeTableModal();
                 } else if (modal) {
-                    modal.classList.remove('active');
+                    // Use closeFormModal for form modals, direct remove for others
+                    const formModalIds = ['table-form-modal', 'product-modal', 'customer-modal', 'expense-form-modal', 'customer-detail-modal'];
+                    if (formModalIds.includes(modal.id)) {
+                        this.closeFormModal(modal.id);
+                    } else {
+                        modal.classList.remove('active');
+                    }
                 }
             });
         });
@@ -1012,7 +1033,22 @@ class MekanApp {
         titleEl.textContent = title;
         messageEl.textContent = message;
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
         modal.setAttribute('aria-hidden', 'false');
 
         return new Promise((resolve) => {
@@ -2161,7 +2197,69 @@ class MekanApp {
             // Icon label is always visible now
         }
         
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
+    }
+    
+    closeFormModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (!modal) return;
+        
+        // Don't close if already closing
+        if (modal.classList.contains('closing')) {
+            return;
+        }
+        
+        modal.classList.add('closing');
+        
+        // iOS-like closing animation
+        const modalContent = modal.querySelector('.modal-content');
+        if (modalContent) {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    modalContent.style.transform = 'scale(0.85)';
+                    modalContent.style.opacity = '0';
+                    
+                    setTimeout(() => {
+                        modal.classList.remove('active', 'closing');
+                        // Reset transform for next open
+                        modalContent.style.transform = '';
+                        modalContent.style.opacity = '';
+                    }, 300);
+                });
+            });
+        } else {
+            modal.classList.remove('active', 'closing');
+        }
     }
 
     async saveTable() {
@@ -2203,7 +2301,7 @@ class MekanApp {
                 await this.db.addTable(tableData);
             }
             
-            document.getElementById('table-form-modal').classList.remove('active');
+            this.closeFormModal('table-form-modal');
             await this.loadTables();
         } catch (error) {
             console.error('Masa kaydedilirken hata:', error, error?.message, error?.details, error?.hint, error?.code);
@@ -3488,7 +3586,22 @@ class MekanApp {
             });
         });
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async processCreditItemFromSale(selectedCustomerId) {
@@ -3858,7 +3971,22 @@ class MekanApp {
         const defaultIso = (table.isActive && table.openTime) ? table.openTime : new Date().toISOString();
         timeInput.value = this.formatTimeOnly(defaultIso);
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async applyDelayedStart() {
@@ -3989,7 +4117,22 @@ class MekanApp {
         await this.onManualSessionTableChanged();
         this.recalculateManualAmount();
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async onManualSessionTableChanged() {
@@ -4712,7 +4855,22 @@ class MekanApp {
         document.getElementById('product-stock-info').innerHTML = '';
         const modal = document.getElementById('add-product-table-modal');
         if (modal) {
-            modal.classList.add('active');
+            // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
+        modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
             modal.style.removeProperty('display');
             modal.style.removeProperty('visibility');
             modal.style.removeProperty('opacity');
@@ -5079,7 +5237,22 @@ class MekanApp {
         receiptHTML += `</div>`;
 
         receiptBody.innerHTML = receiptHTML;
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async processPayment() {
@@ -5223,7 +5396,22 @@ class MekanApp {
             });
         });
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async openCustomerSelectionModalForReceipt() {
@@ -5269,7 +5457,22 @@ class MekanApp {
             });
         });
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async processCreditTable(selectedCustomerId) {
@@ -5574,7 +5777,37 @@ class MekanApp {
             document.getElementById('expense-date').value = new Date().toISOString().split('T')[0];
         }
         
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async saveExpense() {
@@ -5604,7 +5837,7 @@ class MekanApp {
                 await this.db.addExpense(expenseData);
             }
             
-            document.getElementById('expense-form-modal').classList.remove('active');
+            this.closeFormModal('expense-form-modal');
             await this.loadExpenses();
             if (this.currentView === 'daily') {
                 await this.loadDailyDashboard();
@@ -5888,7 +6121,37 @@ class MekanApp {
             stockInput.required = true;
         }
         
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async saveProduct() {
@@ -5911,7 +6174,7 @@ class MekanApp {
                 await this.db.addProduct(productData);
             }
             
-            document.getElementById('product-modal').classList.remove('active');
+            this.closeFormModal('product-modal');
             await this.loadProducts(true); // Reset pagination
         } catch (error) {
             console.error('Ürün kaydedilirken hata:', error);
@@ -6090,7 +6353,22 @@ class MekanApp {
         balEl.textContent = `${Math.round(customer.balance || 0)} ₺`;
         amountEl.value = '';
 
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     updateCustomerCardBalance(customerId, newBalance) {
@@ -6175,7 +6453,37 @@ class MekanApp {
             document.getElementById('customer-id').value = '';
         }
         
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async saveCustomer() {
@@ -6208,7 +6516,7 @@ class MekanApp {
                 await this.db.addCustomer(customerData);
             }
             
-            document.getElementById('customer-modal').classList.remove('active');
+            this.closeFormModal('customer-modal');
             await this.loadCustomers(true); // Reset pagination
         } catch (error) {
             console.error('Müşteri kaydedilirken hata:', error);
@@ -6257,7 +6565,22 @@ class MekanApp {
         paymentAmount.min = 1;
         paymentAmount.step = '1';
         
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     async processCustomerPayment() {
@@ -6744,7 +7067,22 @@ class MekanApp {
             };
         }
         
+        // iOS-like opening animation
+        if (modal.classList.contains('closing')) {
+            modal.classList.remove('closing');
+        }
         modal.classList.add('active');
+        
+        // Trigger animation
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const modalContent = modal.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transform = 'scale(1)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        });
     }
 
     // Sales History
