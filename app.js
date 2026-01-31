@@ -2229,7 +2229,7 @@ class MekanApp {
         if (tableModalEl) tableModalEl.classList.add('active');
         document.body.classList.add('table-modal-open');
 
-        const modalTitleEl = document.getElementById('table-modal-title');
+        // Update title with table name from card if available
         if (modalTitleEl) {
             // Table names are stable; show immediately (avoid "Yükleniyor..." in title)
             const card = this.getTableCardEl?.(tableId);
