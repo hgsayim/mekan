@@ -2142,9 +2142,36 @@ class MekanApp {
 
         this.currentTableId = tableId;
 
+        // Get table card position for animation
+        const tableCard = this.getTableCardEl(tableId);
+        let cardRect = null;
+        if (tableCard) {
+            cardRect = tableCard.getBoundingClientRect();
+        }
+
         // Open modal shell immediately
         const tableModalEl = document.getElementById('table-modal');
-        if (tableModalEl) tableModalEl.classList.add('active');
+        if (tableModalEl) {
+            // Set initial position for animation (from table card)
+            if (cardRect) {
+                const modalContent = tableModalEl.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transformOrigin = `${cardRect.left + cardRect.width / 2}px ${cardRect.top + cardRect.height / 2}px`;
+                    modalContent.style.transform = `scale(0.1) translate(0, 0)`;
+                    modalContent.style.opacity = '0';
+                }
+            }
+            tableModalEl.classList.add('active');
+            // Trigger animation after a tiny delay
+            requestAnimationFrame(() => {
+                const modalContent = tableModalEl.querySelector('.modal-content');
+                if (modalContent) {
+                    modalContent.style.transition = 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1)';
+                    modalContent.style.transform = 'scale(1) translate(0, 0)';
+                    modalContent.style.opacity = '1';
+                }
+            });
+        }
         document.body.classList.add('table-modal-open');
 
         // Hide title initially - will show after loading
@@ -2259,15 +2286,17 @@ class MekanApp {
         }
 
         // Calculate check total (for hourly tables, include real-time hourly calculation)
+        // Don't show total yet - wait until all data is loaded
         const checkTotal = this.calculateCheckTotal(table);
         
         // Update modal title with table name only
         const modalTitle = document.getElementById('table-modal-title');
         modalTitle.textContent = table.name;
 
-        // Total is shown on the green pay button (not in header)
-        const payBtnTxt = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt') || null;
-        if (payBtnTxt) payBtnTxt.textContent = `${Math.round(checkTotal || 0)} ₺`;
+        // Total is shown on the green pay button (not in header) - hide until loaded
+        // Get pay button text element once and reuse
+        const payBtnTxtEl = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt') || null;
+        if (payBtnTxtEl) payBtnTxtEl.textContent = 'Yükleniyor...';
         
         // Update modal content
         // Hourly table info
@@ -2295,7 +2324,7 @@ class MekanApp {
                 // Update check total with real-time hourly calculation
                 table.checkTotal = hourlyTotal + computedSalesTotal;
                 document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
-                if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
+                if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
                 
                 // Update hourly total in real-time every minute
                 if (this.hourlyUpdateInterval) {
@@ -2335,7 +2364,7 @@ class MekanApp {
                 document.getElementById('modal-sales-total').textContent = Math.round(computedSalesTotal);
                 table.checkTotal = computedSalesTotal;
                 document.getElementById('modal-check-total').textContent = Math.round(table.checkTotal);
-                if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
+                if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
                 
                 // Table is not open - hide products section
                 if (productsSection) {
@@ -2359,7 +2388,7 @@ class MekanApp {
             regularInfo.style.display = 'none';
             table.checkTotal = computedSalesTotal;
             document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
-            if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
+            if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
             if (openBtn) {
             openBtn.style.display = 'none';
             }
@@ -2434,6 +2463,28 @@ class MekanApp {
         // Table is open (or regular/instant table without closeTime) - mark data as ready and enable buttons
         // Regular/instant tables can be opened even if they have no products (user wants to add products)
         // All data is now loaded - show content and unlock modal
+        
+        // Update check total now that all data is loaded
+        const finalCheckTotal = this.calculateCheckTotal(table);
+        if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(finalCheckTotal || 0)} ₺`;
+        
+        // Update hourly info totals if needed
+        if (table.type === 'hourly' && table.isActive && table.openTime) {
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hourlyTotal = hoursUsed * table.hourlyRate;
+            const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+            const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            table.checkTotal = hourlyTotal + salesTotal;
+            const modalCheckTotal = document.getElementById('modal-check-total');
+            if (modalCheckTotal) modalCheckTotal.textContent = Math.round(table.checkTotal);
+            if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+        } else if (table.type !== 'hourly') {
+            const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+            const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            table.checkTotal = salesTotal;
+            if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+        }
+        
         const productsSectionEl = document.getElementById('table-products-section');
         if (productsSectionEl && (table.type !== 'hourly' || (table.isActive && table.openTime))) {
             productsSectionEl.style.display = 'block';
@@ -2539,7 +2590,37 @@ class MekanApp {
             clearInterval(this.hourlyUpdateInterval);
             this.hourlyUpdateInterval = null;
         }
-        document.getElementById('table-modal').classList.remove('active');
+        
+        const tableModalEl = document.getElementById('table-modal');
+        if (tableModalEl) {
+            // Get table card position for closing animation
+            const tableCard = this.getTableCardEl(this.currentTableId);
+            let cardRect = null;
+            if (tableCard) {
+                cardRect = tableCard.getBoundingClientRect();
+            }
+            
+            // Animate closing - shrink back to table card position
+            const modalContent = tableModalEl.querySelector('.modal-content');
+            if (modalContent && cardRect) {
+                modalContent.style.transition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
+                modalContent.style.transformOrigin = `${cardRect.left + cardRect.width / 2}px ${cardRect.top + cardRect.height / 2}px`;
+                modalContent.style.transform = `scale(0.1) translate(0, 0)`;
+                modalContent.style.opacity = '0';
+                
+                // Remove active class after animation completes
+                setTimeout(() => {
+                    tableModalEl.classList.remove('active');
+                    // Reset transform for next open
+                    modalContent.style.transition = '';
+                    modalContent.style.transform = '';
+                    modalContent.style.opacity = '';
+                    modalContent.style.transformOrigin = '';
+                }, 350);
+            } else {
+                tableModalEl.classList.remove('active');
+            }
+        }
         document.body.classList.remove('table-modal-open');
         
         // Refresh products cache in background after modal closes

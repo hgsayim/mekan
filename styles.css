@@ -2744,6 +2744,12 @@ body:has(#auth-modal.modal.active) header {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] #table-modal .modal-content {
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
 #table-modal-body {
