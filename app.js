@@ -2240,7 +2240,7 @@ class MekanApp {
                         // Reset transform for next open
                         modalContent.style.transform = '';
                         modalContent.style.opacity = '';
-                    }, 250); // Match backdrop animation duration
+                    }, 350); // Match content animation duration (0.35s)
                 });
             });
         } else {
@@ -2395,6 +2395,13 @@ class MekanApp {
                 salesListEl.innerHTML = '';
                 salesListEl.style.display = 'none';
             }
+            // Hide all footer info sections during loading (will be shown based on table type later)
+            const hourlyInfo = document.getElementById('hourly-info');
+            const regularInfo = document.getElementById('regular-info');
+            const instantInfo = document.getElementById('instant-info');
+            if (hourlyInfo) hourlyInfo.style.display = 'none';
+            if (regularInfo) regularInfo.style.display = 'none';
+            if (instantInfo) instantInfo.style.display = 'none';
         }
 
         const footerBtns = [
@@ -2526,6 +2533,7 @@ class MekanApp {
         // Hourly table info
         const hourlyInfo = document.getElementById('hourly-info');
         const regularInfo = document.getElementById('regular-info');
+        const instantInfo = document.getElementById('instant-info');
         const openBtn = document.getElementById('open-table-btn');
         const payBtn = document.getElementById('pay-table-btn');
         const creditBtn = document.getElementById('credit-table-btn');
@@ -2536,6 +2544,8 @@ class MekanApp {
             // Use grid so mobile stays single-row (CSS sets the grid template)
             hourlyInfo.style.display = 'grid';
             regularInfo.style.display = 'none';
+            // Hide instant info for hourly tables
+            if (instantInfo) instantInfo.style.display = 'none';
             
             if (table.isActive && table.openTime) {
                 document.getElementById('modal-open-time').textContent = this.formatTimeOnly(table.openTime);
@@ -2606,13 +2616,14 @@ class MekanApp {
                     cancelHourlyBtn.style.display = 'none';
                 }
             }
+            // Ensure instant-info is hidden for hourly tables (already set above, but ensure it stays hidden)
+            if (instantInfo) instantInfo.style.display = 'none';
         } else {
             hourlyInfo.style.display = 'none';
             
             // Handle instant sale table separately
             if (table.type === 'instant') {
                 regularInfo.style.display = 'none';
-                const instantInfo = document.getElementById('instant-info');
                 if (instantInfo) {
                     instantInfo.style.display = 'flex';
                     // Get today's total sales for instant sale table
@@ -2628,7 +2639,6 @@ class MekanApp {
             } else {
                 // Regular tables: Total moved to header; hide footer info for regular tables to free space.
                 regularInfo.style.display = 'none';
-                const instantInfo = document.getElementById('instant-info');
                 if (instantInfo) instantInfo.style.display = 'none';
                 table.checkTotal = computedSalesTotal;
                 document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
@@ -4266,14 +4276,24 @@ class MekanApp {
     }
 
     // Helper: Update modal totals (reduces DOM queries)
-    updateModalTotals(table) {
+    async updateModalTotals(table) {
         // Keep the green pay button label in sync (show amount only)
         const payBtn = document.getElementById('pay-table-btn');
+        const creditBtn = document.getElementById('credit-table-btn');
         const payTxt = payBtn?.querySelector?.('.btn-txt') || null;
+        
+        // Get unpaid sales to determine button visibility
+        let unpaidSales = [];
+        try {
+            unpaidSales = await this.db.getUnpaidSalesByTable(table.id || this.currentTableId);
+        } catch (e) {
+            console.error('Error fetching unpaid sales:', e);
+        }
+        
         if (table.type === 'hourly') {
             const modalSalesTotal = document.getElementById('modal-sales-total');
             const modalCheckTotal = document.getElementById('modal-check-total');
-            if (modalSalesTotal) modalSalesTotal.textContent = Math.round(table.salesTotal);
+            if (modalSalesTotal) modalSalesTotal.textContent = Math.round(table.salesTotal || 0);
             if (modalCheckTotal) {
                 const checkTotal = this.calculateCheckTotal(table);
                 modalCheckTotal.textContent = Math.round(checkTotal);
@@ -4281,8 +4301,29 @@ class MekanApp {
             }
         } else {
             const modalCheckTotalRegular = document.getElementById('modal-check-total-regular');
-            if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(table.salesTotal);
-            if (payTxt) payTxt.textContent = `${Math.round(table.salesTotal)} ₺`;
+            if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(table.salesTotal || 0);
+            if (payTxt) payTxt.textContent = `${Math.round(table.checkTotal || table.salesTotal || 0)} ₺`;
+        }
+        
+        // Update button visibility based on unpaid sales and check total
+        if (payBtn) {
+            const hasUnpaidSales = unpaidSales.length > 0;
+            const hasCheckTotal = table.checkTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            if (hasUnpaidSales || hasCheckTotal) {
+                payBtn.style.display = 'inline-block';
+            } else {
+                payBtn.style.display = 'none';
+            }
+        }
+        
+        if (creditBtn) {
+            const hasUnpaidSales = unpaidSales.length > 0;
+            const hasCheckTotal = table.checkTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            if (hasUnpaidSales || hasCheckTotal) {
+                creditBtn.style.display = 'inline-block';
+            } else {
+                creditBtn.style.display = 'none';
+            }
         }
     }
 
@@ -5034,7 +5075,20 @@ class MekanApp {
             } catch (_) {
                 // ignore
             }
-            this.updateModalTotals(updatedTable);
+            await this.updateModalTotals(updatedTable);
+            
+            // If modal is still open, ensure buttons are visible
+            if (this.currentTableId === tableId) {
+                // Force refresh button visibility
+                const payBtn = document.getElementById('pay-table-btn');
+                const creditBtn = document.getElementById('credit-table-btn');
+                if (payBtn && updatedTable.checkTotal > 0) {
+                    payBtn.style.display = 'inline-block';
+                }
+                if (creditBtn && updatedTable.checkTotal > 0) {
+                    creditBtn.style.display = 'inline-block';
+                }
+            }
             
             // Reload views in parallel
             const reloadPromises = [this.loadTables()];
@@ -5298,6 +5352,9 @@ class MekanApp {
             return;
         }
 
+        // Store original table state for rollback
+        const originalTableState = { ...table };
+        
         try {
             // Show loading overlay
             // Show processing message on table card (green background)
@@ -5343,17 +5400,33 @@ class MekanApp {
                 await this.db.updateTable(postClosureCheck);
             }
 
-            // Update UI with final state
+            // Update UI with final state - ensure table is closed
             const finalTableForUI = await this.db.getTable(tableId);
             if (finalTableForUI) {
-                this.setTableCardState(tableId, {
+                // Force closed state regardless of what DB says
+                const closedState = {
                     isActive: false,
                     type: finalTableForUI.type,
-                    openTime: finalTableForUI.type === 'hourly' ? null : finalTableForUI.openTime,
+                    openTime: null,
                     hourlyRate: finalTableForUI.hourlyRate || 0,
                     salesTotal: 0,
-                    checkTotal: 0
-                });
+                    checkTotal: 0,
+                    hourlyTotal: 0
+                };
+                this.setTableCardState(tableId, closedState);
+                
+                // If DB still shows active, force update
+                if (finalTableForUI.isActive || (finalTableForUI.type === 'hourly' && finalTableForUI.openTime)) {
+                    finalTableForUI.isActive = false;
+                    finalTableForUI.openTime = null;
+                    finalTableForUI.closeTime = finalTableForUI.closeTime || new Date().toISOString();
+                    finalTableForUI.salesTotal = 0;
+                    finalTableForUI.checkTotal = 0;
+                    if (finalTableForUI.type === 'hourly') {
+                        finalTableForUI.hourlyTotal = 0;
+                    }
+                    await this.db.updateTable(finalTableForUI);
+                }
             }
 
             // Wait for DB operations to complete and realtime updates to propagate
@@ -5361,6 +5434,28 @@ class MekanApp {
             
             // Hide processing overlay
             this.hideTableCardProcessing(tableId);
+            
+            // Final verification: check table state one more time
+            const finalCheck = await this.db.getTable(tableId);
+            if (finalCheck && (finalCheck.isActive || (finalCheck.type === 'hourly' && finalCheck.openTime))) {
+                console.warn(`Table ${tableId} still shows as active after payment, forcing close`);
+                finalCheck.isActive = false;
+                finalCheck.openTime = null;
+                finalCheck.closeTime = finalCheck.closeTime || new Date().toISOString();
+                finalCheck.salesTotal = 0;
+                finalCheck.checkTotal = 0;
+                if (finalCheck.type === 'hourly') {
+                    finalCheck.hourlyTotal = 0;
+                }
+                await this.db.updateTable(finalCheck);
+                this.setTableCardState(tableId, {
+                    isActive: false,
+                    salesTotal: 0,
+                    checkTotal: 0,
+                    openTime: null,
+                    hourlyTotal: 0
+                });
+            }
             
             // Background refresh
             setTimeout(() => {
@@ -5371,7 +5466,40 @@ class MekanApp {
         } catch (error) {
             console.error('Ödeme işlenirken hata:', error);
             this.hideTableCardProcessing(tableId);
+            
+            // Rollback: restore original table state
+            try {
+                const currentTable = await this.db.getTable(tableId);
+                if (currentTable) {
+                    // Restore original state
+                    currentTable.isActive = originalTableState.isActive;
+                    currentTable.openTime = originalTableState.openTime;
+                    currentTable.salesTotal = originalTableState.salesTotal;
+                    currentTable.checkTotal = originalTableState.checkTotal;
+                    if (currentTable.type === 'hourly') {
+                        currentTable.hourlyTotal = originalTableState.hourlyTotal;
+                    }
+                    await this.db.updateTable(currentTable);
+                    
+                    // Update UI to reflect restored state
+                    this.setTableCardState(tableId, {
+                        isActive: originalTableState.isActive,
+                        salesTotal: originalTableState.salesTotal,
+                        checkTotal: originalTableState.checkTotal,
+                        openTime: originalTableState.openTime,
+                        hourlyTotal: originalTableState.hourlyTotal
+                    });
+                }
+            } catch (rollbackError) {
+                console.error('Rollback sırasında hata:', rollbackError);
+            }
+            
             await this.appAlert('Ödeme işlenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+            
+            // Reload views to ensure consistency
+            setTimeout(() => {
+                this.reloadViews(['tables', 'sales']);
+            }, 100);
         }
     }
 
