@@ -1384,53 +1384,7 @@ class MekanApp {
                 });
             }
             
-            // Long press (3 seconds) to delete table
-            let pressTimer = null;
-            let hasLongPressed = false;
-            const longPressDelay = 3000; // 3 seconds
-            
-            const startLongPress = () => {
-                hasLongPressed = false;
-                // Don't allow deleting instant sale table
-                if (table.type === 'instant') {
-                    return;
-                }
-                pressTimer = setTimeout(async () => {
-                    hasLongPressed = true;
-                    if (await this.appConfirm(`"${table.name}" masasını silmek istediğinize emin misiniz?`, { title: 'Masa Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' })) {
-                        try {
-                            await this.db.deleteTable(table.id);
-                            await this.loadTables();
-                            if (this.currentView === 'daily') {
-                                await this.loadDailyDashboard();
-                            }
-                        } catch (error) {
-                            console.error('Masa silinirken hata:', error);
-                            await this.appAlert('Masa silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
-                        }
-                    }
-                    // Reset flag after a short delay to allow cleanup
-                    setTimeout(() => {
-                        hasLongPressed = false;
-                    }, 100);
-                }, longPressDelay);
-            };
-            
-            const cancelLongPress = () => {
-                if (pressTimer) {
-                    clearTimeout(pressTimer);
-                    pressTimer = null;
-                }
-            };
-            
-            // Support both touch and mouse events for long press
-            card.addEventListener('touchstart', startLongPress, { passive: true });
-            card.addEventListener('touchend', cancelLongPress);
-            card.addEventListener('touchcancel', cancelLongPress);
-            card.addEventListener('mousedown', startLongPress);
-            card.addEventListener('mouseup', cancelLongPress);
-            card.addEventListener('mouseleave', cancelLongPress);
-            
+            // Card click opens table modal
             if (table.type === 'hourly') {
                 // Hourly tables: double-tap to open when closed, single-tap to open modal when open
                 let tapTimer = null;
@@ -1438,14 +1392,10 @@ class MekanApp {
                 const tapDelay = 300; // 300ms window for double tap
                 
                 card.addEventListener('click', async (e) => {
-                    // Don't trigger click if long press was triggered
-                    if (hasLongPressed) {
-                        hasLongPressed = false;
+                    // Don't trigger if in edit mode
+                    if (card.classList.contains('editing')) {
                         return;
                     }
-                    
-                    // Cancel any pending long press
-                    cancelLongPress();
                     
                     e.preventDefault();
                     
@@ -1516,14 +1466,10 @@ class MekanApp {
             } else {
                 // Regular tables: single tap to open modal
                 card.addEventListener('click', (e) => {
-                    // Don't trigger click if long press was triggered
-                    if (hasLongPressed) {
-                        hasLongPressed = false;
+                    // Don't trigger if in edit mode
+                    if (card.classList.contains('editing')) {
                         return;
                     }
-                    
-                    // Cancel any pending long press
-                    cancelLongPress();
                     
                     this.openTableModal(table.id, { preSync: true });
                 });
@@ -3040,19 +2986,44 @@ class MekanApp {
 
     setupProductDragAndDrop(container) {
         let draggedElement = null;
+        let placeholder = null;
+        
+        // Create placeholder element
+        const createPlaceholder = () => {
+            const placeholderEl = document.createElement('div');
+            placeholderEl.className = 'drag-placeholder';
+            placeholderEl.style.height = '120px';
+            placeholderEl.style.border = '2px dashed rgba(52, 152, 219, 0.5)';
+            placeholderEl.style.borderRadius = '12px';
+            placeholderEl.style.margin = '4px';
+            placeholderEl.style.background = 'rgba(52, 152, 219, 0.1)';
+            return placeholderEl;
+        };
         
         container.addEventListener('dragstart', (e) => {
-            if (e.target.classList.contains('product-card') && !e.target.classList.contains('add-card')) {
-                draggedElement = e.target;
-                e.target.style.opacity = '0.5';
+            const card = e.target.closest('.product-card');
+            if (card && !card.classList.contains('add-card')) {
+                draggedElement = card;
+                card.style.opacity = '0.5';
+                card.style.cursor = 'grabbing';
                 e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/html', e.target.outerHTML);
+                e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+                
+                // Create placeholder
+                placeholder = createPlaceholder();
+                card.parentNode.insertBefore(placeholder, card);
             }
         });
         
         container.addEventListener('dragend', (e) => {
-            if (e.target.classList.contains('product-card')) {
-                e.target.style.opacity = '';
+            if (draggedElement) {
+                draggedElement.style.opacity = '';
+                draggedElement.style.cursor = '';
+                if (placeholder && placeholder.parentNode) {
+                    placeholder.parentNode.removeChild(placeholder);
+                }
+                draggedElement = null;
+                placeholder = null;
             }
         });
         
@@ -3060,19 +3031,26 @@ class MekanApp {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             
+            if (!draggedElement || !placeholder) return;
+            
             const afterElement = this.getDragAfterElement(container, e.clientY);
-            const dragging = container.querySelector('.dragging');
             
             if (afterElement == null) {
-                container.appendChild(draggedElement);
+                container.appendChild(placeholder);
             } else {
-                container.insertBefore(draggedElement, afterElement);
+                container.insertBefore(placeholder, afterElement);
             }
         });
         
         container.addEventListener('drop', async (e) => {
             e.preventDefault();
-            if (!draggedElement) return;
+            if (!draggedElement || !placeholder) return;
+            
+            // Move dragged element to placeholder position
+            if (placeholder.parentNode) {
+                placeholder.parentNode.insertBefore(draggedElement, placeholder);
+                placeholder.parentNode.removeChild(placeholder);
+            }
             
             const productCards = Array.from(container.querySelectorAll('.product-card:not(.add-card)'));
             const newOrder = productCards.map((card, index) => ({
@@ -3090,23 +3068,50 @@ class MekanApp {
             }
             
             draggedElement = null;
+            placeholder = null;
         });
     }
     
     setupTableDragAndDrop(container) {
         let draggedElement = null;
+        let placeholder = null;
+        
+        // Create placeholder element
+        const createPlaceholder = () => {
+            const placeholderEl = document.createElement('div');
+            placeholderEl.className = 'drag-placeholder';
+            placeholderEl.style.height = '80px';
+            placeholderEl.style.border = '2px dashed rgba(52, 152, 219, 0.5)';
+            placeholderEl.style.borderRadius = '12px';
+            placeholderEl.style.margin = '4px';
+            placeholderEl.style.background = 'rgba(52, 152, 219, 0.1)';
+            return placeholderEl;
+        };
         
         container.addEventListener('dragstart', (e) => {
-            if (e.target.classList.contains('table-card') && !e.target.classList.contains('add-card')) {
-                draggedElement = e.target;
-                e.target.style.opacity = '0.5';
+            const card = e.target.closest('.table-card');
+            if (card && !card.classList.contains('add-card')) {
+                draggedElement = card;
+                card.style.opacity = '0.5';
+                card.style.cursor = 'grabbing';
                 e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', ''); // Required for Firefox
+                
+                // Create placeholder
+                placeholder = createPlaceholder();
+                card.parentNode.insertBefore(placeholder, card);
             }
         });
         
         container.addEventListener('dragend', (e) => {
-            if (e.target.classList.contains('table-card')) {
-                e.target.style.opacity = '';
+            if (draggedElement) {
+                draggedElement.style.opacity = '';
+                draggedElement.style.cursor = '';
+                if (placeholder && placeholder.parentNode) {
+                    placeholder.parentNode.removeChild(placeholder);
+                }
+                draggedElement = null;
+                placeholder = null;
             }
         });
         
@@ -3114,18 +3119,26 @@ class MekanApp {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             
+            if (!draggedElement || !placeholder) return;
+            
             const afterElement = this.getDragAfterElement(container, e.clientY);
             
             if (afterElement == null) {
-                container.appendChild(draggedElement);
+                container.appendChild(placeholder);
             } else {
-                container.insertBefore(draggedElement, afterElement);
+                container.insertBefore(placeholder, afterElement);
             }
         });
         
         container.addEventListener('drop', async (e) => {
             e.preventDefault();
-            if (!draggedElement) return;
+            if (!draggedElement || !placeholder) return;
+            
+            // Move dragged element to placeholder position
+            if (placeholder.parentNode) {
+                placeholder.parentNode.insertBefore(draggedElement, placeholder);
+                placeholder.parentNode.removeChild(placeholder);
+            }
             
             const tableCards = Array.from(container.querySelectorAll('.table-card:not(.add-card)'));
             const newOrder = tableCards.map((card, index) => {
@@ -3146,6 +3159,7 @@ class MekanApp {
             }
             
             draggedElement = null;
+            placeholder = null;
         });
     }
     
