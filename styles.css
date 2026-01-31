@@ -170,30 +170,39 @@ header h1 {
 }
 
 .instant-sale-header-btn {
-    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
-    color: white;
-    border: none;
+    background: #1a1a1a;
+    color: #f59e0b;
+    border: 2px solid #f59e0b;
     border-radius: 8px;
     padding: 8px 12px;
     font-size: 1.2rem;
     cursor: pointer;
     transition: all 0.2s ease;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     margin-left: 8px;
 }
 
 .instant-sale-header-btn:hover {
     transform: scale(1.05);
+    background: #2a2a2a;
     box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
 }
 
 .instant-sale-header-btn:active {
     transform: scale(0.95);
+    background: #0a0a0a;
 }
 
 [data-theme="dark"] .instant-sale-header-btn {
-    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+    background: #000000;
+    border-color: #f59e0b;
+    color: #f59e0b;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .instant-sale-header-btn:hover {
+    background: #0a0a0a;
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.5);
 }
 
 .header-content h1 {
@@ -2476,103 +2485,6 @@ header h1 {
 .app-dialog-close {
     cursor: pointer;
     user-select: none;
-}
-
-/* Table Action Menu */
-.table-action-menu-content {
-    max-width: 400px;
-    padding: 24px;
-}
-
-.table-action-menu-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.table-action-menu-header h3 {
-    margin: 0;
-    font-size: 1.2rem;
-    font-weight: 700;
-}
-
-.table-action-menu-actions {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.table-action-menu-actions .btn-block {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    padding: 14px 20px;
-    font-size: 1rem;
-}
-
-/* Table Move Modal */
-.table-move-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.table-move-header h2 {
-    margin: 0;
-    font-size: 1.3rem;
-    font-weight: 700;
-}
-
-.table-move-message {
-    margin-bottom: 20px;
-}
-
-.table-move-message p {
-    margin: 0;
-    font-size: 1rem;
-    color: var(--text-secondary);
-}
-
-.table-move-grid {
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-/* Table move mode - blur source table */
-body.table-move-mode .table-card:not(.table-moving-source) {
-    opacity: 0.6;
-    pointer-events: none;
-}
-
-.table-card.table-moving-source {
-    position: relative;
-    filter: blur(4px);
-    opacity: 0.5;
-    pointer-events: none;
-}
-
-.table-card.table-moving-source::after {
-    content: 'Taşınıyor...';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 8px 16px;
-    border-radius: 8px;
-    font-weight: 600;
-    z-index: 10;
-    white-space: nowrap;
-}
-
-[data-theme="dark"] .table-card.table-moving-source::after {
-    background: rgba(255, 255, 255, 0.9);
-    color: #000;
 }
 
 .modal-content {

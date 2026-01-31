@@ -164,9 +164,6 @@ class MekanApp {
         this._dialogResolver = null;
         this._settlingTables = new Map(); // tableId -> expiry timestamp (ms)
         this._openingTables = new Map(); // tableId -> { until: ms, openTime: iso }
-        // Prevent race conditions on fast-tap product adds (stock decrement must be accurate).
-        // key: `${tableId}:${productId}` -> { pending: number, timer: any, chain: Promise }
-        this._quickAddState = new Map();
         this.hourlyUpdateInterval = null;
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
@@ -199,7 +196,7 @@ class MekanApp {
         navigator.vibrate(pattern);
     }
 
-    // Add product to table - no batching, immediate execution
+    // Batch + serialize product additions per table/product to avoid stock races on rapid taps.
     queueQuickAddToTable(tableId, productId, deltaAmount = 1) {
         if (!tableId || !productId) return;
         const delta = Number(deltaAmount) || 0;
@@ -211,10 +208,8 @@ class MekanApp {
             return;
         }
         
-        // Positive amounts: add immediately, no batching
-        this.addProductToTableFromModal(tableId, productId, delta).catch(err => {
-            console.error('Error adding product to table:', err);
-        });
+        // Directly add 1 product per click (no batching/queuing)
+        this.addProductToTableFromModal(tableId, productId, 1);
     }
 
     async handleProductReduction(tableId, productId, reduceBy) {
@@ -237,7 +232,7 @@ class MekanApp {
                         const currentAmount = Number(item.amount) || 0;
                         if (currentAmount <= remaining) {
                             // Cancel entire item
-                            await this.deleteItemFromSale(sale.id, i, true); // Skip confirm for swipe gesture
+                            await this.deleteItemFromSale(sale.id, i, true);
                             remaining -= currentAmount;
                         } else {
                             // Reduce item amount
@@ -616,53 +611,6 @@ class MekanApp {
             instantSaleBtn.addEventListener('click', async () => {
                 this.hapticFeedback('light');
                 await this.openInstantSaleModal();
-            });
-        }
-
-        // Table action menu buttons
-        const tableActionDeleteBtn = document.getElementById('table-action-delete-btn');
-        const tableActionMoveBtn = document.getElementById('table-action-move-btn');
-        const tableActionMenuClose = document.getElementById('table-action-menu-close');
-        const tableActionMenu = document.getElementById('table-action-menu');
-        
-        if (tableActionDeleteBtn) {
-            tableActionDeleteBtn.addEventListener('click', async () => {
-                const tableId = tableActionMenu.dataset.tableId;
-                if (tableId) {
-                    tableActionMenu.classList.remove('active');
-                    await this.deleteTable(tableId);
-                }
-            });
-        }
-        
-        if (tableActionMoveBtn) {
-            tableActionMoveBtn.addEventListener('click', async () => {
-                const tableId = tableActionMenu.dataset.tableId;
-                if (tableId) {
-                    tableActionMenu.classList.remove('active');
-                    await this.showTableMoveSelection(tableId);
-                }
-            });
-        }
-        
-        if (tableActionMenuClose) {
-            tableActionMenuClose.addEventListener('click', () => {
-                tableActionMenu.classList.remove('active');
-            });
-        }
-
-        // Table move modal close
-        const tableMoveClose = document.getElementById('table-move-close');
-        const tableMoveModal = document.getElementById('table-move-modal');
-        if (tableMoveClose && tableMoveModal) {
-            tableMoveClose.addEventListener('click', () => {
-                this.closeTableMoveModal();
-            });
-            // Close on backdrop click
-            tableMoveModal.addEventListener('click', (e) => {
-                if (e.target === tableMoveModal) {
-                    this.closeTableMoveModal();
-                }
             });
         }
 
@@ -1570,21 +1518,31 @@ class MekanApp {
                 });
             }
             
-            // Long press (3 seconds) to show action menu (delete/move)
+            // Long press (3 seconds) to delete table
             let pressTimer = null;
             let hasLongPressed = false;
             const longPressDelay = 3000; // 3 seconds
             
             const startLongPress = () => {
                 hasLongPressed = false;
-                // Don't allow actions on instant sale table
+                // Don't allow deleting instant sale table
                 if (table.type === 'instant') {
                     return;
                 }
                 pressTimer = setTimeout(async () => {
                     hasLongPressed = true;
-                    this.hapticFeedback('medium');
-                    await this.showTableActionMenu(table);
+                    if (await this.appConfirm(`"${table.name}" masasını silmek istediğinize emin misiniz?`, { title: 'Masa Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' })) {
+                        try {
+                            await this.db.deleteTable(table.id);
+                            await this.loadTables();
+                            if (this.currentView === 'daily') {
+                                await this.loadDailyDashboard();
+                            }
+                        } catch (error) {
+                            console.error('Masa silinirken hata:', error);
+                            await this.appAlert('Masa silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+                        }
+                    }
                     // Reset flag after a short delay to allow cleanup
                     setTimeout(() => {
                         hasLongPressed = false;
@@ -3098,242 +3056,6 @@ class MekanApp {
         } catch (e) {
             console.error('Error canceling product:', e);
         }
-    }
-
-    async showTableActionMenu(table) {
-        const menu = document.getElementById('table-action-menu');
-        const title = document.getElementById('table-action-menu-title');
-        if (menu && title) {
-            title.textContent = `${table.name} - İşlemler`;
-            menu.dataset.tableId = table.id;
-            menu.classList.add('active');
-        }
-    }
-
-    async deleteTable(tableId) {
-        const table = await this.db.getTable(tableId);
-        if (!table) return;
-        
-        if (await this.appConfirm(`"${table.name}" masasını silmek istediğinize emin misiniz?`, { title: 'Masa Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' })) {
-            try {
-                await this.db.deleteTable(tableId);
-                await this.loadTables();
-                if (this.currentView === 'daily') {
-                    await this.loadDailyDashboard();
-                }
-            } catch (error) {
-                console.error('Masa silinirken hata:', error);
-                await this.appAlert('Masa silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
-            }
-        }
-    }
-
-    async createTableCardForMove(table) {
-        // Create a simplified table card for move selection
-        const icon = table.icon || (table.type === 'hourly' ? '🎱' : '🪑');
-        const isActive = table.isActive && (table.type !== 'hourly' || table.openTime);
-        const statusClass = isActive ? 'active' : '';
-        
-        // Calculate display total
-        let displayTotal = 0;
-        if (isActive) {
-            const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
-            const salesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-            if (table.type === 'hourly' && table.isActive && table.openTime) {
-                const hoursUsed = this.calculateHoursUsed(table.openTime);
-                const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
-                displayTotal = hourlyTotal + salesTotal;
-            } else {
-                displayTotal = salesTotal;
-            }
-        }
-        
-        return `
-            <div class="table-card ${statusClass}" id="table-move-target-${table.id}">
-                <div class="table-icon">${icon}</div>
-                <h3>${table.name}</h3>
-                <div class="table-price">${Math.round(displayTotal)} ₺</div>
-            </div>
-        `;
-    }
-
-    async showTableMoveSelection(sourceTableId) {
-        const sourceTable = await this.db.getTable(sourceTableId);
-        if (!sourceTable) return;
-
-        const modal = document.getElementById('table-move-modal');
-        const messageText = document.getElementById('table-move-message-text');
-        const grid = document.getElementById('table-move-grid');
-        
-        if (!modal || !messageText || !grid) return;
-
-        // Blur source table
-        const sourceCard = document.getElementById(`table-${sourceTableId}`);
-        if (sourceCard) {
-            sourceCard.classList.add('table-moving-source');
-        }
-        
-        // Enable move mode
-        document.body.classList.add('table-move-mode');
-        messageText.textContent = `"${sourceTable.name}" masasını taşımak için hedef masayı seçin:`;
-        
-        // Load all tables except source and instant
-        const allTables = await this.db.getAllTables();
-        const availableTables = allTables.filter(t => 
-            t.id !== sourceTableId && t.type !== 'instant'
-        );
-        
-        if (availableTables.length === 0) {
-            await this.appAlert('Taşınacak başka masa bulunamadı.', 'Uyarı');
-            if (sourceCard) sourceCard.classList.remove('table-moving-source');
-            document.body.classList.remove('table-move-mode');
-            return;
-        }
-        
-        // Render table cards for selection
-        const tableCards = await Promise.all(
-            availableTables.map(table => this.createTableCardForMove(table))
-        );
-        grid.innerHTML = tableCards.join('');
-        
-        // Add click handlers to target tables
-        availableTables.forEach(targetTable => {
-            const targetCard = document.getElementById(`table-move-target-${targetTable.id}`);
-            if (targetCard) {
-                targetCard.addEventListener('click', async () => {
-                    await this.moveTable(sourceTableId, targetTable.id);
-                });
-            }
-        });
-        
-        modal.classList.add('active');
-    }
-
-    async moveTable(sourceTableId, targetTableId) {
-        try {
-            const sourceTable = await this.db.getTable(sourceTableId);
-            const targetTable = await this.db.getTable(targetTableId);
-            
-            if (!sourceTable || !targetTable) {
-                await this.appAlert('Masa bulunamadı.', 'Hata');
-                return;
-            }
-
-            // Get unpaid sales from source table
-            const sourceUnpaidSales = await this.db.getUnpaidSalesByTable(sourceTableId);
-            const targetUnpaidSales = await this.db.getUnpaidSalesByTable(targetTableId);
-            
-            const sourceHasItems = sourceUnpaidSales.length > 0;
-            const targetHasItems = targetUnpaidSales.length > 0;
-            const sourceIsHourly = sourceTable.type === 'hourly';
-            const targetIsHourly = targetTable.type === 'hourly';
-            const sourceIsOpen = sourceIsHourly && sourceTable.isActive && sourceTable.openTime;
-            
-            // If target has items, show confirmation
-            if (targetHasItems) {
-                const confirmed = await this.appConfirm(
-                    `"${targetTable.name}" masasında zaten ürünler var. Masadaki hesaplar birleşecektir. Onaylıyor musunuz?`,
-                    { title: 'Masa Taşıma', confirmText: 'Evet, Taşı', cancelText: 'İptal', confirmVariant: 'primary' }
-                );
-                if (!confirmed) {
-                    this.closeTableMoveModal();
-                    return;
-                }
-            }
-
-            // Handle hourly to regular table move
-            if (sourceIsHourly && !targetIsHourly && sourceIsOpen) {
-                // Calculate hourly fee and add as product
-                const hoursUsed = this.calculateHoursUsed(sourceTable.openTime);
-                const hourlyFee = hoursUsed * sourceTable.hourlyRate;
-                
-                if (hourlyFee > 0) {
-                    // Create a sale item for the hourly fee
-                    const hourlyFeeSale = {
-                        tableId: targetTableId,
-                        items: [{
-                            productId: null, // Special marker for hourly fee
-                            name: 'Oyun Ücreti',
-                            icon: '🎱',
-                            category: 'game',
-                            price: hourlyFee,
-                            arrivalPrice: 0,
-                            amount: 1,
-                            isHourlyFee: true
-                        }],
-                        sellDateTime: new Date().toISOString(),
-                        saleTotal: hourlyFee,
-                        isPaid: false,
-                        isCredit: false
-                    };
-                    await this.db.addSale(hourlyFeeSale);
-                }
-                
-                // Stop hourly timer
-                sourceTable.isActive = false;
-                sourceTable.openTime = null;
-                sourceTable.hourlyTotal = 0;
-                sourceTable.checkTotal = 0;
-            }
-            
-            // Handle regular to hourly table move
-            if (!sourceIsHourly && targetIsHourly && sourceHasItems) {
-                // Start hourly timer
-                targetTable.isActive = true;
-                targetTable.openTime = new Date().toISOString();
-            }
-            
-            // Move all unpaid sales from source to target
-            for (const sale of sourceUnpaidSales) {
-                sale.tableId = targetTableId;
-                await this.db.updateSale(sale);
-            }
-            
-            // Update source table (clear it)
-            sourceTable.salesTotal = 0;
-            sourceTable.checkTotal = 0;
-            sourceTable.isActive = false;
-            if (sourceIsHourly) {
-                sourceTable.openTime = null;
-                sourceTable.hourlyTotal = 0;
-            }
-            await this.db.updateTable(sourceTable);
-            
-            // Update target table totals
-            const newTargetUnpaidSales = await this.db.getUnpaidSalesByTable(targetTableId);
-            const newSalesTotal = newTargetUnpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-            targetTable.salesTotal = newSalesTotal;
-            
-            if (targetIsHourly && targetTable.isActive && targetTable.openTime) {
-                const hoursUsed = this.calculateHoursUsed(targetTable.openTime);
-                targetTable.hourlyTotal = hoursUsed * targetTable.hourlyRate;
-                targetTable.checkTotal = targetTable.hourlyTotal + newSalesTotal;
-            } else {
-                targetTable.checkTotal = newSalesTotal;
-            }
-            await this.db.updateTable(targetTable);
-            
-            // Close modal and reload
-            this.closeTableMoveModal();
-            await this.loadTables();
-            
-            await this.appAlert(`"${sourceTable.name}" masası "${targetTable.name}" masasına taşındı.`, 'Başarılı');
-        } catch (error) {
-            console.error('Masa taşınırken hata:', error);
-            await this.appAlert('Masa taşınırken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
-            this.closeTableMoveModal();
-        }
-    }
-
-    closeTableMoveModal() {
-        const modal = document.getElementById('table-move-modal');
-        if (modal) modal.classList.remove('active');
-        document.body.classList.remove('table-move-mode');
-        
-        // Remove blur from all tables
-        document.querySelectorAll('.table-moving-source').forEach(card => {
-            card.classList.remove('table-moving-source');
-        });
     }
 
     createGroupedTableSaleRow(row) {
