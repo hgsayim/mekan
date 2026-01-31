@@ -677,6 +677,40 @@
         </div>
     </div>
 
+    <!-- Table Action Menu (for delete/move) -->
+    <div id="table-action-menu" class="modal" style="display: none;">
+        <div class="modal-content table-action-menu-content">
+            <div class="table-action-menu-header">
+                <h3 id="table-action-menu-title">Masa İşlemleri</h3>
+                <button type="button" class="close" id="table-action-menu-close">&times;</button>
+            </div>
+            <div class="table-action-menu-actions">
+                <button type="button" class="btn btn-danger btn-block" id="table-action-delete-btn">
+                    <span class="btn-icon">🗑️</span>
+                    <span class="btn-txt">Masayı Sil</span>
+                </button>
+                <button type="button" class="btn btn-primary btn-block" id="table-action-move-btn">
+                    <span class="btn-icon">📦</span>
+                    <span class="btn-txt">Masayı Taşı</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table Move Selection Modal -->
+    <div id="table-move-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="table-move-header">
+                <h2>Masayı Taşı</h2>
+                <button type="button" class="close" id="table-move-close">&times;</button>
+            </div>
+            <div class="table-move-message">
+                <p id="table-move-message-text">Hedef masayı seçin:</p>
+            </div>
+            <div id="table-move-grid" class="tables-grid table-move-grid"></div>
+        </div>
+    </div>
+
     <!-- Loading Overlay (blocks UI during critical operations) -->
     <div id="loading-overlay" class="loading-overlay" style="display:none;">
         <div class="loading-content">

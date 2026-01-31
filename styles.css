@@ -2478,6 +2478,103 @@ header h1 {
     user-select: none;
 }
 
+/* Table Action Menu */
+.table-action-menu-content {
+    max-width: 400px;
+    padding: 24px;
+}
+
+.table-action-menu-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.table-action-menu-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.table-action-menu-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.table-action-menu-actions .btn-block {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 14px 20px;
+    font-size: 1rem;
+}
+
+/* Table Move Modal */
+.table-move-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.table-move-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.table-move-message {
+    margin-bottom: 20px;
+}
+
+.table-move-message p {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.table-move-grid {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Table move mode - blur source table */
+body.table-move-mode .table-card:not(.table-moving-source) {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.table-card.table-moving-source {
+    position: relative;
+    filter: blur(4px);
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.table-card.table-moving-source::after {
+    content: 'Taşınıyor...';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+[data-theme="dark"] .table-card.table-moving-source::after {
+    background: rgba(255, 255, 255, 0.9);
+    color: #000;
+}
+
 .modal-content {
     background-color: var(--surface-elevated);
     margin: auto;
