@@ -2318,7 +2318,6 @@ class MekanApp {
         
         // Hide all modal content initially and show loading state
         if (modalBodyEl) {
-            modalBodyEl.classList.add('is-loading');
             modalBodyEl.innerHTML = `
                 <div class="table-modal-loading">
                     <div class="table-modal-loading-spinner"></div>
@@ -2554,13 +2553,17 @@ class MekanApp {
         // Restore modal body content
         if (modalBodyEl) {
             modalBodyEl.innerHTML = originalBodyContent;
-            modalBodyEl.classList.remove('is-loading');
         }
         
         // Re-get elements after restoring HTML
         productsGridEl = document.getElementById('table-products-grid');
         salesListEl = document.getElementById('table-sales-list');
         const productsSectionEl = document.getElementById('table-products-section');
+        
+        // Show products section before loading (it will be shown/hidden based on table type later)
+        if (productsSectionEl) {
+            productsSectionEl.style.display = 'block';
+        }
         
         // Load products and sales
         await Promise.all([
@@ -2606,9 +2609,6 @@ class MekanApp {
         footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
         } catch (error) {
             console.error('openTableModal error:', error, error?.message, error?.details, error?.hint, error?.code);
-            if (modalBodyEl) {
-                modalBodyEl.classList.remove('is-loading');
-            }
             await this.appAlert('Masa detayları yüklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
             this.closeTableModal();
         }
