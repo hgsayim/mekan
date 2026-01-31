@@ -1682,6 +1682,21 @@ class MekanApp {
         // Get icon from table data, or use default
         let icon = effectiveTable.icon || (effectiveTable.type === 'hourly' ? '🎱' : '🪑'); // Use stored icon or default based on type
 
+        // Get customer icon if table has a customer
+        let customerIcon = '';
+        if (effectiveTable.customerId) {
+            try {
+                const customer = await this.db.getCustomer(effectiveTable.customerId);
+                if (customer) {
+                    // Use customer icon if available, otherwise use default customer icon
+                    customerIcon = customer.icon || '👤';
+                }
+            } catch (e) {
+                // If customer not found, don't show icon
+                console.error('Error loading customer for table:', e);
+            }
+        }
+
         // Add instant class for instant sale table
         const instantClass = effectiveTable.type === 'instant' ? 'instant-table' : '';
 
@@ -1694,6 +1709,7 @@ class MekanApp {
             <div class="table-card ${statusClass} ${instantClass}" id="table-${effectiveTable.id}">
                 ${delayedStartBtn}
                 <div class="table-icon">${icon}</div>
+                ${customerIcon ? `<div class="table-customer-icon" title="Müşteri Masası">${customerIcon}</div>` : ''}
                     <h3>${effectiveTable.name}</h3>
                 <div class="table-price">${Math.round(displayTotal)} ₺</div>
             </div>
@@ -2087,6 +2103,19 @@ class MekanApp {
         const modal = document.getElementById('table-form-modal');
         const title = document.getElementById('table-form-modal-title');
         const form = document.getElementById('table-form');
+        const customerSelect = document.getElementById('table-customer');
+        
+        // Load customers for customer select
+        if (customerSelect) {
+            try {
+                const customers = await this.db.getAllCustomers();
+                customerSelect.innerHTML = '<option value="">Müşteri Seçin</option>' + 
+                    customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            } catch (e) {
+                console.error('Error loading customers:', e);
+                customerSelect.innerHTML = '<option value="">Müşteri Seçin</option>';
+            }
+        }
         
         if (table) {
             // Don't allow editing instant sale table
@@ -2100,6 +2129,9 @@ class MekanApp {
             document.getElementById('table-type').value = table.type;
             document.getElementById('table-hourly-rate').value = table.hourlyRate || 0;
             document.getElementById('table-icon').value = table.icon || (table.type === 'hourly' ? '🎱' : '🪑');
+            if (customerSelect) {
+                customerSelect.value = table.customerId || '';
+            }
             this._syncHourlyRateFieldForTableType(table.type);
         } else {
             title.textContent = 'Masa Ekle';
@@ -2109,6 +2141,9 @@ class MekanApp {
             document.getElementById('table-type').value = 'regular';
             this._syncHourlyRateFieldForTableType('regular');
             document.getElementById('table-icon').value = '🪑'; // Default icon for new tables
+            if (customerSelect) {
+                customerSelect.value = '';
+            }
             // Icon label is always visible now
         }
         
@@ -2121,12 +2156,14 @@ class MekanApp {
         const type = document.getElementById('table-type').value;
         const hourlyRate = parseFloat(document.getElementById('table-hourly-rate').value) || 0;
         const icon = document.getElementById('table-icon').value || '🎱';
+        const customerId = document.getElementById('table-customer')?.value || null;
 
         const tableData = {
             name,
             type,
             hourlyRate: type === 'hourly' ? hourlyRate : 0,
             icon: icon || (type === 'hourly' ? '🎱' : '🪑'), // Store icon for all tables
+            customerId: customerId || null, // Add customer ID
             openTime: null,
             closeTime: null,
             sales: [],
@@ -2149,6 +2186,10 @@ class MekanApp {
                 tableData.salesTotal = existingTable.salesTotal;
                 // Update icon for all tables
                 tableData.icon = icon || (type === 'hourly' ? '🎱' : '🪑');
+                // Preserve customerId if not being updated
+                if (!customerId && existingTable.customerId) {
+                    tableData.customerId = existingTable.customerId;
+                }
                 await this.db.updateTable(tableData);
             } else {
                 await this.db.addTable(tableData);
@@ -2171,6 +2212,17 @@ class MekanApp {
         }
 
         this.currentTableId = tableId;
+
+        // CRITICAL: Clear modal content IMMEDIATELY before opening to prevent old data from showing
+        const productsGridEl = document.getElementById('table-products-grid');
+        if (productsGridEl) {
+            productsGridEl.innerHTML = '';
+            productsGridEl.removeAttribute('data-table-id');
+        }
+        const salesListEl = document.getElementById('table-sales-list');
+        if (salesListEl) salesListEl.innerHTML = '';
+        const modalTitleEl = document.getElementById('table-modal-title');
+        if (modalTitleEl) modalTitleEl.textContent = 'Masa';
 
         // Open modal shell immediately (avoid perceived lag)
         const tableModalEl = document.getElementById('table-modal');
@@ -7291,31 +7343,20 @@ class MekanApp {
 
     updateThemeColor() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        // Get header background color from computed styles
-        const headerEl = document.querySelector('header');
-        let headerColor = '#ffffff';
-        if (headerEl) {
-            const computedStyle = window.getComputedStyle(headerEl);
-            headerColor = computedStyle.backgroundColor || headerColor;
-        }
         
-        const lightColor = headerColor;
+        // For dark mode: use AMOLED black for header, status bar, and navigation bar
+        // For light mode: use white
+        const lightColor = '#ffffff';
         const darkColor = '#000000'; // AMOLED black for dark mode
         
         const themeColor = isDark ? darkColor : lightColor;
         
         // Update all theme-color meta tags
+        // This controls both Chrome status bar (top) and navigation bar (bottom) on Android
         const metaTags = document.querySelectorAll('meta[name="theme-color"]');
         metaTags.forEach(tag => {
             tag.setAttribute('content', themeColor);
         });
-        
-        // Update Android Chrome navigation bar color
-        const viewportMeta = document.querySelector('meta[name="viewport"]');
-        if (viewportMeta && isDark) {
-            // For Android Chrome, we can use theme-color for both status and navigation bar
-            // The browser will use this for the navigation bar as well
-        }
     }
 
     updateDarkModeIcon() {

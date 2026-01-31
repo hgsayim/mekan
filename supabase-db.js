@@ -36,6 +36,7 @@ export class SupabaseDatabase {
         salesTotal: 'sales_total',
         checkTotal: 'check_total',
         hourlyTotal: 'hourly_total',
+        customerId: 'customer_id',
         createdAt: 'created_at',
         updatedAt: 'updated_at',
       },
