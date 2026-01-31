@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Keep browser UI (Android Chrome URL/status bar) aligned with the app theme, even in dark-mode -->
-    <meta name="theme-color" content="#ffffff">
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+    <meta name="theme-color" content="#ecf0f1">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ecf0f1">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#ecf0f1">
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
     <meta name="mobile-web-app-capable" content="yes">
@@ -25,7 +25,8 @@
     <div class="app-container">
         <header id="main-header" style="display: none;">
             <div class="header-content">
-                <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span> <button id="instant-sale-btn" class="instant-sale-header-btn" title="Anlık Satış">⚡</button></h1>
+                <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span></h1>
+                <button id="instant-sale-btn" class="instant-sale-btn" title="Anlık Satış">⚡</button>
                 <nav class="main-nav-compact">
                     <button class="menu-toggle" id="menu-toggle">☰ Menü</button>
                     <div class="menu-dropdown" id="menu-dropdown">
@@ -253,7 +254,13 @@
         <div class="modal-content">
             <div class="table-modal-header">
                 <div class="table-modal-titlebar">
-                    <h2 id="table-modal-title">Masa</h2>
+                <h2 id="table-modal-title">Masa</h2>
+                    <!-- Instant sale only: quantity control next to the title -->
+                    <div id="instant-qty-controls" class="instant-qty-controls" style="display:none;">
+                        <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-minus" aria-label="Azalt">−</button>
+                        <input id="instant-qty-input" class="instant-qty-input" type="number" min="1" step="1" value="1" inputmode="numeric" />
+                        <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-plus" aria-label="Arttır">+</button>
+                    </div>
                 </div>
                 <button type="button" class="close close-header" aria-label="Geri">
                     <span class="close-ico" aria-hidden="true">❮</span>
@@ -448,13 +455,58 @@
                         <option value="🎤">🎤 Mikrofon</option>
                         <option value="🎹">🎹 Piyano</option>
                         <option value="🃏">🃏 Kart Oyunu</option>
-                        <option value="👤">👤 Tek Kişi</option>
+                        <option value="👤">👤 Kişi</option>
                         <option value="👥">👥 İki Kişi</option>
-                        <option value="👫">👫 Çift</option>
-                        <option value="👪">👪 Aile</option>
-                        <option value="🧑‍🤝‍🧑">🧑‍🤝‍🧑 Grup</option>
-                        <option value="👨‍💼">👨‍💼 İş İnsanı</option>
-                        <option value="👩‍💼">👩‍💼 İş Kadını</option>
+                        <option value="👨">👨 Erkek</option>
+                        <option value="👩">👩 Kadın</option>
+                        <option value="🧑">🧑 Kişi (Nötr)</option>
+                        <option value="👨‍🦱">👨‍🦱 Erkek (Saçlı)</option>
+                        <option value="👩‍🦱">👩‍🦱 Kadın (Saçlı)</option>
+                        <option value="👨‍🦰">👨‍🦰 Erkek (Kızıl)</option>
+                        <option value="👩‍🦰">👩‍🦰 Kadın (Kızıl)</option>
+                        <option value="👨‍🦳">👨‍🦳 Erkek (Beyaz Saçlı)</option>
+                        <option value="👩‍🦳">👩‍🦳 Kadın (Beyaz Saçlı)</option>
+                        <option value="👨‍🦲">👨‍🦲 Erkek (Kel)</option>
+                        <option value="👩‍🦲">👩‍🦲 Kadın (Kel)</option>
+                        <option value="🧔">🧔 Sakallı</option>
+                        <option value="👨‍💼">👨‍💼 İş İnsanı (Erkek)</option>
+                        <option value="👩‍💼">👩‍💼 İş İnsanı (Kadın)</option>
+                        <option value="👨‍🍳">👨‍🍳 Aşçı (Erkek)</option>
+                        <option value="👩‍🍳">👩‍🍳 Aşçı (Kadın)</option>
+                        <option value="👨‍🎓">👨‍🎓 Öğrenci (Erkek)</option>
+                        <option value="👩‍🎓">👩‍🎓 Öğrenci (Kadın)</option>
+                        <option value="👨‍⚕️">👨‍⚕️ Doktor (Erkek)</option>
+                        <option value="👩‍⚕️">👩‍⚕️ Doktor (Kadın)</option>
+                        <option value="👨‍🎤">👨‍🎤 Şarkıcı (Erkek)</option>
+                        <option value="👩‍🎤">👩‍🎤 Şarkıcı (Kadın)</option>
+                        <option value="👨‍🎨">👨‍🎨 Sanatçı (Erkek)</option>
+                        <option value="👩‍🎨">👩‍🎨 Sanatçı (Kadın)</option>
+                        <option value="👨‍🚀">👨‍🚀 Astronot (Erkek)</option>
+                        <option value="👩‍🚀">👩‍🚀 Astronot (Kadın)</option>
+                        <option value="👨‍✈️">👨‍✈️ Pilot (Erkek)</option>
+                        <option value="👩‍✈️">👩‍✈️ Pilot (Kadın)</option>
+                        <option value="👨‍🏫">👨‍🏫 Öğretmen (Erkek)</option>
+                        <option value="👩‍🏫">👩‍🏫 Öğretmen (Kadın)</option>
+                        <option value="👨‍🔧">👨‍🔧 Tamirci (Erkek)</option>
+                        <option value="👩‍🔧">👩‍🔧 Tamirci (Kadın)</option>
+                        <option value="👨‍🔬">👨‍🔬 Bilim İnsanı (Erkek)</option>
+                        <option value="👩‍🔬">👩‍🔬 Bilim İnsanı (Kadın)</option>
+                        <option value="👨‍💻">👨‍💻 Programcı (Erkek)</option>
+                        <option value="👩‍💻">👩‍💻 Programcı (Kadın)</option>
+                        <option value="👨‍🏭">👨‍🏭 İşçi (Erkek)</option>
+                        <option value="👩‍🏭">👩‍🏭 İşçi (Kadın)</option>
+                        <option value="👨‍🚒">👨‍🚒 İtfaiyeci (Erkek)</option>
+                        <option value="👩‍🚒">👩‍🚒 İtfaiyeci (Kadın)</option>
+                        <option value="👨‍🚀">👨‍🚀 Polis (Erkek)</option>
+                        <option value="👩‍🚀">👩‍🚀 Polis (Kadın)</option>
+                        <option value="🧑‍🤝‍🧑">🧑‍🤝‍🧑 El Ele</option>
+                        <option value="👨‍👩‍👧">👨‍👩‍👧 Aile (Kız)</option>
+                        <option value="👨‍👩‍👦">👨‍👩‍👦 Aile (Erkek)</option>
+                        <option value="👨‍👩‍👧‍👦">👨‍👩‍👧‍👦 Aile (İki Çocuk)</option>
+                        <option value="👨‍👨‍👧">👨‍👨‍👧 İki Baba + Kız</option>
+                        <option value="👩‍👩‍👦">👩‍👩‍👦 İki Anne + Erkek</option>
+                        <option value="👨‍👨‍👦">👨‍👨‍👦 İki Baba + Erkek</option>
+                        <option value="👩‍👩‍👧">👩‍👩‍👧 İki Anne + Kız</option>
                     </select>
                 </label>
                 <div class="form-actions">

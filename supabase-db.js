@@ -80,7 +80,6 @@ export class SupabaseDatabase {
         'name',
         'type',
         'icon',
-        'category',
         'hourly_rate',
         'is_active',
         'open_time',

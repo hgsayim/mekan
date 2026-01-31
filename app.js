@@ -63,9 +63,9 @@ async function ensureSignedIn(supabase) {
             setTimeout(() => reject(new Error('Session check timeout')), 10000)
         );
         const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
-    if (error) {
-        console.error('Auth session error:', error);
-    }
+        if (error) {
+            console.error('Auth session error:', error);
+        }
         session = data?.session || null;
     } catch (err) {
         console.error('Error checking session:', err);
@@ -164,6 +164,9 @@ class MekanApp {
         this._dialogResolver = null;
         this._settlingTables = new Map(); // tableId -> expiry timestamp (ms)
         this._openingTables = new Map(); // tableId -> { until: ms, openTime: iso }
+        // Prevent race conditions on fast-tap product adds (stock decrement must be accurate).
+        // key: `${tableId}:${productId}` -> { pending: number, timer: any, chain: Promise }
+        this._quickAddState = new Map();
         this.hourlyUpdateInterval = null;
         this.tableCardUpdateInterval = null;
         this.footerTimeUpdateInterval = null;
@@ -175,97 +178,41 @@ class MekanApp {
         this._productsDelegationBound = false;
         this._pollSyncInterval = null;
         this._cachedProducts = null; // Cache products to avoid reloading on every modal open
-        this._stockWarningChecked = false; // Track if stock warnings have been checked
         this.init();
-    }
-
-    // Haptic feedback helper - provides tactile feedback on mobile devices
-    hapticFeedback(type = 'light') {
-        if (!navigator.vibrate) return;
-        
-        const patterns = {
-            light: 10,        // Light tap
-            medium: 20,        // Medium tap
-            heavy: 30,         // Heavy tap
-            success: [20, 50, 20],  // Success pattern
-            error: [30, 50, 30, 50, 30],  // Error pattern
-            warning: [20, 30, 20]  // Warning pattern
-        };
-        
-        const pattern = patterns[type] || patterns.light;
-        navigator.vibrate(pattern);
     }
 
     // Batch + serialize product additions per table/product to avoid stock races on rapid taps.
     queueQuickAddToTable(tableId, productId, deltaAmount = 1) {
         if (!tableId || !productId) return;
-        const delta = Number(deltaAmount) || 0;
-        
-        // Handle negative amounts (reduction/cancellation)
-        if (delta < 0) {
-            // For negative amounts, handle directly
-            this.handleProductReduction(tableId, productId, Math.abs(delta));
+        const key = `${String(tableId)}:${String(productId)}`;
+        const state = this._quickAddState.get(key) || { pending: 0, timer: null, chain: Promise.resolve() };
+        state.pending += (Number(deltaAmount) || 0);
+        if (state.pending <= 0) {
+            this._quickAddState.set(key, state);
             return;
         }
-        
-        // Directly add 1 product per click (no batching/queuing)
-        // This function is kept for backward compatibility but now just calls addProductToTableFromModal directly
-        this.addProductToTableFromModal(tableId, productId, 1);
-    }
 
-    async handleProductReduction(tableId, productId, reduceBy) {
-        try {
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            let remaining = reduceBy;
-            
-            // Sort by date (newest first) to reduce from most recent
-            const sortedSales = [...unpaidSales].sort((a, b) => 
-                new Date(b.sellDateTime).getTime() - new Date(a.sellDateTime).getTime()
-            );
-            
-            // Find and reduce items, starting from most recent
-            for (const sale of sortedSales) {
-                if (!sale.items || !Array.isArray(sale.items)) continue;
-                // Process items in reverse order (last item first)
-                for (let i = sale.items.length - 1; i >= 0; i--) {
-                    const item = sale.items[i];
-                    if (item.productId == productId && !item.isCancelled && remaining > 0) {
-                        const currentAmount = Number(item.amount) || 0;
-                        if (currentAmount <= remaining) {
-                            // Cancel entire item
-                            await this.deleteItemFromSale(sale.id, i, true);
-                            remaining -= currentAmount;
-                        } else {
-                            // Reduce item amount
-                            item.amount = currentAmount - remaining;
-                            
-                            // Restore stock
-                            const product = await this.db.getProduct(productId);
-                            if (product && this.tracksStock(product)) {
-                                product.stock += remaining;
-                                await this.db.updateProduct(product);
-                            }
-                            
-                            // Recalculate sale total
-                            sale.saleTotal = sale.items
-                                .filter(item => !item.isCancelled)
-                                .reduce((sum, item) => sum + (item.price * item.amount), 0);
-                            
-                            await this.db.updateSale(sale);
-                            remaining = 0;
-                        }
-                    }
-                }
-            }
-            
-            // Refresh table display
-            if (this.currentTableId === tableId) {
-                await this.loadTableSales(tableId);
-                await this.refreshSingleTableCard(tableId);
-            }
-        } catch (e) {
-            console.error('Error reducing product:', e);
-        }
+        const scheduleFlush = (delayMs = 120) => {
+            if (state.timer) return;
+            state.timer = setTimeout(() => {
+                state.timer = null;
+                const amount = state.pending;
+                state.pending = 0;
+                if (amount <= 0) return;
+
+                // Serialize remote writes (Supabase) + local cache updates (IDB)
+                state.chain = state.chain
+                    .then(() => this.addProductToTableFromModal(tableId, productId, amount))
+                    .catch(() => { /* keep chain alive */ })
+                    .finally(() => {
+                        // If more clicks came in while in-flight, flush again soon
+                        if (state.pending > 0) scheduleFlush(80);
+                    });
+            }, delayMs);
+        };
+
+        scheduleFlush(120);
+        this._quickAddState.set(key, state);
     }
 
     async init() {
@@ -319,13 +266,13 @@ class MekanApp {
             
             // Start background services (non-critical if they fail)
             try {
-            this.startDailyReset();
+                this.startDailyReset();
             } catch (e) {
                 console.error('Error starting daily reset:', e);
             }
             
             try {
-            this.startRealtimeSubscriptions();
+                this.startRealtimeSubscriptions();
             } catch (e) {
                 console.error('Error starting realtime subscriptions:', e);
             }
@@ -581,7 +528,6 @@ class MekanApp {
         if (darkModeToggle) {
             darkModeToggle.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.hapticFeedback('medium');
                 this.toggleDarkMode();
                 if (menuDropdown) {
                     menuDropdown.classList.remove('show');
@@ -595,6 +541,14 @@ class MekanApp {
             addCustomerBtn.addEventListener('click', () => {
                 this.openCustomerFormModal();
             });
+
+        // Instant sale button (header)
+        const instantSaleBtn = document.getElementById('instant-sale-btn');
+        if (instantSaleBtn) {
+            instantSaleBtn.addEventListener('click', async () => {
+                await this.openInstantSaleTable();
+            });
+        }
         }
 
         // Table form
@@ -604,15 +558,6 @@ class MekanApp {
             e.preventDefault();
             this.saveTable();
         });
-        }
-
-        // Instant sale button in header
-        const instantSaleBtn = document.getElementById('instant-sale-btn');
-        if (instantSaleBtn) {
-            instantSaleBtn.addEventListener('click', async () => {
-                this.hapticFeedback('light');
-                await this.openInstantSaleModal();
-            });
         }
 
         // Product form
@@ -705,7 +650,6 @@ class MekanApp {
         const payTableBtn = document.getElementById('pay-table-btn');
         if (payTableBtn) {
             payTableBtn.addEventListener('click', () => {
-                this.hapticFeedback('success');
                 this.payTable();
             });
         }
@@ -713,7 +657,6 @@ class MekanApp {
         const creditTableBtn = document.getElementById('credit-table-btn');
         if (creditTableBtn) {
             creditTableBtn.addEventListener('click', () => {
-                this.hapticFeedback('success');
                 this.creditTable();
             });
         }
@@ -723,7 +666,6 @@ class MekanApp {
             cancelHourlyBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.hapticFeedback('error');
                 await this.cancelHourlyGame();
             });
         }
@@ -1088,75 +1030,16 @@ class MekanApp {
             // Start auto-update for table cards if we're on the tables view (default view)
             if (this.currentView === 'tables') {
                 try {
-                this.startTableCardPriceUpdates();
+                    this.startTableCardPriceUpdates();
                 } catch (err) {
                     console.error('Error starting table card updates:', err);
                     // Non-critical
                 }
             }
-            
-            // Check for low stock warnings (once per session)
-            if (!this._stockWarningChecked) {
-                this.checkStockWarnings();
-                this._stockWarningChecked = true;
-            }
         } catch (error) {
             console.error('Error loading initial data:', error, error?.message, error?.details, error?.hint, error?.code);
             // Continue anyway - some data might still load
         }
-    }
-
-    async checkStockWarnings() {
-        try {
-            const products = await this.db.getAllProducts();
-            const lowStockProducts = products.filter(p => {
-                if (!this.tracksStock(p)) return false;
-                return p.stock > 0 && p.stock < 10; // Low stock threshold: less than 10
-            });
-            
-            if (lowStockProducts.length > 0) {
-                // Haptic feedback for warning
-                this.hapticFeedback('warning');
-                
-                const productNames = lowStockProducts.map(p => `${p.name} (${p.stock} adet)`).join(', ');
-                const message = lowStockProducts.length === 1
-                    ? `Düşük stok uyarısı: ${productNames}`
-                    : `${lowStockProducts.length} üründe düşük stok var: ${productNames}`;
-                
-                // Show non-blocking notification (toast-style)
-                this.showStockWarning(message, lowStockProducts.length);
-            }
-        } catch (error) {
-            console.error('Stok kontrolü sırasında hata:', error);
-        }
-    }
-
-    showStockWarning(message, count) {
-        // Create toast notification
-        const toast = document.createElement('div');
-        toast.className = 'stock-warning-toast';
-        toast.innerHTML = `
-            <div class="stock-warning-content">
-                <span class="stock-warning-icon">⚠️</span>
-                <span class="stock-warning-text">${message}</span>
-            </div>
-        `;
-        document.body.appendChild(toast);
-        
-        // Animate in
-        setTimeout(() => toast.classList.add('show'), 10);
-        
-        // Auto-dismiss after 5 seconds
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        }, 5000);
-        
-        // Click to dismiss
-        toast.addEventListener('click', () => {
-            toast.classList.remove('show');
-            setTimeout(() => toast.remove(), 300);
-        });
     }
 
     async ensureInstantSaleTable() {
@@ -1180,28 +1063,7 @@ class MekanApp {
         }
     }
 
-    async openInstantSaleModal() {
-        // Ensure instant sale table exists
-        await this.ensureInstantSaleTable();
-        
-        // Get instant sale table
-        const tables = await this.db.getAllTables();
-        const instantTable = tables.find(t => t.name === 'ANLIK SATIŞ');
-        
-        if (!instantTable) {
-            await this.appAlert('Anlık satış masası bulunamadı.', 'Hata');
-            return;
-        }
-        
-        // Open the table modal
-        await this.openTableModal(instantTable.id, { preSync: true });
-    }
-
-
     async switchView(viewName) {
-        // Haptic feedback for view switch
-        this.hapticFeedback('light');
-        
         this.updateHeaderViewTitle(viewName);
 
         // Update navigation (compact menu + bottom nav)
@@ -1212,28 +1074,13 @@ class MekanApp {
             .querySelectorAll(`.nav-btn-compact[data-view="${viewName}"]`)
             .forEach((btn) => btn.classList.add('active'));
 
-        // Animate view transition
-        const currentViewEl = document.querySelector('.view.active');
-        const newViewEl = document.getElementById(`${viewName}-view`);
-        
-        if (currentViewEl && newViewEl && currentViewEl !== newViewEl) {
-            // Add fade-out to current view
-            currentViewEl.classList.add('view-fade-out');
-            await new Promise(resolve => setTimeout(resolve, 150));
-            currentViewEl.classList.remove('active', 'view-fade-out');
-        } else {
-            // No transition needed, just switch
-            document.querySelectorAll('.view').forEach(view => {
-                view.classList.remove('active');
-            });
-        }
-        
-        if (newViewEl) {
-            newViewEl.classList.add('view-fade-in', 'active');
-            // Remove fade-in class after animation
-            setTimeout(() => {
-                newViewEl.classList.remove('view-fade-in');
-            }, 300);
+        // Update views
+        document.querySelectorAll('.view').forEach(view => {
+            view.classList.remove('active');
+        });
+        const viewElement = document.getElementById(`${viewName}-view`);
+        if (viewElement) {
+            viewElement.classList.add('active');
         }
 
         this.currentView = viewName;
@@ -1301,7 +1148,7 @@ class MekanApp {
             products: 'Ürünler',
             customers: 'Müşteriler',
             expenses: 'Giderler',
-            sales: 'Geçmiş',
+            sales: 'Satış Geçmişi',
             daily: 'Rapor'
         };
         const label = map[viewName] || 'Masalar';
@@ -1363,23 +1210,27 @@ class MekanApp {
                 return;
             }
 
-        // Filter out instant tables (they won't be shown as cards)
+        // Filter out instant sale table from tables list (it will be in header)
         tables = tables.filter(t => t.type !== 'instant');
-
-        // Sort tables: 1-hourly first, 2-by icon, 3-alphabetically
+        
+        // Sort tables: 
+        // 1. Hourly tables first
+        // 2. Then group by icon (same icons together)
+        // 3. Within each group, sort alphabetically by name
         tables.sort((a, b) => {
-            // 1. Hourly tables first
+            // Priority 1: Hourly tables before regular tables
             if (a.type === 'hourly' && b.type !== 'hourly') return -1;
             if (a.type !== 'hourly' && b.type === 'hourly') return 1;
             
-            // 2. Within same type, sort by icon
-            const iconA = (a.icon || '').trim();
-            const iconB = (b.icon || '').trim();
+            // Priority 2: Group by icon (same icons together)
+            const iconA = a.icon || (a.type === 'hourly' ? '🎱' : '🪑');
+            const iconB = b.icon || (b.type === 'hourly' ? '🎱' : '🪑');
+            
             if (iconA !== iconB) {
-                return iconA.localeCompare(iconB, 'tr', { sensitivity: 'base' });
+                return iconA.localeCompare(iconB);
             }
             
-            // 3. Same icon, sort alphabetically by name
+            // Priority 3: Within same icon group, sort alphabetically by name
             return a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' });
         });
 
@@ -1433,10 +1284,10 @@ class MekanApp {
                         // Recent settle: prefer showing as closed while DB catches up
                         // (do not write to DB here; payment flow will persist state)
                     } else {
-                    // Manually opened hourly table - keep it active, just update totals
-                    table.hourlyTotal = this.calculateHourlyTotal(table);
-                    table.checkTotal = this.calculateCheckTotal(table);
-                    tableUpdated = true;
+                        // Manually opened hourly table - keep it active, just update totals
+                        table.hourlyTotal = this.calculateHourlyTotal(table);
+                        table.checkTotal = this.calculateCheckTotal(table);
+                        tableUpdated = true;
                     }
                 }
             } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0 || table.checkTotal > 0)) {
@@ -1445,7 +1296,7 @@ class MekanApp {
                 if (table.type === 'hourly' && table.closeTime) {
                     // Closed hourly table: reset all totals (history is in hourlySessions)
                     table.salesTotal = 0;
-                        table.hourlyTotal = 0;
+                    table.hourlyTotal = 0;
                     table.checkTotal = 0;
                     table.openTime = null;
                     tableUpdated = true;
@@ -1471,35 +1322,9 @@ class MekanApp {
             }
         }
 
-        // Group tables by category
-        const tablesByCategory = {};
-        tables.forEach(table => {
-            const category = (table.category || '').trim() || 'Kategorisiz';
-            if (!tablesByCategory[category]) {
-                tablesByCategory[category] = [];
-            }
-            tablesByCategory[category].push(table);
-        });
-
-        // Render tables grouped by category
-        let html = '';
-        const categories = Object.keys(tablesByCategory).sort((a, b) => {
-            if (a === 'Kategorisiz') return 1;
-            if (b === 'Kategorisiz') return -1;
-            return a.localeCompare(b, 'tr', { sensitivity: 'base' });
-        });
-
-        for (const category of categories) {
-            if (category !== 'Kategorisiz') {
-                html += `<div class="table-category-header"><h3>${category}</h3></div>`;
-            }
-            const categoryTables = tablesByCategory[category];
-            const categoryCards = await Promise.all(categoryTables.map(table => this.createTableCard(table)));
-            html += categoryCards.join('');
-        }
-
-        html += this.createAddTableCard();
-        container.innerHTML = html;
+        // Create table cards - need to await async createTableCard
+        const tableCards = await Promise.all(tables.map(table => this.createTableCard(table)));
+        container.innerHTML = tableCards.join('') + this.createAddTableCard();
 
         const addCard = document.getElementById('add-table-card');
         if (addCard) addCard.onclick = () => this.openTableFormModal();
@@ -1588,8 +1413,7 @@ class MekanApp {
                     if (table && table.isActive && table.openTime) {
                         clearTimeout(tapTimer);
                         tapCount = 0;
-                        this.hapticFeedback('light');
-                        this.openTableModal(table.id, { preSync: true });
+                    this.openTableModal(table.id, { preSync: true });
                         return;
                     }
                     
@@ -1608,13 +1432,11 @@ class MekanApp {
                         tapCount = 0;
                         
                         this.currentTableId = table.id;
-                        // Haptic feedback for table opening
-                        this.hapticFeedback('medium');
                         // Show loading state before opening
                         this.setTableCardOpening(table.id, true);
                         const startTime = Date.now();
                         try {
-                        await this.openTable();
+                            await this.openTable();
                         } finally {
                             // CRITICAL: Always wait exactly 2 seconds before clearing loading state
                             // This ensures "Süre başlatılıyor" message is always visible for 2 seconds
@@ -1719,8 +1541,8 @@ class MekanApp {
             let displayTotal = 0;
             if (isActive) {
                 if (table.type === 'instant') {
-                // For instant sale table, show today's paid sales total
-                displayTotal = await this.getInstantTableDailyTotal(table.id);
+                    // For instant sale table, show today's paid sales total
+                    displayTotal = await this.getInstantTableDailyTotal(table.id);
                 } else {
                     const unpaid = await this.db.getUnpaidSalesByTable(table.id);
                     const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
@@ -1793,13 +1615,13 @@ class MekanApp {
             
             // For hourly tables: only calculate hourly total if table is actually active (not closed)
             if (effectiveTable.type === 'hourly' && isActive && effectiveTable.openTime) {
-            // For hourly tables, include hourly total
-            const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
-            const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
+                // For hourly tables, include hourly total
+                const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
+                const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
                 displayTotal = hourlyTotal + salesTotal;
-        } else if (effectiveTable.type === 'instant') {
-            // For instant sale table, show today's paid sales total
-            displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
+            } else if (effectiveTable.type === 'instant') {
+                // For instant sale table, show today's paid sales total
+                displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
             } else {
                 // Regular tables: sum of unpaid sales
                 displayTotal = salesTotal;
@@ -1830,6 +1652,20 @@ class MekanApp {
     // Optimistic UI helpers (avoid waiting for DB before updating the screen)
     getTableCardEl(tableId) {
         return document.getElementById(`table-${tableId}`);
+    }
+
+    setTableCardLoading(tableId, isLoading) {
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+        if (isLoading) {
+            if (card.querySelector('.table-card-loading')) return;
+            const overlay = document.createElement('div');
+            overlay.className = 'table-card-loading';
+            overlay.innerHTML = `<div class="table-card-loading-spinner" aria-hidden="true"></div>`;
+            card.appendChild(overlay);
+        } else {
+            card.querySelectorAll('.table-card-loading').forEach((el) => el.remove());
+        }
     }
 
     setTableCardOpening(tableId, isOpening) {
@@ -1864,53 +1700,6 @@ class MekanApp {
                 // setTableCardState will update the text with correct values
                 delete priceEl.dataset.originalText;
             }
-        }
-    }
-
-    setTableCardLoading(tableId, message, type = 'info') {
-        // type: 'danger' (red), 'success' (green), 'info' (blue)
-        const card = this.getTableCardEl(tableId);
-        if (!card) return;
-        
-        // Disable card interactions
-        card.style.pointerEvents = 'none';
-        card.classList.add('table-card-loading-state');
-        card.dataset.loadingType = type;
-        card.dataset.loadingMessage = message;
-        
-        // Create or update loading overlay inside card
-        let loadingOverlay = card.querySelector('.table-card-loading-overlay');
-        if (!loadingOverlay) {
-            loadingOverlay = document.createElement('div');
-            loadingOverlay.className = 'table-card-loading-overlay';
-            card.appendChild(loadingOverlay);
-        }
-        
-        const messageEl = loadingOverlay.querySelector('.table-card-loading-message');
-        if (messageEl) {
-            messageEl.textContent = message;
-        } else {
-            const msg = document.createElement('div');
-            msg.className = 'table-card-loading-message';
-            msg.textContent = message;
-            loadingOverlay.appendChild(msg);
-        }
-    }
-
-    clearTableCardLoading(tableId) {
-        const card = this.getTableCardEl(tableId);
-        if (!card) return;
-        
-        // Re-enable card interactions
-        card.style.pointerEvents = '';
-        card.classList.remove('table-card-loading-state');
-        delete card.dataset.loadingType;
-        delete card.dataset.loadingMessage;
-        
-        // Remove loading overlay
-        const loadingOverlay = card.querySelector('.table-card-loading-overlay');
-        if (loadingOverlay) {
-            loadingOverlay.remove();
         }
     }
 
@@ -1956,9 +1745,9 @@ class MekanApp {
         let displayTotal = 0;
         if (isActive) {
             displayTotal = checkTotal;
-        if (type === 'hourly' && isActive && openTime) {
-            const hoursUsed = this.calculateHoursUsed(openTime);
-            displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
+            if (type === 'hourly' && isActive && openTime) {
+                const hoursUsed = this.calculateHoursUsed(openTime);
+                displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
             }
         }
         priceEl.textContent = `${Math.round(displayTotal)} ₺`;
@@ -1992,10 +1781,10 @@ class MekanApp {
                 return;
             }
             
-            // For hourly tables: closeTime means payment was processed - table MUST be closed
+            // For hourly tables: closeTime + no openTime + not active = closed
             // For regular tables: closeTime or not active = closed
             const isTableClosed = table.type === 'hourly' 
-                ? (table.closeTime || (!table.openTime && !table.isActive))
+                ? (table.closeTime && !table.openTime && !table.isActive)
                 : (table.closeTime || !table.isActive);
             
             if (isTableClosed) {
@@ -2096,9 +1885,9 @@ class MekanApp {
         }
     }
 
-    _markTableSettling(tableId, ms = 20000) {
-        // Increased to 20 seconds to prevent realtime updates from reopening tables
-        // during the critical closure period (especially for hourly tables with payment)
+    _markTableSettling(tableId, ms = 10000) {
+        // Increased to 10 seconds to prevent realtime updates from reopening tables
+        // during the critical closure period
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
     }
@@ -2148,6 +1937,38 @@ class MekanApp {
         }, 2400);
     }
 
+    showTableCardProcessing(tableId, message, type = 'pay') {
+        // type: 'cancel' (red), 'pay' (green), 'credit' (orange)
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+
+        // Remove any existing processing overlay
+        const existing = card.querySelector('.table-processing-overlay');
+        if (existing) existing.remove();
+
+        // Disable card interactions
+        card.style.pointerEvents = 'none';
+        card.classList.add('table-card-processing');
+
+        const overlay = document.createElement('div');
+        overlay.className = `table-processing-overlay table-processing-${type}`;
+        overlay.textContent = message;
+        card.appendChild(overlay);
+    }
+
+    hideTableCardProcessing(tableId) {
+        const card = this.getTableCardEl(tableId);
+        if (!card) return;
+
+        // Remove processing overlay
+        const existing = card.querySelector('.table-processing-overlay');
+        if (existing) existing.remove();
+
+        // Re-enable card interactions
+        card.style.pointerEvents = '';
+        card.classList.remove('table-card-processing');
+    }
+
     async getInstantTableDailyTotal(tableId) {
         try {
             const allSales = await this.db.getAllSales();
@@ -2167,6 +1988,23 @@ class MekanApp {
             console.error('Error calculating instant table daily total:', error);
             return 0;
         }
+    }
+
+    async openInstantSaleTable() {
+        // Ensure instant sale table exists
+        await this.ensureInstantSaleTable();
+        
+        // Find instant sale table
+        const tables = await this.db.getAllTables();
+        const instantTable = tables.find(t => t.type === 'instant' && t.name === 'ANLIK SATIŞ');
+        
+        if (!instantTable) {
+            await this.appAlert('Anlık satış masası bulunamadı.', 'Hata');
+            return;
+        }
+        
+        // Open the instant sale table modal
+        await this.openTableModal(instantTable.id, { preSync: true });
     }
 
     async resetInstantSaleTable() {
@@ -2299,48 +2137,80 @@ class MekanApp {
 
         this.currentTableId = tableId;
 
-        // CRITICAL: Clear modal content IMMEDIATELY before opening to prevent old data from showing
-        let productsGridEl = document.getElementById('table-products-grid');
-        if (productsGridEl) {
-            productsGridEl.innerHTML = '';
-            productsGridEl.removeAttribute('data-table-id');
-            productsGridEl.removeAttribute('data-events-bound');
-        }
-        let salesListEl = document.getElementById('table-sales-list');
-        if (salesListEl) salesListEl.innerHTML = '';
-        let modalTitleEl = document.getElementById('table-modal-title');
-        if (modalTitleEl) modalTitleEl.textContent = 'Masa';
-
-        // Store original modal body content
-        const modalBodyEl = document.getElementById('table-modal-body');
-        const modalFooterEl = document.querySelector('.table-modal-footer');
-        const originalBodyContent = modalBodyEl ? modalBodyEl.innerHTML : '';
-        
-        // Hide all modal content initially and show loading state
-        if (modalBodyEl) {
-            modalBodyEl.innerHTML = `
-                <div class="table-modal-loading">
-                    <div class="table-modal-loading-spinner"></div>
-                    <div class="table-modal-loading-text">Masa yükleniyor...</div>
-                </div>
-            `;
-        }
-        
-        if (modalFooterEl) {
-            modalFooterEl.style.display = 'none';
-        }
-
         // Open modal shell immediately (avoid perceived lag)
         const tableModalEl = document.getElementById('table-modal');
         if (tableModalEl) tableModalEl.classList.add('active');
         document.body.classList.add('table-modal-open');
-        
-        // Update title with table name from card (if available)
+
+        const modalTitleEl = document.getElementById('table-modal-title');
         if (modalTitleEl) {
+            // Table names are stable; show immediately (avoid "Yükleniyor..." in title)
             const card = this.getTableCardEl?.(tableId);
             const cardName = card?.querySelector?.('h3')?.textContent?.trim?.() || null;
-            modalTitleEl.textContent = cardName || 'Masa';
+            modalTitleEl.textContent = cardName || modalTitleEl.textContent || 'Masa';
         }
+
+        const modalBodyEl = document.getElementById('table-modal-body');
+        // Show loading overlay only if the work is actually slow (avoids spinner flash when using local cache)
+        // If products cache exists, don't show loading at all (products are already rendered)
+        let loadingTimer = null;
+        const hasCachedProducts = this._cachedProducts && this._cachedProducts.length > 0;
+        if (modalBodyEl && !hasCachedProducts) {
+            loadingTimer = setTimeout(() => {
+                modalBodyEl.classList.add('is-loading');
+            }, 180);
+        }
+
+        const productsGridEl = document.getElementById('table-products-grid');
+        // If cache exists, render products immediately (no loading message)
+        if (productsGridEl && hasCachedProducts) {
+            // Render cached products immediately for instant display
+            productsGridEl.dataset.tableId = String(tableId);
+            productsGridEl.innerHTML = this._cachedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
+            // Bind event delegation if not already bound
+            if (!this._tableProductsDelegationBound) {
+                this._tableProductsDelegationBound = true;
+                productsGridEl.addEventListener('click', async (e) => {
+                    const card = e.target.closest('.product-card-mini');
+                    if (!card) return;
+                    if (card.classList.contains('out-of-stock')) return;
+                    const pid = card.getAttribute('data-product-id');
+                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                    if (!pid || !tid) return;
+                    const amount = (this.currentTableType === 'instant')
+                        ? this.getInstantSaleQty?.()
+                        : 1;
+                    this.queueQuickAddToTable(tid, pid, amount);
+                });
+            }
+        } else if (productsGridEl) {
+            productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
+        }
+
+        const salesListEl = document.getElementById('table-sales-list');
+        if (salesListEl) salesListEl.innerHTML = '<div class="empty-state"><p>Yükleniyor...</p></div>';
+
+        const footerBtns = [
+            document.getElementById('pay-table-btn'),
+            document.getElementById('credit-table-btn'),
+            document.getElementById('cancel-hourly-btn')
+        ].filter(Boolean);
+        footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
+
+        // Track if modal data is fully loaded
+        let modalDataReady = false;
+
+        const unlockModal = () => {
+            if (loadingTimer) {
+                clearTimeout(loadingTimer);
+                loadingTimer = null;
+            }
+            if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
+            // Only enable buttons if data is ready AND table is still open
+            if (modalDataReady) {
+                footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
+            }
+        };
 
         let table = null;
         try {
@@ -2366,7 +2236,12 @@ class MekanApp {
             // Track current table type for UI behaviors (e.g. instant sale qty)
             this.currentTableType = table.type;
 
-            // Quantity controls removed - using swipe up gesture instead
+            // Instant sale: show qty controls next to title; default 1 every time modal opens
+            this.setupInstantSaleQtyControls?.();
+            this.setInstantSaleQtyControlsVisible?.(table.type === 'instant');
+            if (table.type === 'instant') {
+                this.setInstantSaleQty?.(1);
+            }
 
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
@@ -2429,6 +2304,7 @@ class MekanApp {
         const payBtn = document.getElementById('pay-table-btn');
         const creditBtn = document.getElementById('credit-table-btn');
         const cancelHourlyBtn = document.getElementById('cancel-hourly-btn');
+        const productsSection = document.getElementById('table-products-section');
 
         if (table.type === 'hourly') {
             // Use grid so mobile stays single-row (CSS sets the grid template)
@@ -2468,7 +2344,6 @@ class MekanApp {
                 }, 60000); // Update every minute
                 
                 // Table is open - show products section
-                const productsSection = document.getElementById('table-products-section');
                 if (productsSection) {
                     productsSection.style.display = 'block';
                 }
@@ -2490,9 +2365,8 @@ class MekanApp {
                 if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
                 
                 // Table is not open - hide products section
-                const productsSection2 = document.getElementById('table-products-section');
-                if (productsSection2) {
-                    productsSection2.style.display = 'none';
+                if (productsSection) {
+                    productsSection.style.display = 'none';
                 }
                 // Hide open button for hourly tables (now handled by double-tap on card)
                 if (openBtn) {
@@ -2517,9 +2391,8 @@ class MekanApp {
             openBtn.style.display = 'none';
             }
             // Regular tables always show products section
-            const productsSection3 = document.getElementById('table-products-section');
-            if (productsSection3) {
-                productsSection3.style.display = 'block';
+            if (productsSection) {
+                productsSection.style.display = 'block';
             }
             if (this.hourlyUpdateInterval) {
                 clearInterval(this.hourlyUpdateInterval);
@@ -2550,32 +2423,23 @@ class MekanApp {
             }
         }
 
-        // Restore modal body content
-        if (modalBodyEl) {
-            modalBodyEl.innerHTML = originalBodyContent;
+        // Load products for selection
+        // If cache exists, products are already rendered above, just refresh if needed
+        // Otherwise load from cache or DB
+        if (!this._cachedProducts || this._cachedProducts.length === 0) {
+            await this.loadTableProducts(tableId, { useCache: true });
+        } else {
+            // Cache exists and products are already rendered, just ensure they're sorted correctly
+            // No need to reload - they're already displayed
+            debugLog('Products already rendered from cache, skipping reload');
         }
-        
-        // Re-get elements after restoring HTML
-        productsGridEl = document.getElementById('table-products-grid');
-        salesListEl = document.getElementById('table-sales-list');
-        const productsSectionEl = document.getElementById('table-products-section');
-        
-        // Show products section before loading (it will be shown/hidden based on table type later)
-        if (productsSectionEl) {
-            productsSectionEl.style.display = 'block';
-        }
-        
-        // Load products and sales
-        await Promise.all([
-            this.loadTableProducts(tableId, { useCache: true }),
-            this.loadTableSales(tableId)
-        ]);
 
         // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
         const finalTableCheck = await this.db.getTable(tableId);
         if (!finalTableCheck) {
             // Table not found - close modal
+            unlockModal();
             this.closeTableModal();
             return;
         }
@@ -2589,28 +2453,29 @@ class MekanApp {
             : false; // Regular/instant: never close modal - always allow product addition
         
         if (isTableClosed) {
-            // Table is already closed - close modal
+            // Table is already closed - keep buttons disabled and close modal
+            unlockModal(); // Remove loading overlay
+            footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
+            // Close modal after a brief delay to show user the table is closed
             setTimeout(() => {
                 this.closeTableModal();
             }, 500);
             return;
         }
 
-        // Show footer and enable buttons
-        if (modalFooterEl) {
-            modalFooterEl.style.display = '';
-        }
-        
-        const footerBtns = [
-            document.getElementById('pay-table-btn'),
-            document.getElementById('credit-table-btn'),
-            document.getElementById('cancel-hourly-btn')
-        ].filter(Boolean);
-        footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
+        // Table is open (or regular/instant table without closeTime) - mark data as ready and enable buttons
+        // Regular/instant tables can be opened even if they have no products (user wants to add products)
+        modalDataReady = true;
+        unlockModal();
+
+        // Load sales in the background to keep modal snappy
+        Promise.resolve()
+            .then(() => this.loadTableSales(tableId))
+            .catch((e) => console.error('loadTableSales error:', e));
         } catch (error) {
             console.error('openTableModal error:', error, error?.message, error?.details, error?.hint, error?.code);
+            unlockModal();
             await this.appAlert('Masa detayları yüklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
-            this.closeTableModal();
         }
     }
 
@@ -2635,8 +2500,8 @@ class MekanApp {
         }
 
         try {
-            // Show loading state on table card (not full screen)
-            this.setTableCardLoading(tableId, 'İptal ediliyor...', 'danger');
+            // Show processing message on table card (red background)
+            this.showTableCardProcessing(tableId, 'İptal ediliyor...', 'cancel');
             
             // Close modal immediately
             this.closeTableModal();
@@ -2677,7 +2542,7 @@ class MekanApp {
             await new Promise(resolve => setTimeout(resolve, 1500));
             
             // Hide loading overlay
-            this.hideLoadingOverlay();
+            this.hideTableCardProcessing(tableId);
 
             // Background refresh (don't block UI)
             setTimeout(() => {
@@ -2690,7 +2555,7 @@ class MekanApp {
             // Success: no alert (keep UX quiet)
         } catch (err) {
             console.error('Süreli oyun iptal edilirken hata:', err);
-            this.clearTableCardLoading(tableId);
+            this.hideTableCardProcessing(tableId);
             await this.appAlert('Oyunu iptal ederken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -2701,24 +2566,6 @@ class MekanApp {
             clearInterval(this.hourlyUpdateInterval);
             this.hourlyUpdateInterval = null;
         }
-        
-        // Clear modal content immediately to prevent showing old data
-        const salesListEl = document.getElementById('table-sales-list');
-        if (salesListEl) salesListEl.innerHTML = '';
-        
-        const productsGridEl = document.getElementById('table-products-grid');
-        if (productsGridEl) {
-            // Clear content and reset attributes (event listeners are on container, not children)
-            productsGridEl.innerHTML = '';
-            productsGridEl.removeAttribute('data-table-id');
-            productsGridEl.removeAttribute('data-events-bound');
-        }
-        
-        const modalTitleEl = document.getElementById('table-modal-title');
-        if (modalTitleEl) modalTitleEl.textContent = 'Masa';
-        
-        // Quantity controls removed
-        
         document.getElementById('table-modal').classList.remove('active');
         document.body.classList.remove('table-modal-open');
         
@@ -2754,22 +2601,30 @@ class MekanApp {
             products = this._cachedProducts;
             debugLog('Using cached products for table modal');
             // Render immediately (synchronous) - no loading delay
-        if (products.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📦</div>
-                    <h3>Ürün bulunamadı</h3>
-                    <p>Henüz hiç ürün eklenmemiş. Ürün eklemek için ürünler sayfasına gidin.</p>
-                </div>
-            `;
-            return;
-        }
+            if (products.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>Ürün bulunamadı</p></div>';
+                return;
+            }
             container.dataset.tableId = String(tableId);
-        container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
-            // Bind event delegation with swipe support
-            this.setupProductCardEvents(container);
+            container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
+            // Bind event delegation if not already bound
+            if (!this._tableProductsDelegationBound) {
+                this._tableProductsDelegationBound = true;
+                container.addEventListener('click', async (e) => {
+                    const card = e.target.closest('.product-card-mini');
+                    if (!card) return;
+                    if (card.classList.contains('out-of-stock')) return;
+                    const pid = card.getAttribute('data-product-id');
+                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                    if (!pid || !tid) return;
+                    const amount = (this.currentTableType === 'instant')
+                        ? this.getInstantSaleQty?.()
+                        : 1;
+                    this.queueQuickAddToTable(tid, pid, amount);
+                });
+            }
             return; // Early return - no async operation needed
-                        } else {
+        } else {
             // Load fresh products from DB
             products = this.sortProductsByStock(await this.db.getAllProducts());
             // Update cache
@@ -2778,13 +2633,7 @@ class MekanApp {
         }
 
         if (products.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📦</div>
-                    <h3>Ürün bulunamadı</h3>
-                    <p>Henüz hiç ürün eklenmemiş. Ürün eklemek için ürünler sayfasına gidin.</p>
-                </div>
-            `;
+            container.innerHTML = '<div class="empty-state"><p>Ürün bulunamadı</p></div>';
             return;
         }
 
@@ -2792,8 +2641,23 @@ class MekanApp {
         container.dataset.tableId = String(tableId);
         container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
 
-        // Bind event delegation with swipe support
-        this.setupProductCardEvents(container);
+        // Bind once: event delegation
+        if (!this._tableProductsDelegationBound) {
+            this._tableProductsDelegationBound = true;
+            container.addEventListener('click', async (e) => {
+                const card = e.target.closest('.product-card-mini');
+                if (!card) return;
+                if (card.classList.contains('out-of-stock')) return;
+                const pid = card.getAttribute('data-product-id');
+                const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                if (!pid || !tid) return;
+                // Fast taps should stack and be processed serially so stock decrements correctly.
+                const amount = (this.currentTableType === 'instant')
+                    ? this.getInstantSaleQty?.()
+                    : 1;
+                this.queueQuickAddToTable(tid, pid, amount);
+            });
+        }
     }
 
     createTableProductCard(product, tableId) {
@@ -2819,13 +2683,7 @@ class MekanApp {
         const container = document.getElementById('table-sales-list');
         
         if (unpaidSales.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">🛒</div>
-                    <h3>Eklenen ürün yok</h3>
-                    <p>Bu masaya henüz ürün eklenmemiş. Üstteki ürünlerden seçerek ekleyebilirsiniz.</p>
-                </div>
-            `;
+            container.innerHTML = '<div class="empty-state"><h3>Eklenen ürün yok</h3></div>';
             return;
         }
 
@@ -2962,101 +2820,6 @@ class MekanApp {
             });
 
         return rows;
-    }
-
-    setupProductCardEvents(container) {
-        // Remove old event listeners if they exist
-        // We'll use a data attribute to track if events are bound to this specific container
-        if (container.dataset.eventsBound === 'true') {
-            // Events already bound to this container, skip
-            return;
-        }
-        container.dataset.eventsBound = 'true';
-        
-        // Track processing state per product to prevent multiple simultaneous adds
-        const processing = new Set();
-        
-        // Click handler - single tap adds 1 product
-        container.addEventListener('click', async (e) => {
-            const card = e.target.closest('.product-card-mini');
-            if (!card) return;
-            if (card.classList.contains('out-of-stock')) return;
-            
-            const cardId = card.getAttribute('data-product-id');
-            const tid = container.getAttribute('data-table-id');
-            if (!cardId || !tid) return;
-            
-            // Prevent multiple simultaneous clicks on same product
-            const key = `${tid}:${cardId}`;
-            if (processing.has(key)) {
-                return; // Already processing, ignore this click
-            }
-            
-            processing.add(key);
-            
-            try {
-                // Single tap = 1 item, directly call addProductToTableFromModal
-                await this.addProductToTableFromModal(tid, cardId, 1);
-            } finally {
-                // Remove from processing set after a short delay to allow UI to update
-                setTimeout(() => {
-                    processing.delete(key);
-                }, 300);
-            }
-        });
-    }
-
-    async getProductQuantityInTable(tableId, productId) {
-        try {
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            let totalQty = 0;
-            
-            for (const sale of unpaidSales) {
-                if (!sale.items || !Array.isArray(sale.items)) continue;
-                for (const item of sale.items) {
-                    if (item.productId == productId && !item.isCancelled) {
-                        totalQty += (Number(item.amount) || 0);
-                    }
-                }
-            }
-            
-            return totalQty;
-        } catch (e) {
-            console.error('Error getting product quantity:', e);
-            return 0;
-        }
-    }
-
-    async cancelLastProductFromTable(tableId, productId) {
-        try {
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-            
-            // Find the most recent sale item with this product
-            let targetSale = null;
-            let targetItemIndex = -1;
-            let latestTs = 0;
-            
-            for (const sale of unpaidSales) {
-                if (!sale.items || !Array.isArray(sale.items)) continue;
-                for (let i = 0; i < sale.items.length; i++) {
-                    const item = sale.items[i];
-                    if (item.productId == productId && !item.isCancelled) {
-                        const saleTs = new Date(sale.sellDateTime).getTime();
-                        if (saleTs > latestTs) {
-                            latestTs = saleTs;
-                            targetSale = sale;
-                            targetItemIndex = i;
-                        }
-                    }
-                }
-            }
-            
-            if (targetSale && targetItemIndex >= 0) {
-                await this.deleteItemFromSale(targetSale.id, targetItemIndex, true); // Skip confirm for swipe gesture
-            }
-        } catch (e) {
-            console.error('Error canceling product:', e);
-        }
     }
 
     createGroupedTableSaleRow(row) {
@@ -3256,8 +3019,8 @@ class MekanApp {
         }
     }
 
-    async deleteItemFromSale(saleId, itemIndex, skipConfirm = false) {
-        if (!skipConfirm && !(await this.appConfirm('Bu ürünü iptal etmek istediğinize emin misiniz?', { title: 'İptal Onayı', confirmText: 'İptal Et', cancelText: 'Vazgeç', confirmVariant: 'danger' }))) return;
+    async deleteItemFromSale(saleId, itemIndex) {
+        if (!(await this.appConfirm('Bu ürünü iptal etmek istediğinize emin misiniz?', { title: 'İptal Onayı', confirmText: 'İptal Et', cancelText: 'Vazgeç', confirmVariant: 'danger' }))) return;
 
         try {
             const sale = await this.db.getSale(saleId);
@@ -3590,9 +3353,7 @@ class MekanApp {
 
         // Step 4: Mark as settling IMMEDIATELY to prevent race conditions
         // Extended duration to prevent realtime updates from interfering during closure
-        // For hourly tables, use longer duration to prevent reopening after payment
-        const settlingDuration = table.type === 'hourly' ? 25000 : 20000; // 25s for hourly, 20s for others
-        this._markTableSettling(tableId, settlingDuration);
+        this._markTableSettling(tableId, 15000); // 15 seconds for closure operations
 
         try {
             // Step 5: Get unpaid sales BEFORE closing table
@@ -3685,20 +3446,11 @@ class MekanApp {
             // Step 10: Multiple verification passes to ensure table stays closed
             // This prevents race conditions where realtime updates reopen the table
             // Extended verification period to catch delayed realtime updates
-            // For hourly tables, use more attempts since payment closure is critical
-            const maxAttempts = table.type === 'hourly' ? 8 : 5;
-            for (let verifyAttempt = 0; verifyAttempt < maxAttempts; verifyAttempt++) {
-                await new Promise(resolve => setTimeout(resolve, 400)); // Wait between attempts (longer for hourly)
+            for (let verifyAttempt = 0; verifyAttempt < 5; verifyAttempt++) {
+                await new Promise(resolve => setTimeout(resolve, 300)); // Wait between attempts
                 
                 const verifyTable = await this.db.getTable(tableId);
-                // CRITICAL: For hourly tables, if closeTime exists, table MUST be closed
-                const shouldBeClosed = verifyTable && (
-                    verifyTable.isActive || 
-                    (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime) ||
-                    (verifyTable.type === 'hourly' && verifyTable.closeTime && (verifyTable.openTime || verifyTable.isActive))
-                );
-                
-                if (shouldBeClosed) {
+                if (verifyTable && (verifyTable.isActive || (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime))) {
                     // Force close if verification fails
                     debugLog(`Verification attempt ${verifyAttempt + 1}: Table ${tableId} was reopened, forcing close again`);
                     verifyTable.isActive = false;
@@ -3712,8 +3464,8 @@ class MekanApp {
                     await this.db.updateTable(verifyTable);
                 } else {
                     // Table is properly closed, but continue verification to catch delayed updates
-                    if (verifyAttempt >= 3) {
-                        // After 3 successful checks, we can be more confident
+                    if (verifyAttempt >= 2) {
+                        // After 2 successful checks, we can be more confident
                         break;
                     }
                 }
@@ -4212,7 +3964,7 @@ class MekanApp {
         );
 
         const schedule = async () => {
-        this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
+            this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
             // Additionally update the one changed card instantly while on tables view
             if ((tableName === 'sales' || tableName === 'tables') && changedTableId) {
                 // CRITICAL: If table was cancelled (has closeTime, no openTime, not active),
@@ -4220,28 +3972,20 @@ class MekanApp {
                 // This prevents cancelled tables from being reopened by realtime updates
                 if (tableName === 'tables') {
                     try {
-                        // CRITICAL: Check if table is currently being settled FIRST
-                        // This prevents any updates during closure operations
+                        const updatedTable = this.db.getTable ? await this.db.getTable(changedTableId) : null;
+                        // Check if table is currently being settled (prevent interference during closure)
                         const isSettling = this._isTableSettling(changedTableId);
+                        
+                        // If table is being settled, skip refresh to prevent race conditions
                         if (isSettling) {
-                            debugLog(`Table ${changedTableId} is being settled, skipping realtime update to prevent race condition`);
-                            return; // Don't process this realtime update
+                            debugLog(`Realtime: Table ${changedTableId} is being settled, skipping card refresh`);
+                            return;
                         }
                         
-                        const updatedTable = this.db.getTable ? await this.db.getTable(changedTableId) : null;
-                        
-                        // If table was closed, don't refresh
-                        // For hourly tables: closeTime means payment was processed - table MUST be closed
-                        // For regular tables: closeTime or not active = closed
-                        const isTableClosed = updatedTable && (
-                            updatedTable.closeTime || 
-                            !updatedTable.isActive ||
-                            (updatedTable.type === 'hourly' && !updatedTable.openTime && !updatedTable.isActive)
-                        );
-                        
-                        if (isTableClosed) {
+                        // If table was closed (has closeTime, no openTime, not active), don't refresh
+                        if (updatedTable && updatedTable.closeTime && !updatedTable.openTime && !updatedTable.isActive) {
                             // Table was cancelled/closed - don't refresh, keep it closed
-                            debugLog(`Realtime: Table ${changedTableId} was closed (closeTime: ${updatedTable.closeTime}), skipping card refresh to keep it closed`);
+                            debugLog(`Realtime: Table ${changedTableId} was closed, skipping card refresh to keep it closed`);
                             // Ensure UI shows closed state
                             this.setTableCardState(changedTableId, {
                                 isActive: false,
@@ -4251,22 +3995,6 @@ class MekanApp {
                                 salesTotal: 0,
                                 checkTotal: 0
                             });
-                            
-                            // CRITICAL: If table has closeTime but is still marked as active or has openTime, force close
-                            if (updatedTable.closeTime && (updatedTable.isActive || (updatedTable.type === 'hourly' && updatedTable.openTime))) {
-                                debugLog(`Realtime: Table ${changedTableId} has closeTime but is still open, forcing close`);
-                                const forceClosed = {
-                                    ...updatedTable,
-                                    isActive: false,
-                                    openTime: null,
-                                    salesTotal: 0,
-                                    checkTotal: 0
-                                };
-                                if (forceClosed.type === 'hourly') {
-                                    forceClosed.hourlyTotal = 0;
-                                }
-                                await this.db.updateTable(forceClosed);
-                            }
                             return;
                         }
                     } catch (e) {
@@ -4494,7 +4222,7 @@ class MekanApp {
         if (!root) return;
         root.style.display = visible ? 'inline-flex' : 'none';
 
-        // Toggle a class to allow CSS to optimize header layout for all tables with qty controls
+        // Toggle a class to allow CSS to optimize header layout only for instant sale
         const titlebar = document.querySelector('.table-modal-titlebar');
         if (titlebar) {
             titlebar.classList.toggle('instant-mode', Boolean(visible));
@@ -4705,6 +4433,8 @@ class MekanApp {
     async addProductToTableFromModal(tableId, productId, amount) {
         if (!tableId || !productId || !amount) return;
 
+        // Card-level loading so the whole tables grid doesn't get blurred
+        this.setTableCardLoading(tableId, true);
         try {
             const table = await this.db.getTable(tableId);
             const product = await this.db.getProduct(productId);
@@ -4759,7 +4489,7 @@ class MekanApp {
                 if (this.currentTableId === tableId) {
                     await this.loadTableSales(tableId);
                 }
-                
+
                 // Important: close via helper so body.table-modal-open is removed (otherwise header stays hidden on mobile)
                 this.closeTableModal();
                 this.currentTableId = null;
@@ -4824,7 +4554,7 @@ class MekanApp {
             await this.appAlert('Ürün eklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
             this.closeAddProductModal();
         } finally {
-            this.clearTableCardLoading(tableId);
+            this.setTableCardLoading(tableId, false);
         }
     }
 
@@ -5062,8 +4792,9 @@ class MekanApp {
         }
 
         try {
-            // Show loading state on table card (not full screen)
-            this.setTableCardLoading(tableId, 'Hesap alınıyor...', 'success');
+            // Show loading overlay
+            // Show processing message on table card (green background)
+            this.showTableCardProcessing(tableId, 'Hesap alınıyor...', 'pay');
             
             // Close modals immediately
             const receiptModal = document.getElementById('receipt-modal');
@@ -5121,8 +4852,8 @@ class MekanApp {
             // Wait for DB operations to complete and realtime updates to propagate
             await new Promise(resolve => setTimeout(resolve, 2000));
             
-            // Clear loading state from table card
-            this.clearTableCardLoading(tableId);
+            // Hide processing overlay
+            this.hideTableCardProcessing(tableId);
             
             // Background refresh
             setTimeout(() => {
@@ -5132,7 +4863,7 @@ class MekanApp {
             }, 100);
         } catch (error) {
             console.error('Ödeme işlenirken hata:', error);
-            this.clearTableCardLoading(tableId);
+            this.hideTableCardProcessing(tableId);
             await this.appAlert('Ödeme işlenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -5281,8 +5012,9 @@ class MekanApp {
         }
 
         try {
-            // Show loading state on table card (not full screen)
-            this.setTableCardLoading(tableId, 'Veresiye yazılıyor...', 'info');
+            // Show loading overlay
+            // Show processing message on table card (orange background)
+            this.showTableCardProcessing(tableId, 'Veresiye yazılıyor...', 'credit');
             
             // Close modal immediately
             this.closeTableModal();
@@ -5325,8 +5057,8 @@ class MekanApp {
             // Wait for DB operations to complete
             await new Promise(resolve => setTimeout(resolve, 1500));
             
-            // Hide loading overlay
-            this.hideLoadingOverlay();
+            // Hide processing overlay
+            this.hideTableCardProcessing(tableId);
             
             // Background refresh (don't block UI)
             setTimeout(() => {
@@ -5336,7 +5068,7 @@ class MekanApp {
             }, 100);
         } catch (error) {
             console.error('Veresiye yazılırken hata:', error);
-            this.clearTableCardLoading(tableId);
+            this.hideTableCardProcessing(tableId);
             await this.appAlert('Veresiye yazılırken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         }
     }
@@ -5798,11 +5530,6 @@ class MekanApp {
                 await this.db.updateProduct(productData);
             } else {
                 await this.db.addProduct(productData);
-            }
-            
-            // Check for low stock after product update
-            if (trackStock && stock !== null && stock < 10) {
-                this.showStockWarning(`${name} ürününde düşük stok var (${stock} adet)`, 1);
             }
             
             document.getElementById('product-modal').classList.remove('active');
@@ -6770,7 +6497,7 @@ class MekanApp {
     isDateRangeToday(startDate, endDate) {
         const todayStart = this.getTodayStartTime();
         const now = new Date();
-        
+
         const todayEnd = new Date(todayStart);
         todayEnd.setDate(todayEnd.getDate() + 1);
         todayEnd.setMilliseconds(todayEnd.getMilliseconds() - 1);
@@ -7297,14 +7024,7 @@ class MekanApp {
     }
 
     toggleDarkMode() {
-        // Haptic feedback for theme toggle
-        this.hapticFeedback('medium');
-        
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        
-        // Add fade transition
-        document.body.classList.add('theme-transitioning');
-        
         if (isDark) {
             document.documentElement.removeAttribute('data-theme');
             localStorage.setItem('darkMode', 'false');
@@ -7312,32 +7032,24 @@ class MekanApp {
             document.documentElement.setAttribute('data-theme', 'dark');
             localStorage.setItem('darkMode', 'true');
         }
-        
         this.updateDarkModeIcon();
         this.updateThemeColor();
-        
-        // Remove transition class after animation
-        setTimeout(() => {
-            document.body.classList.remove('theme-transitioning');
-        }, 300);
     }
 
     updateThemeColor() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        
-        // For dark mode: use AMOLED black for header, status bar, and navigation bar
-        // For light mode: use white
-        const lightColor = '#ffffff';
-        const darkColor = '#000000'; // AMOLED black for dark mode
-        
+        const lightColor = '#ecf0f1';
+        const darkColor = '#1a1a1a';
         const themeColor = isDark ? darkColor : lightColor;
         
         // Update all theme-color meta tags
-        // This controls both Chrome status bar (top) and navigation bar (bottom) on Android
         const metaTags = document.querySelectorAll('meta[name="theme-color"]');
         metaTags.forEach(tag => {
             tag.setAttribute('content', themeColor);
         });
+        
+        // Update manifest theme_color (requires manifest update, but we can update meta tags)
+        // Note: manifest.json is static, but meta tags work for PWA status bar
     }
 
     updateDarkModeIcon() {
@@ -7465,13 +7177,13 @@ initDarkModeEarly();
 // Bootstrap Supabase + Auth + App
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-    // Create global supabase client (frontend-safe: anon key only)
+        // Create global supabase client (frontend-safe: anon key only)
         if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
             throw new Error('Supabase configuration missing. Please check env.js');
         }
-    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Require login before app boot (RLS will enforce anyway, but this improves UX)
+        // Require login before app boot (RLS will enforce anyway, but this improves UX)
         // Add timeout to prevent infinite waiting
         try {
             await Promise.race([
@@ -7498,7 +7210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Initialize app with error handling
-    window.app = new MekanApp();
+        window.app = new MekanApp();
     } catch (error) {
         console.error('Uygulama başlatılırken kritik hata:', error);
         // Show user-friendly error message
