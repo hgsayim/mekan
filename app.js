@@ -2248,7 +2248,6 @@ class MekanApp {
             }, 180);
         }
 
-        const productsGridEl = document.getElementById('table-products-grid');
         // If cache exists, render products immediately (no loading message)
         if (productsGridEl && hasCachedProducts) {
             // Render cached products immediately for instant display
@@ -2261,7 +2260,7 @@ class MekanApp {
             productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
         }
 
-        const salesListEl = document.getElementById('table-sales-list');
+        // Set loading state for sales list (already cleared above)
         if (salesListEl) salesListEl.innerHTML = '<div class="empty-state"><p>Yükleniyor...</p></div>';
 
         const footerBtns = [
@@ -2358,8 +2357,9 @@ class MekanApp {
         const checkTotal = this.calculateCheckTotal(table);
         
         // Update modal title with table name only
-        const modalTitle = document.getElementById('table-modal-title');
-        modalTitle.textContent = table.name;
+        if (modalTitleEl) {
+            modalTitleEl.textContent = table.name;
+        }
 
         // Total is shown on the green pay button (not in header)
         const payBtnTxt = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt') || null;
