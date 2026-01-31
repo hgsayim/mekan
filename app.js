@@ -78,9 +78,9 @@ async function ensureSignedIn(supabase) {
             setTimeout(() => reject(new Error('Session check timeout')), 10000)
         );
         const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
-        if (error) {
-            console.error('Auth session error:', error);
-        }
+    if (error) {
+        console.error('Auth session error:', error);
+    }
         session = data?.session || null;
     } catch (err) {
         console.error('Error checking session:', err);
@@ -321,13 +321,13 @@ class MekanApp {
             
             // Start background services (non-critical if they fail)
             try {
-                this.startDailyReset();
+            this.startDailyReset();
             } catch (e) {
                 console.error('Error starting daily reset:', e);
             }
             
             try {
-                this.startRealtimeSubscriptions();
+            this.startRealtimeSubscriptions();
             } catch (e) {
                 console.error('Error starting realtime subscriptions:', e);
             }
@@ -903,14 +903,14 @@ class MekanApp {
         const salesTableFilter = document.getElementById('sales-table-filter');
         if (salesTableFilter) {
             salesTableFilter.addEventListener('change', this.debounce(() => {
-                this.filterSales();
+            this.filterSales();
             }, 300));
         }
 
         const salesStatusFilter = document.getElementById('sales-status-filter');
         if (salesStatusFilter) {
             salesStatusFilter.addEventListener('change', this.debounce(() => {
-                this.filterSales();
+            this.filterSales();
             }, 300));
         }
 
@@ -947,7 +947,7 @@ class MekanApp {
                     if (formModalIds.includes(modal.id)) {
                         this.closeFormModal(modal.id);
                     } else {
-                        modal.classList.remove('active');
+                    modal.classList.remove('active');
                     }
                 }
             });
@@ -1110,7 +1110,7 @@ class MekanApp {
             // Start auto-update for table cards if we're on the tables view (default view)
             if (this.currentView === 'tables') {
                 try {
-                    this.startTableCardPriceUpdates();
+                this.startTableCardPriceUpdates();
                 } catch (err) {
                     console.error('Error starting table card updates:', err);
                     // Non-critical
@@ -1364,10 +1364,10 @@ class MekanApp {
                         // Recent settle: prefer showing as closed while DB catches up
                         // (do not write to DB here; payment flow will persist state)
                     } else {
-                        // Manually opened hourly table - keep it active, just update totals
-                        table.hourlyTotal = this.calculateHourlyTotal(table);
-                        table.checkTotal = this.calculateCheckTotal(table);
-                        tableUpdated = true;
+                    // Manually opened hourly table - keep it active, just update totals
+                    table.hourlyTotal = this.calculateHourlyTotal(table);
+                    table.checkTotal = this.calculateCheckTotal(table);
+                    tableUpdated = true;
                     }
                 }
             } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0 || table.checkTotal > 0)) {
@@ -1376,7 +1376,7 @@ class MekanApp {
                 if (table.type === 'hourly' && table.closeTime) {
                     // Closed hourly table: reset all totals (history is in hourlySessions)
                     table.salesTotal = 0;
-                    table.hourlyTotal = 0;
+                        table.hourlyTotal = 0;
                     table.checkTotal = 0;
                     table.openTime = null;
                     tableUpdated = true;
@@ -1550,7 +1550,7 @@ class MekanApp {
                         this.setTableCardOpening(table.id, true);
                         const startTime = Date.now();
                         try {
-                            await this.openTable();
+                        await this.openTable();
                         } finally {
                             // CRITICAL: Always wait exactly 2 seconds before clearing loading state
                             // This ensures "Süre başlatılıyor" message is always visible for 2 seconds
@@ -1655,8 +1655,8 @@ class MekanApp {
             let displayTotal = 0;
             if (isActive) {
                 if (table.type === 'instant') {
-                    // For instant sale table, show today's paid sales total
-                    displayTotal = await this.getInstantTableDailyTotal(table.id);
+                // For instant sale table, show today's paid sales total
+                displayTotal = await this.getInstantTableDailyTotal(table.id);
                 } else {
                     const unpaid = await this.db.getUnpaidSalesByTable(table.id);
                     const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
@@ -1729,13 +1729,13 @@ class MekanApp {
             
             // For hourly tables: only calculate hourly total if table is actually active (not closed)
             if (effectiveTable.type === 'hourly' && isActive && effectiveTable.openTime) {
-                // For hourly tables, include hourly total
-                const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
-                const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
+            // For hourly tables, include hourly total
+            const hoursUsed = this.calculateHoursUsed(effectiveTable.openTime);
+            const hourlyTotal = hoursUsed * effectiveTable.hourlyRate;
                 displayTotal = hourlyTotal + salesTotal;
-            } else if (effectiveTable.type === 'instant') {
-                // For instant sale table, show today's paid sales total
-                displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
+        } else if (effectiveTable.type === 'instant') {
+            // For instant sale table, show today's paid sales total
+            displayTotal = await this.getInstantTableDailyTotal(effectiveTable.id);
             } else {
                 // Regular tables: sum of unpaid sales
                 displayTotal = salesTotal;
@@ -1859,9 +1859,9 @@ class MekanApp {
         let displayTotal = 0;
         if (isActive) {
             displayTotal = checkTotal;
-            if (type === 'hourly' && isActive && openTime) {
-                const hoursUsed = this.calculateHoursUsed(openTime);
-                displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
+        if (type === 'hourly' && isActive && openTime) {
+            const hoursUsed = this.calculateHoursUsed(openTime);
+            displayTotal = (hoursUsed * (hourlyRate || 0)) + (salesTotal || 0);
             }
         }
         priceEl.textContent = `${Math.round(displayTotal)} ₺`;
@@ -2498,12 +2498,12 @@ class MekanApp {
             } else if (table.type !== 'hourly' && table.type !== 'instant') {
                 // Regular tables: close if no unpaid sales and totals are 0
                 if (computedSalesTotal === 0 && table.checkTotal === 0) {
-                    table.isActive = false;
+                table.isActive = false;
                     table.openTime = null;
                     table.closeTime = table.closeTime || new Date().toISOString();
                     table.salesTotal = 0;
-                    table.checkTotal = 0;
-                    tableUpdated = true;
+                table.checkTotal = 0;
+                tableUpdated = true;
                 }
             }
         } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || (table.hourlyTotal > 0 && (!table.openTime || table.type !== 'hourly')))) {
@@ -2646,7 +2646,7 @@ class MekanApp {
                 regularInfo.style.display = 'none';
                 if (instantInfo) instantInfo.style.display = 'none';
                 table.checkTotal = computedSalesTotal;
-                document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
+            document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
                 if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
             }
             
@@ -2932,7 +2932,7 @@ class MekanApp {
         
         const tableModalEl = document.getElementById('table-modal');
         if (!tableModalEl) {
-            document.body.classList.remove('table-modal-open');
+        document.body.classList.remove('table-modal-open');
             return;
         }
         
@@ -2940,7 +2940,7 @@ class MekanApp {
         if (tableModalEl.classList.contains('closing')) {
             return;
         }
-        
+
         tableModalEl.classList.add('closing');
         
         // Get table card position for closing animation
@@ -2990,7 +2990,7 @@ class MekanApp {
                     }, 250); // Match backdrop animation duration
                 });
             });
-        } else {
+                        } else {
             // If no content, just remove after backdrop animation
             setTimeout(() => {
                 tableModalEl.classList.remove('active', 'closing');
@@ -3063,7 +3063,7 @@ class MekanApp {
                 });
             }
             return; // Early return - no async operation needed
-        } else {
+                        } else {
             // Load fresh products from DB
             products = this.sortProductsByStock(await this.db.getAllProducts());
             // Update cache
@@ -3730,7 +3730,7 @@ class MekanApp {
                     table.closeTime = new Date().toISOString();
                     table.salesTotal = 0;
                     table.checkTotal = 0;
-                    await this.db.updateTable(table);
+                await this.db.updateTable(table);
                     
                     // Close modal if it's open for this table
                     if (this.currentTableId === sale.tableId) {
@@ -3751,8 +3751,8 @@ class MekanApp {
 
             // Only reload and reopen modal if table is still active
             if (table && table.isActive) {
-                await this.loadTableProducts(sale.tableId);
-                await this.openTableModal(sale.tableId);
+            await this.loadTableProducts(sale.tableId);
+            await this.openTableModal(sale.tableId);
             } else {
                 // Table is closed, just refresh the view
                 this.closeTableModal();
@@ -4509,7 +4509,7 @@ class MekanApp {
         );
 
         const schedule = async () => {
-            this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
+        this.scheduleRealtimeRefresh(Array.from(views), shouldRefreshModal);
             // Additionally update the one changed card instantly while on tables view
             if ((tableName === 'sales' || tableName === 'tables') && changedTableId) {
                 // CRITICAL: If table was cancelled (has closeTime, no openTime, not active),
@@ -4982,7 +4982,7 @@ class MekanApp {
         if (modal.classList.contains('closing')) {
             modal.classList.remove('closing');
         }
-        modal.classList.add('active');
+            modal.classList.add('active');
         
         // Trigger animation
         requestAnimationFrame(() => {
@@ -5078,7 +5078,7 @@ class MekanApp {
                 if (this.currentTableId === tableId) {
                     await this.loadTableSales(tableId);
                 }
-
+                
                 // Important: close via helper so body.table-modal-open is removed (otherwise header stays hidden on mobile)
                 this.closeTableModal();
                 this.currentTableId = null;
@@ -6122,38 +6122,38 @@ class MekanApp {
         // Add "Add Product" card only on first page
         if (this._productsCurrentPage === 0) {
             container.insertAdjacentHTML('beforeend', this.createAddProductCard());
-            const addCard = document.getElementById('add-product-card');
-            if (addCard) addCard.onclick = () => this.openProductFormModal();
+        const addCard = document.getElementById('add-product-card');
+        if (addCard) addCard.onclick = () => this.openProductFormModal();
         }
-
+        
         // Setup event delegation (only once)
         if (!this._productsDelegationBound) {
             this._productsDelegationBound = true;
             container.addEventListener('click', (e) => {
-                const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
-                if (!target) return;
+            const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
+            if (!target) return;
 
-                const extractId = (prefix) => {
-                    if (!target.id.startsWith(prefix)) return null;
-                    const idPart = target.id.slice(prefix.length);
-                    return idPart || null;
-                };
+            const extractId = (prefix) => {
+                if (!target.id.startsWith(prefix)) return null;
+                const idPart = target.id.slice(prefix.length);
+                return idPart || null;
+            };
 
-                const editPrefix = 'edit-product-';
-                const deletePrefix = 'delete-product-';
+            const editPrefix = 'edit-product-';
+            const deletePrefix = 'delete-product-';
 
-                if (target.id.startsWith(editPrefix)) {
-                    const id = extractId(editPrefix);
-                    if (!id) return;
-                    const product = products.find(p => String(p.id) === String(id));
-                    if (product) {
-                        this.openProductFormModal(product);
-                    }
-                } else if (target.id.startsWith(deletePrefix)) {
-                    const id = extractId(deletePrefix);
-                    if (!id) return;
-                    this.deleteProduct(id);
+            if (target.id.startsWith(editPrefix)) {
+                const id = extractId(editPrefix);
+                if (!id) return;
+                const product = products.find(p => String(p.id) === String(id));
+                if (product) {
+                    this.openProductFormModal(product);
                 }
+            } else if (target.id.startsWith(deletePrefix)) {
+                const id = extractId(deletePrefix);
+                if (!id) return;
+                this.deleteProduct(id);
+            }
             });
         }
 
@@ -6222,27 +6222,23 @@ class MekanApp {
         
         if (!tracksStock) {
             stockClass = 'stock-high';
-            stockText = 'Stok: ∞';
+            stockText = '∞';
         } else if (product.stock === 0) {
             stockClass = 'stock-out';
-            stockText = 'Stokta Yok';
+            stockText = '0';
         } else if (product.stock < 10) {
             stockClass = 'stock-low';
-            stockText = `Düşük Stok: ${product.stock}`;
+            stockText = `${product.stock}`;
         } else {
-            stockText = `Stok: ${product.stock}`;
+            stockText = `${product.stock}`;
         }
-
+        
         return `
             <div class="product-card" data-product-id="${product.id}">
                 <div class="product-card-icon">${iconHtml}</div>
-                <div class="product-card-content">
-                <h3>${product.name}</h3>
-                    <div class="product-card-details">
-                        <span><strong>Fiyat:</strong> ${Math.round(product.price)} ₺</span>
-                        <span class="product-stock ${stockClass}">${stockText}</span>
-                    </div>
-                </div>
+                <div class="product-card-name">${product.name}</div>
+                <div class="product-card-price">${Math.round(product.price)} ₺</div>
+                <div class="product-card-stock ${stockClass}">${stockText}</div>
                 <div class="product-actions">
                     <button class="btn btn-primary btn-icon" id="edit-product-${product.id}" title="Düzenle">✎</button>
                     <button class="btn btn-danger btn-icon" id="delete-product-${product.id}" title="Sil">×</button>
@@ -6428,8 +6424,8 @@ class MekanApp {
             // Add "Add Customer" card only on first page
             if (this._customersCurrentPage === 0) {
                 container.insertAdjacentHTML('beforeend', this.createAddCustomerCard());
-                const addCard = document.getElementById('add-customer-card');
-                if (addCard) addCard.onclick = () => this.openCustomerFormModal();
+            const addCard = document.getElementById('add-customer-card');
+            if (addCard) addCard.onclick = () => this.openCustomerFormModal();
             }
             
             // Add event listeners - card click opens detail modal
@@ -7282,24 +7278,24 @@ class MekanApp {
         // Get all sales and filter
         if (!this._salesAllData || reset) {
             let allSales = await this.db.getAllSales();
-            
-            // Filter by table
-            if (tableFilter) {
+        
+        // Filter by table
+        if (tableFilter) {
                 allSales = allSales.filter(s => String(s.tableId) === String(tableFilter));
-            }
-            
-            // Filter by status
-            if (statusFilter === 'paid') {
+        }
+        
+        // Filter by status
+        if (statusFilter === 'paid') {
                 allSales = allSales.filter(s => s.isPaid);
-            } else if (statusFilter === 'unpaid') {
+        } else if (statusFilter === 'unpaid') {
                 allSales = allSales.filter(s => !s.isPaid);
-            }
-            
-            // Sort by date (newest first)
+        }
+        
+        // Sort by date (newest first)
             allSales.sort((a, b) => new Date(b.sellDateTime) - new Date(a.sellDateTime));
             this._salesAllData = allSales;
         }
-
+        
         const sales = this._salesAllData;
         const container = document.getElementById('sales-container');
         
@@ -7519,7 +7515,7 @@ class MekanApp {
     isDateRangeToday(startDate, endDate) {
         const todayStart = this.getTodayStartTime();
         const now = new Date();
-
+        
         const todayEnd = new Date(todayStart);
         todayEnd.setDate(todayEnd.getDate() + 1);
         todayEnd.setMilliseconds(todayEnd.getMilliseconds() - 1);
@@ -8199,13 +8195,13 @@ initDarkModeEarly();
 // Bootstrap Supabase + Auth + App
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        // Create global supabase client (frontend-safe: anon key only)
+    // Create global supabase client (frontend-safe: anon key only)
         if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
             throw new Error('Supabase configuration missing. Please check env.js');
         }
-        window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // Require login before app boot (RLS will enforce anyway, but this improves UX)
+    // Require login before app boot (RLS will enforce anyway, but this improves UX)
         // Add timeout to prevent infinite waiting
         try {
             await Promise.race([
@@ -8232,7 +8228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // Initialize app with error handling
-        window.app = new MekanApp();
+    window.app = new MekanApp();
     } catch (error) {
         console.error('Uygulama başlatılırken kritik hata:', error);
         // Show user-friendly error message
