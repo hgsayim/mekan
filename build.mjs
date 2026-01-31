@@ -38,6 +38,14 @@ for (const f of FILES) {
   await copyFile(f, join(DIST_DIR, f));
 }
 
+// Copy src/utils directory (required by app.js imports)
+const srcUtilsDir = join(DIST_DIR, 'src', 'utils');
+await mkdir(srcUtilsDir, { recursive: true });
+const utilsFiles = ['performance.js', 'formatters.js', 'calculators.js'];
+for (const f of utilsFiles) {
+  await copyFile(join('src', 'utils', f), join(srcUtilsDir, f));
+}
+
 // Generate env.js (loaded before app.js). Safe: anon key is public; still nicer not to commit.
 const envJs = `// Generated at build time by build.mjs (Cloudflare Pages env vars)
 window.__MEKANAPP_ENV__ = {

@@ -92,12 +92,12 @@
                     <h2>Rapor ve Analiz</h2>
                     <div class="report-controls">
                         <div class="report-date-controls">
-                            <label class="report-date-label">
-                                <strong>Başlangıç Tarihi:</strong>
+                            <label class="report-date-label-inline">
+                                <span>Başlangıç:</span>
                                 <input type="date" id="report-start-date" class="report-date-input">
                             </label>
-                            <label class="report-date-label">
-                                <strong>Bitiş Tarihi:</strong>
+                            <label class="report-date-label-inline">
+                                <span>Bitiş:</span>
                                 <input type="date" id="report-end-date" class="report-date-input">
                             </label>
                             <button class="btn btn-primary report-btn" id="report-apply-btn">Uygula</button>
@@ -106,117 +106,157 @@
                     </div>
                 </div>
                 <div id="daily-container">
-                    <!-- Stats Cards -->
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon">💰</div>
-                            <div class="stat-content">
-                                <h3>Günlük Gelir</h3>
-                                <p class="stat-value" id="daily-income">0.00 ₺</p>
+                    <!-- Financial Summary Section -->
+                    <div class="report-section">
+                        <h3 class="report-section-title">💰 GELİR ÖZETİ</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card" style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); color: white; border: none;">
+                                <div class="stat-icon" style="color: white;">📊</div>
+                                <div class="stat-content">
+                                    <h3 style="color: rgba(255,255,255,0.9);">TOPLAM GELİR</h3>
+                                    <p class="stat-value" id="total-revenue" style="color: white; font-size: 1.5rem;">0 ₺</p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">📦</div>
-                            <div class="stat-content">
-                                <h3>Satılan Ürün</h3>
-                                <p class="stat-value" id="products-sold">0</p>
+                            <div class="stat-card">
+                                <div class="stat-icon">🛒</div>
+                                <div class="stat-content">
+                                    <h3>Ürün Geliri</h3>
+                                    <p class="stat-value" id="product-income">0 ₺</p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">⏱️</div>
-                            <div class="stat-content">
-                                <h3>Oynanan</h3>
-                                <p class="stat-value" id="table-hours">0 dk</p>
+                            <div class="stat-card">
+                                <div class="stat-icon">💵</div>
+                                <div class="stat-content">
+                                    <h3>Oyun Geliri</h3>
+                                    <p class="stat-value" id="hourly-income">0 ₺</p>
+                                </div>
                             </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">💵</div>
-                            <div class="stat-content">
-                                <h3>Oyun Geliri</h3>
-                                <p class="stat-value" id="hourly-income">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🛒</div>
-                            <div class="stat-content">
-                                <h3>Ürün Geliri</h3>
-                                <p class="stat-value" id="product-income">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">📊</div>
-                            <div class="stat-content">
-                                <h3>İşlemler</h3>
-                                <p class="stat-value" id="transactions-count">0</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">💎</div>
-                            <div class="stat-content">
-                                <h3>Ürün Karı</h3>
-                                <p class="stat-value" id="product-profit">0.00 ₺</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                        <div class="stat-card">
-                            <div class="stat-icon">🎮</div>
-                            <div class="stat-content">
-                                <h3>Oyun Karı</h3>
-                                <p class="stat-value" id="game-profit">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">📈</div>
-                            <div class="stat-content">
-                                <h3>Toplam Kar</h3>
-                                <p class="stat-value" id="total-profit">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
-                            <div class="stat-icon">💳</div>
-                            <div class="stat-content">
-                                <h3>Bugün Verilen Veresiye</h3>
-                                <p class="stat-value" id="credit-given-today">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="background: #f8d7da; border-color: #dc3545;">
-                            <div class="stat-icon">📋</div>
-                            <div class="stat-content">
-                                <h3>Toplam Veresiye</h3>
-                                <p class="stat-value" id="total-credit-balance">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
-                            <div class="stat-icon">💸</div>
-                            <div class="stat-content">
-                                <h3>Toplam Gider</h3>
-                                <p class="stat-value" id="total-expenses">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="background: #d1ecf1; border-color: #0c5460;">
-                            <div class="stat-icon">📊</div>
-                            <div class="stat-content">
-                                <h3>Net Kar</h3>
-                                <p class="stat-value" id="net-profit">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="background: #d4edda; border-color: #28a745;">
-                            <div class="stat-icon">📈</div>
-                            <div class="stat-content">
-                                <h3>Aylık Gelir</h3>
-                                <p class="stat-value" id="monthly-income">0.00 ₺</p>
-                            </div>
-                        </div>
-                        <div class="stat-card" style="background: #f8d7da; border-color: #dc3545;">
-                            <div class="stat-icon">📉</div>
-                            <div class="stat-content">
-                                <h3>Aylık Gider</h3>
-                                <p class="stat-value" id="monthly-expenses">0.00 ₺</p>
+                            <div class="stat-card" style="background: #d4edda; border-color: #28a745;">
+                                <div class="stat-icon">💰</div>
+                                <div class="stat-content">
+                                    <h3>Alınan Veresiye</h3>
+                                    <p class="stat-value" id="credit-received-today">0 ₺</p>
+                                </div>
                             </div>
                         </div>
                     </div>
 
+                    <!-- Cost & Profit Section -->
+                    <div class="report-section">
+                        <h3 class="report-section-title">📈 KAR ANALİZİ</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
+                                <div class="stat-icon">💸</div>
+                                <div class="stat-content">
+                                    <h3>Ürün Maliyeti</h3>
+                                    <p class="stat-value" id="product-cost">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
+                                <div class="stat-icon">💸</div>
+                                <div class="stat-content">
+                                    <h3>Toplam Gider</h3>
+                                    <p class="stat-value" id="total-expenses">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #d4edda; border-color: #28a745;">
+                                <div class="stat-icon">💎</div>
+                                <div class="stat-content">
+                                    <h3>Brüt Kar</h3>
+                                    <p class="stat-value" id="gross-profit">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #d1ecf1; border-color: #0c5460;">
+                                <div class="stat-icon">📊</div>
+                                <div class="stat-content">
+                                    <h3>Net Kar</h3>
+                                    <p class="stat-value" id="net-profit">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #e7f3ff; border-color: #3498db;">
+                                <div class="stat-icon">📈</div>
+                                <div class="stat-content">
+                                    <h3>Kar Marjı</h3>
+                                    <p class="stat-value" id="profit-margin">0%</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Credit Management Section -->
+                    <div class="report-section">
+                        <h3 class="report-section-title">💳 VERESİYE YÖNETİMİ</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card" style="background: #fff3cd; border-color: #ffc107;">
+                                <div class="stat-icon">💳</div>
+                                <div class="stat-content">
+                                    <h3>Verilen Veresiye</h3>
+                                    <p class="stat-value" id="credit-given-today">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #d4edda; border-color: #28a745;">
+                                <div class="stat-icon">💰</div>
+                                <div class="stat-content">
+                                    <h3>Alınan Veresiye</h3>
+                                    <p class="stat-value" id="credit-received-display">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #f8d7da; border-color: #dc3545;">
+                                <div class="stat-icon">📋</div>
+                                <div class="stat-content">
+                                    <h3>Net Veresiye</h3>
+                                    <p class="stat-value" id="net-credit">0 ₺</p>
+                                </div>
+                            </div>
+                            <div class="stat-card" style="background: #f8d7da; border-color: #dc3545;">
+                                <div class="stat-icon">📋</div>
+                                <div class="stat-content">
+                                    <h3>Toplam Veresiye Bakiyesi</h3>
+                                    <p class="stat-value" id="total-credit-balance">0 ₺</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Operational Metrics Section -->
+                    <div class="report-section">
+                        <h3 class="report-section-title">📊 OPERASYONEL METRİKLER</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon">📦</div>
+                                <div class="stat-content">
+                                    <h3>Satılan Ürün Adedi</h3>
+                                    <p class="stat-value" id="products-sold">0</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">⏱️</div>
+                                <div class="stat-content">
+                                    <h3>Masa Kullanım Süresi</h3>
+                                    <p class="stat-value" id="table-hours">0 dk</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">📊</div>
+                                <div class="stat-content">
+                                    <h3>İşlem Sayısı</h3>
+                                    <p class="stat-value" id="transactions-count">0</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Section -->
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <h3>Gelir Dağılımı</h3>
+                            <canvas id="income-chart"></canvas>
+                        </div>
+                        <div class="chart-card">
+                            <h3>En Çok Satılan Ürünler</h3>
+                            <canvas id="products-chart"></canvas>
+                        </div>
+                    </div>
 
                     <!-- Table Usage Details -->
                     <div class="table-usage-section">
@@ -224,11 +264,6 @@
                         <div id="table-usage-list"></div>
                     </div>
 
-                    <!-- Manual Sessions -->
-                    <div class="table-usage-section">
-                        <h3>Manuel Oyun Kayıtları</h3>
-                        <div id="manual-sessions-list"></div>
-                    </div>
                 </div>
             </section>
         </main>
