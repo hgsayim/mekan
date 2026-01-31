@@ -83,7 +83,7 @@ html {
 }
 
 main {
-    padding-top: var(--header-gap);
+    padding-top: calc(var(--header-gap) + 20px);
 }
 
 header {
@@ -147,98 +147,6 @@ header::before {
     gap: 8px;
     flex-shrink: 0;
     margin-left: auto;
-}
-
-/* Sync Indicator */
-.sync-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    background: rgba(52, 152, 219, 0.1);
-    font-size: 0.8rem;
-    transition: all 0.3s ease;
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.sync-indicator.syncing {
-    background: rgba(52, 152, 219, 0.15);
-}
-
-.sync-indicator.syncing .sync-icon {
-    animation: spin 1s linear infinite;
-}
-
-.sync-indicator.error {
-    background: rgba(231, 76, 60, 0.1);
-}
-
-.sync-indicator.offline {
-    background: rgba(149, 165, 166, 0.1);
-}
-
-.sync-icon {
-    font-size: 0.9rem;
-    display: inline-block;
-    line-height: 1;
-}
-
-.sync-status {
-    font-weight: 600;
-    color: var(--primary-color);
-    font-size: 0.8rem;
-}
-
-[data-theme="dark"] .sync-indicator {
-    background: rgba(74, 158, 255, 0.15);
-}
-
-[data-theme="dark"] .sync-indicator.syncing {
-    background: rgba(74, 158, 255, 0.2);
-}
-
-[data-theme="dark"] .sync-indicator.error {
-    background: rgba(231, 76, 60, 0.2);
-}
-
-[data-theme="dark"] .sync-indicator.offline {
-    background: rgba(149, 165, 166, 0.15);
-}
-
-[data-theme="dark"] .sync-status {
-    color: var(--dark-text-primary);
-}
-
-.sync-indicator.error .sync-status {
-    color: var(--danger-color);
-}
-
-.sync-indicator.offline .sync-status {
-    color: #7f8c8d;
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* Mobile: Hide sync status text, show only icon */
-@media (max-width: 540px) {
-    .sync-indicator {
-        padding: 6px 8px;
-        min-width: 32px;
-        justify-content: center;
-    }
-    
-    .sync-status {
-        display: none;
-    }
-    
-    .sync-icon {
-        font-size: 1rem;
-    }
 }
 
 .instant-sale-btn {
@@ -313,7 +221,7 @@ header h1 {
 #tables-container,
 #products-container,
 #customers-container {
-    margin-top: 0;
+    margin-top: 24px;
 }
 
 /* Add cards (tables/products/customers) */
