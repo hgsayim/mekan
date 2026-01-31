@@ -25,7 +25,7 @@
     <div class="app-container">
         <header id="main-header" style="display: none;">
             <div class="header-content">
-                <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span></h1>
+                <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span> <button id="instant-sale-btn" class="instant-sale-header-btn" title="Anlık Satış">⚡</button></h1>
                 <nav class="main-nav-compact">
                     <button class="menu-toggle" id="menu-toggle">☰ Menü</button>
                     <div class="menu-dropdown" id="menu-dropdown">
@@ -410,6 +410,16 @@
                 <label>
                     Masa Adı:
                     <input type="text" id="table-name" required>
+                </label>
+                <label>
+                    Kategori:
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="table-category" style="flex: 1;">
+                            <option value="">Kategori Seçin</option>
+                        </select>
+                        <input type="text" id="table-category-new" placeholder="Yeni kategori" style="flex: 1; display: none;">
+                        <button type="button" id="table-category-add-btn" class="btn btn-secondary" style="padding: 8px 12px;">+</button>
+                    </div>
                 </label>
                 <label>
                     Masa Tipi:

@@ -179,6 +179,7 @@ class MekanApp {
         this._pollSyncInterval = null;
         this._cachedProducts = null; // Cache products to avoid reloading on every modal open
         this._stockWarningChecked = false; // Track if stock warnings have been checked
+        this._tableCategories = []; // Cache table categories
         this.init();
     }
 
@@ -633,6 +634,38 @@ class MekanApp {
             e.preventDefault();
             this.saveTable();
         });
+        }
+
+        // Category add button
+        const categoryAddBtn = document.getElementById('table-category-add-btn');
+        const categorySelect = document.getElementById('table-category');
+        const categoryNewInput = document.getElementById('table-category-new');
+        if (categoryAddBtn && categorySelect && categoryNewInput) {
+            categoryAddBtn.addEventListener('click', () => {
+                if (categoryNewInput.style.display === 'none') {
+                    categoryNewInput.style.display = 'block';
+                    categorySelect.style.display = 'none';
+                    categoryNewInput.focus();
+                } else {
+                    const newCategory = categoryNewInput.value.trim();
+                    if (newCategory) {
+                        this.addTableCategory(newCategory);
+                        categoryNewInput.value = '';
+                        categoryNewInput.style.display = 'none';
+                        categorySelect.style.display = 'block';
+                        this.loadTableCategories();
+                    }
+                }
+            });
+        }
+
+        // Instant sale button in header
+        const instantSaleBtn = document.getElementById('instant-sale-btn');
+        if (instantSaleBtn) {
+            instantSaleBtn.addEventListener('click', async () => {
+                this.hapticFeedback('light');
+                await this.openInstantSaleModal();
+            });
         }
 
         // Product form
@@ -1200,6 +1233,72 @@ class MekanApp {
         }
     }
 
+    async openInstantSaleModal() {
+        // Ensure instant sale table exists
+        await this.ensureInstantSaleTable();
+        
+        // Get instant sale table
+        const tables = await this.db.getAllTables();
+        const instantTable = tables.find(t => t.name === 'ANLIK SATIŞ');
+        
+        if (!instantTable) {
+            await this.appAlert('Anlık satış masası bulunamadı.', 'Hata');
+            return;
+        }
+        
+        // Open the table modal
+        await this.openTableModal(instantTable.id, { preSync: true });
+    }
+
+    async loadTableCategories() {
+        try {
+            const tables = await this.db.getAllTables();
+            const categories = new Set();
+            tables.forEach(table => {
+                if (table.category && table.category.trim()) {
+                    categories.add(table.category.trim());
+                }
+            });
+            
+            // Sort categories
+            this._tableCategories = Array.from(categories).sort((a, b) => 
+                a.localeCompare(b, 'tr', { sensitivity: 'base' })
+            );
+            
+            // Populate dropdown
+            const categorySelect = document.getElementById('table-category');
+            if (categorySelect) {
+                const currentValue = categorySelect.value;
+                categorySelect.innerHTML = '<option value="">Kategori Seçin</option>';
+                this._tableCategories.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.textContent = cat;
+                    categorySelect.appendChild(option);
+                });
+                if (currentValue) {
+                    categorySelect.value = currentValue;
+                }
+            }
+        } catch (error) {
+            console.error('Kategoriler yüklenirken hata:', error);
+        }
+    }
+
+    addTableCategory(category) {
+        if (!category || !category.trim()) return;
+        const trimmed = category.trim();
+        if (!this._tableCategories) {
+            this._tableCategories = [];
+        }
+        if (!this._tableCategories.includes(trimmed)) {
+            this._tableCategories.push(trimmed);
+            this._tableCategories.sort((a, b) => 
+                a.localeCompare(b, 'tr', { sensitivity: 'base' })
+            );
+        }
+    }
+
     async switchView(viewName) {
         // Haptic feedback for view switch
         this.hapticFeedback('light');
@@ -1365,22 +1464,23 @@ class MekanApp {
                 return;
             }
 
-        // Sort tables: instant table first, then hourly tables, then regular tables
+        // Filter out instant tables (they won't be shown as cards)
+        tables = tables.filter(t => t.type !== 'instant');
+
+        // Sort tables by category, then by name
         tables.sort((a, b) => {
-            // Instant table always first
-            if (a.type === 'instant' && b.type !== 'instant') return -1;
-            if (a.type !== 'instant' && b.type === 'instant') return 1;
+            // First sort by category (null/empty categories go last)
+            const catA = (a.category || '').trim();
+            const catB = (b.category || '').trim();
             
-            // If both are instant, keep order
-            if (a.type === 'instant' && b.type === 'instant') {
-                return a.name === 'ANLIK SATIŞ' ? -1 : 1;
+            if (catA && !catB) return -1;
+            if (!catA && catB) return 1;
+            if (catA && catB) {
+                const catCompare = catA.localeCompare(catB, 'tr', { sensitivity: 'base' });
+                if (catCompare !== 0) return catCompare;
             }
             
-            // Then hourly tables before regular
-            if (a.type === 'hourly' && b.type !== 'hourly') return -1;
-            if (a.type !== 'hourly' && b.type === 'hourly') return 1;
-            
-            // If same type, sort alphabetically by name
+            // Within same category, sort by name
             return a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' });
         });
 
@@ -1472,9 +1572,35 @@ class MekanApp {
             }
         }
 
-        // Create table cards - need to await async createTableCard
-        const tableCards = await Promise.all(tables.map(table => this.createTableCard(table)));
-        container.innerHTML = tableCards.join('') + this.createAddTableCard();
+        // Group tables by category
+        const tablesByCategory = {};
+        tables.forEach(table => {
+            const category = (table.category || '').trim() || 'Kategorisiz';
+            if (!tablesByCategory[category]) {
+                tablesByCategory[category] = [];
+            }
+            tablesByCategory[category].push(table);
+        });
+
+        // Render tables grouped by category
+        let html = '';
+        const categories = Object.keys(tablesByCategory).sort((a, b) => {
+            if (a === 'Kategorisiz') return 1;
+            if (b === 'Kategorisiz') return -1;
+            return a.localeCompare(b, 'tr', { sensitivity: 'base' });
+        });
+
+        for (const category of categories) {
+            if (category !== 'Kategorisiz') {
+                html += `<div class="table-category-header"><h3>${category}</h3></div>`;
+            }
+            const categoryTables = tablesByCategory[category];
+            const categoryCards = await Promise.all(categoryTables.map(table => this.createTableCard(table)));
+            html += categoryCards.join('');
+        }
+
+        html += this.createAddTableCard();
+        container.innerHTML = html;
 
         const addCard = document.getElementById('add-table-card');
         if (addCard) addCard.onclick = () => this.openTableFormModal();
@@ -2190,6 +2316,9 @@ class MekanApp {
         const title = document.getElementById('table-form-modal-title');
         const form = document.getElementById('table-form');
         
+        // Load and populate categories
+        await this.loadTableCategories();
+        
         if (table) {
             // Don't allow editing instant sale table
             if (table.type === 'instant') {
@@ -2202,6 +2331,7 @@ class MekanApp {
             document.getElementById('table-type').value = table.type;
             document.getElementById('table-hourly-rate').value = table.hourlyRate || 0;
             document.getElementById('table-icon').value = table.icon || (table.type === 'hourly' ? '🎱' : '🪑');
+            document.getElementById('table-category').value = table.category || '';
             this._syncHourlyRateFieldForTableType(table.type);
         } else {
             title.textContent = 'Masa Ekle';
@@ -2211,6 +2341,7 @@ class MekanApp {
             document.getElementById('table-type').value = 'regular';
             this._syncHourlyRateFieldForTableType('regular');
             document.getElementById('table-icon').value = '🪑'; // Default icon for new tables
+            document.getElementById('table-category').value = '';
             // Icon label is always visible now
         }
         
@@ -2223,10 +2354,12 @@ class MekanApp {
         const type = document.getElementById('table-type').value;
         const hourlyRate = parseFloat(document.getElementById('table-hourly-rate').value) || 0;
         const icon = document.getElementById('table-icon').value || '🎱';
+        const category = document.getElementById('table-category').value || null;
 
         const tableData = {
             name,
             type,
+            category,
             hourlyRate: type === 'hourly' ? hourlyRate : 0,
             icon: icon || (type === 'hourly' ? '🎱' : '🪑'), // Store icon for all tables
             openTime: null,
@@ -2249,8 +2382,9 @@ class MekanApp {
                 tableData.checkTotal = existingTable.checkTotal;
                 tableData.hourlyTotal = existingTable.hourlyTotal;
                 tableData.salesTotal = existingTable.salesTotal;
-                // Update icon for all tables
+                // Update icon and category for all tables
                 tableData.icon = icon || (type === 'hourly' ? '🎱' : '🪑');
+                tableData.category = category;
                 await this.db.updateTable(tableData);
             } else {
                 await this.db.addTable(tableData);
@@ -2277,8 +2411,13 @@ class MekanApp {
         // CRITICAL: Clear modal content IMMEDIATELY before opening to prevent old data from showing
         let productsGridEl = document.getElementById('table-products-grid');
         if (productsGridEl) {
-            productsGridEl.innerHTML = '';
-            productsGridEl.removeAttribute('data-table-id');
+            // Remove event listeners by cloning the element (removes all listeners)
+            const newGrid = productsGridEl.cloneNode(false);
+            productsGridEl.parentNode.replaceChild(newGrid, productsGridEl);
+            newGrid.id = 'table-products-grid';
+            newGrid.removeAttribute('data-table-id');
+            newGrid.removeAttribute('data-events-bound');
+            productsGridEl = newGrid;
         }
         let salesListEl = document.getElementById('table-sales-list');
         if (salesListEl) salesListEl.innerHTML = '';
@@ -2699,8 +2838,12 @@ class MekanApp {
         
         const productsGridEl = document.getElementById('table-products-grid');
         if (productsGridEl) {
-            productsGridEl.innerHTML = '';
-            productsGridEl.removeAttribute('data-table-id');
+            // Remove event listeners by cloning the element (removes all listeners)
+            const newGrid = productsGridEl.cloneNode(false);
+            productsGridEl.parentNode.replaceChild(newGrid, productsGridEl);
+            newGrid.id = 'table-products-grid';
+            newGrid.removeAttribute('data-table-id');
+            newGrid.removeAttribute('data-events-bound');
         }
         
         const modalTitleEl = document.getElementById('table-modal-title');
@@ -2954,8 +3097,13 @@ class MekanApp {
     }
 
     setupProductCardEvents(container) {
-        if (this._tableProductsDelegationBound) return;
-        this._tableProductsDelegationBound = true;
+        // Remove old event listeners if they exist
+        // We'll use a data attribute to track if events are bound to this specific container
+        if (container.dataset.eventsBound === 'true') {
+            // Events already bound to this container, skip
+            return;
+        }
+        container.dataset.eventsBound = 'true';
         
         // Track swipe state per product card
         const swipeState = new Map();
