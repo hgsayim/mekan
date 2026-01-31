@@ -179,7 +179,6 @@ class MekanApp {
         this._pollSyncInterval = null;
         this._cachedProducts = null; // Cache products to avoid reloading on every modal open
         this._stockWarningChecked = false; // Track if stock warnings have been checked
-        this._tableCategories = []; // Cache table categories
         this.init();
     }
 
@@ -634,29 +633,6 @@ class MekanApp {
             e.preventDefault();
             this.saveTable();
         });
-        }
-
-        // Category add button
-        const categoryAddBtn = document.getElementById('table-category-add-btn');
-        const categorySelect = document.getElementById('table-category');
-        const categoryNewInput = document.getElementById('table-category-new');
-        if (categoryAddBtn && categorySelect && categoryNewInput) {
-            categoryAddBtn.addEventListener('click', () => {
-                if (categoryNewInput.style.display === 'none') {
-                    categoryNewInput.style.display = 'block';
-                    categorySelect.style.display = 'none';
-                    categoryNewInput.focus();
-                } else {
-                    const newCategory = categoryNewInput.value.trim();
-                    if (newCategory) {
-                        this.addTableCategory(newCategory);
-                        categoryNewInput.value = '';
-                        categoryNewInput.style.display = 'none';
-                        categorySelect.style.display = 'block';
-                        this.loadTableCategories();
-                    }
-                }
-            });
         }
 
         // Instant sale button in header
@@ -1250,54 +1226,6 @@ class MekanApp {
         await this.openTableModal(instantTable.id, { preSync: true });
     }
 
-    async loadTableCategories() {
-        try {
-            const tables = await this.db.getAllTables();
-            const categories = new Set();
-            tables.forEach(table => {
-                if (table.category && table.category.trim()) {
-                    categories.add(table.category.trim());
-                }
-            });
-            
-            // Sort categories
-            this._tableCategories = Array.from(categories).sort((a, b) => 
-                a.localeCompare(b, 'tr', { sensitivity: 'base' })
-            );
-            
-            // Populate dropdown
-            const categorySelect = document.getElementById('table-category');
-            if (categorySelect) {
-                const currentValue = categorySelect.value;
-                categorySelect.innerHTML = '<option value="">Kategori Seçin</option>';
-                this._tableCategories.forEach(cat => {
-                    const option = document.createElement('option');
-                    option.value = cat;
-                    option.textContent = cat;
-                    categorySelect.appendChild(option);
-                });
-                if (currentValue) {
-                    categorySelect.value = currentValue;
-                }
-            }
-        } catch (error) {
-            console.error('Kategoriler yüklenirken hata:', error);
-        }
-    }
-
-    addTableCategory(category) {
-        if (!category || !category.trim()) return;
-        const trimmed = category.trim();
-        if (!this._tableCategories) {
-            this._tableCategories = [];
-        }
-        if (!this._tableCategories.includes(trimmed)) {
-            this._tableCategories.push(trimmed);
-            this._tableCategories.sort((a, b) => 
-                a.localeCompare(b, 'tr', { sensitivity: 'base' })
-            );
-        }
-    }
 
     async switchView(viewName) {
         // Haptic feedback for view switch
@@ -1467,20 +1395,20 @@ class MekanApp {
         // Filter out instant tables (they won't be shown as cards)
         tables = tables.filter(t => t.type !== 'instant');
 
-        // Sort tables by category, then by name
+        // Sort tables: 1-hourly first, 2-by icon, 3-alphabetically
         tables.sort((a, b) => {
-            // First sort by category (null/empty categories go last)
-            const catA = (a.category || '').trim();
-            const catB = (b.category || '').trim();
+            // 1. Hourly tables first
+            if (a.type === 'hourly' && b.type !== 'hourly') return -1;
+            if (a.type !== 'hourly' && b.type === 'hourly') return 1;
             
-            if (catA && !catB) return -1;
-            if (!catA && catB) return 1;
-            if (catA && catB) {
-                const catCompare = catA.localeCompare(catB, 'tr', { sensitivity: 'base' });
-                if (catCompare !== 0) return catCompare;
+            // 2. Within same type, sort by icon
+            const iconA = (a.icon || '').trim();
+            const iconB = (b.icon || '').trim();
+            if (iconA !== iconB) {
+                return iconA.localeCompare(iconB, 'tr', { sensitivity: 'base' });
             }
             
-            // Within same category, sort by name
+            // 3. Same icon, sort alphabetically by name
             return a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' });
         });
 
@@ -2316,9 +2244,6 @@ class MekanApp {
         const title = document.getElementById('table-form-modal-title');
         const form = document.getElementById('table-form');
         
-        // Load and populate categories
-        await this.loadTableCategories();
-        
         if (table) {
             // Don't allow editing instant sale table
             if (table.type === 'instant') {
@@ -2331,7 +2256,6 @@ class MekanApp {
             document.getElementById('table-type').value = table.type;
             document.getElementById('table-hourly-rate').value = table.hourlyRate || 0;
             document.getElementById('table-icon').value = table.icon || (table.type === 'hourly' ? '🎱' : '🪑');
-            document.getElementById('table-category').value = table.category || '';
             this._syncHourlyRateFieldForTableType(table.type);
         } else {
             title.textContent = 'Masa Ekle';
@@ -2341,7 +2265,6 @@ class MekanApp {
             document.getElementById('table-type').value = 'regular';
             this._syncHourlyRateFieldForTableType('regular');
             document.getElementById('table-icon').value = '🪑'; // Default icon for new tables
-            document.getElementById('table-category').value = '';
             // Icon label is always visible now
         }
         
@@ -2354,12 +2277,10 @@ class MekanApp {
         const type = document.getElementById('table-type').value;
         const hourlyRate = parseFloat(document.getElementById('table-hourly-rate').value) || 0;
         const icon = document.getElementById('table-icon').value || '🎱';
-        const category = document.getElementById('table-category').value || null;
 
         const tableData = {
             name,
             type,
-            category,
             hourlyRate: type === 'hourly' ? hourlyRate : 0,
             icon: icon || (type === 'hourly' ? '🎱' : '🪑'), // Store icon for all tables
             openTime: null,
@@ -2382,9 +2303,8 @@ class MekanApp {
                 tableData.checkTotal = existingTable.checkTotal;
                 tableData.hourlyTotal = existingTable.hourlyTotal;
                 tableData.salesTotal = existingTable.salesTotal;
-                // Update icon and category for all tables
+                // Update icon for all tables
                 tableData.icon = icon || (type === 'hourly' ? '🎱' : '🪑');
-                tableData.category = category;
                 await this.db.updateTable(tableData);
             } else {
                 await this.db.addTable(tableData);
@@ -2411,13 +2331,10 @@ class MekanApp {
         // CRITICAL: Clear modal content IMMEDIATELY before opening to prevent old data from showing
         let productsGridEl = document.getElementById('table-products-grid');
         if (productsGridEl) {
-            // Remove event listeners by cloning the element (removes all listeners)
-            const newGrid = productsGridEl.cloneNode(false);
-            productsGridEl.parentNode.replaceChild(newGrid, productsGridEl);
-            newGrid.id = 'table-products-grid';
-            newGrid.removeAttribute('data-table-id');
-            newGrid.removeAttribute('data-events-bound');
-            productsGridEl = newGrid;
+            // Clear content and reset attributes (event listeners are on container, not children)
+            productsGridEl.innerHTML = '';
+            productsGridEl.removeAttribute('data-table-id');
+            productsGridEl.removeAttribute('data-events-bound');
         }
         let salesListEl = document.getElementById('table-sales-list');
         if (salesListEl) salesListEl.innerHTML = '';
@@ -2838,12 +2755,10 @@ class MekanApp {
         
         const productsGridEl = document.getElementById('table-products-grid');
         if (productsGridEl) {
-            // Remove event listeners by cloning the element (removes all listeners)
-            const newGrid = productsGridEl.cloneNode(false);
-            productsGridEl.parentNode.replaceChild(newGrid, productsGridEl);
-            newGrid.id = 'table-products-grid';
-            newGrid.removeAttribute('data-table-id');
-            newGrid.removeAttribute('data-events-bound');
+            // Clear content and reset attributes (event listeners are on container, not children)
+            productsGridEl.innerHTML = '';
+            productsGridEl.removeAttribute('data-table-id');
+            productsGridEl.removeAttribute('data-events-bound');
         }
         
         const modalTitleEl = document.getElementById('table-modal-title');

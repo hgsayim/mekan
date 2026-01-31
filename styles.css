@@ -1041,28 +1041,6 @@ header h1 {
     100% { background-position: -200% 0; }
 }
 
-.table-category-header {
-    grid-column: 1 / -1;
-    margin: 20px 0 10px 0;
-    padding-bottom: 8px;
-    border-bottom: 2px solid var(--border-color);
-}
-
-.table-category-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-}
-
-[data-theme="dark"] .table-category-header {
-    border-bottom-color: var(--dark-border);
-}
-
-[data-theme="dark"] .table-category-header h3 {
-    color: var(--dark-text-secondary);
-}
-
 .table-card {
     background: var(--surface-elevated);
     padding: 20px;
