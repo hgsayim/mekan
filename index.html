@@ -4,9 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Keep browser UI (Android Chrome URL/status bar) aligned with the app theme, even in dark-mode -->
-    <meta name="theme-color" content="#ecf0f1">
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ecf0f1">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#ecf0f1">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
     <meta name="mobile-web-app-capable" content="yes">
@@ -254,12 +254,6 @@
             <div class="table-modal-header">
                 <div class="table-modal-titlebar">
                     <h2 id="table-modal-title">Masa</h2>
-                    <!-- Quantity control for all tables (bulk add feature) -->
-                    <div id="instant-qty-controls" class="instant-qty-controls" style="display:none;">
-                        <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-minus" aria-label="Azalt">−</button>
-                        <input id="instant-qty-input" class="instant-qty-input" type="number" min="1" step="1" value="1" inputmode="numeric" />
-                        <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-plus" aria-label="Arttır">+</button>
-                    </div>
                 </div>
                 <button type="button" class="close close-header" aria-label="Geri">
                     <span class="close-ico" aria-hidden="true">❮</span>

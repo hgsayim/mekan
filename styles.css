@@ -32,15 +32,15 @@
     --accent-orange: #f97316;
     --accent-red: #ef4444;
     
-    /* Dark mode variables */
-    --dark-bg: #0a0e1a;
-    --dark-surface: #151b28;
-    --dark-surface-elevated: #1e293b;
-    --dark-text-primary: #f1f5f9;
-    --dark-text-secondary: #94a3b8;
-    --dark-border: #334155;
-    --dark-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
-    --dark-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.4);
+    /* Dark mode variables - AMOLED Black */
+    --dark-bg: #000000;
+    --dark-surface: #0a0a0a;
+    --dark-surface-elevated: #141414;
+    --dark-text-primary: #ffffff;
+    --dark-text-secondary: #a0a0a0;
+    --dark-border: #1a1a1a;
+    --dark-shadow: 0 4px 12px rgba(0, 0, 0, 0.8), 0 2px 4px rgba(0, 0, 0, 0.6);
+    --dark-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.9), 0 4px 8px rgba(0, 0, 0, 0.7);
 }
 
 /* Dark mode */
@@ -4144,6 +4144,21 @@ form textarea:focus {
     align-items: center;
     justify-content: center;
     text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: pan-y;
+}
+
+.product-card-mini.swiping-up {
+    transform: translateY(-8px) scale(0.98);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
+    border-color: var(--secondary-color);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3), 0 2px 6px rgba(59, 130, 246, 0.2);
+}
+
+[data-theme="dark"] .product-card-mini.swiping-up {
+    background: linear-gradient(135deg, rgba(96, 165, 250, 0.2) 0%, rgba(96, 165, 250, 0.1) 100%);
+    border-color: var(--secondary-color);
 }
 
 .product-card-mini::before {

@@ -2138,20 +2138,8 @@ class MekanApp {
             // Render cached products immediately for instant display
             productsGridEl.dataset.tableId = String(tableId);
             productsGridEl.innerHTML = this._cachedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
-            // Bind event delegation if not already bound
-            if (!this._tableProductsDelegationBound) {
-                this._tableProductsDelegationBound = true;
-                productsGridEl.addEventListener('click', async (e) => {
-                    const card = e.target.closest('.product-card-mini');
-                    if (!card) return;
-                    if (card.classList.contains('out-of-stock')) return;
-                    const pid = card.getAttribute('data-product-id');
-                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
-                    if (!pid || !tid) return;
-                    const amount = this.getInstantSaleQty();
-                    this.queueQuickAddToTable(tid, pid, amount);
-                });
-            }
+            // Event delegation is handled in loadTableProducts for swipe support
+            // This ensures both cached and fresh products have the same behavior
         } else if (productsGridEl) {
             productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
         }
@@ -2205,11 +2193,7 @@ class MekanApp {
             // Track current table type for UI behaviors (e.g. instant sale qty)
             this.currentTableType = table.type;
 
-            // Instant sale: show qty controls next to title; default 1 every time modal opens
-            this.setupInstantSaleQtyControls?.();
-            // Show quantity controls for all tables (not just instant sale)
-            this.setInstantSaleQtyControlsVisible?.(true);
-            this.setInstantSaleQty?.(1);
+            // Quantity controls removed - using swipe up gesture instead
 
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
@@ -2548,9 +2532,7 @@ class MekanApp {
         const modalTitleEl = document.getElementById('table-modal-title');
         if (modalTitleEl) modalTitleEl.textContent = 'Masa';
         
-        // Reset quantity controls
-        this.setInstantSaleQtyControlsVisible?.(false);
-        this.setInstantSaleQty?.(1);
+        // Quantity controls removed
         
         document.getElementById('table-modal').classList.remove('active');
         document.body.classList.remove('table-modal-open');
@@ -2603,8 +2585,8 @@ class MekanApp {
                     const pid = card.getAttribute('data-product-id');
                     const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                     if (!pid || !tid) return;
-                    const amount = this.getInstantSaleQty();
-                    this.queueQuickAddToTable(tid, pid, amount);
+                    // Single tap = 1 item (swipe up handled separately)
+                    this.queueQuickAddToTable(tid, pid, 1);
                 });
             }
             return; // Early return - no async operation needed
@@ -2635,11 +2617,8 @@ class MekanApp {
                 const pid = card.getAttribute('data-product-id');
                 const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                 if (!pid || !tid) return;
-                // Fast taps should stack and be processed serially so stock decrements correctly.
-                const amount = (this.currentTableType === 'instant')
-                    ? this.getInstantSaleQty?.()
-                    : 1;
-                this.queueQuickAddToTable(tid, pid, amount);
+                // Single tap = 1 item (swipe up handled separately)
+                this.queueQuickAddToTable(tid, pid, 1);
             });
         }
     }
@@ -7018,8 +6997,17 @@ class MekanApp {
 
     updateThemeColor() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const lightColor = '#ecf0f1';
-        const darkColor = '#1a1a1a';
+        // Get header background color from computed styles
+        const headerEl = document.querySelector('header');
+        let headerColor = '#ffffff';
+        if (headerEl) {
+            const computedStyle = window.getComputedStyle(headerEl);
+            headerColor = computedStyle.backgroundColor || headerColor;
+        }
+        
+        const lightColor = headerColor;
+        const darkColor = '#000000'; // AMOLED black for dark mode
+        
         const themeColor = isDark ? darkColor : lightColor;
         
         // Update all theme-color meta tags
@@ -7028,8 +7016,12 @@ class MekanApp {
             tag.setAttribute('content', themeColor);
         });
         
-        // Update manifest theme_color (requires manifest update, but we can update meta tags)
-        // Note: manifest.json is static, but meta tags work for PWA status bar
+        // Update Android Chrome navigation bar color
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        if (viewportMeta && isDark) {
+            // For Android Chrome, we can use theme-color for both status and navigation bar
+            // The browser will use this for the navigation bar as well
+        }
     }
 
     updateDarkModeIcon() {
