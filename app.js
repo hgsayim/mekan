@@ -190,6 +190,9 @@ class MekanApp {
         this._customersCurrentPage = 0;
         this._customersAllData = null;
         this._customersObserver = null;
+        // Prefetch cache for table modal data (table, products, sales)
+        this._tableModalPrefetchCache = new Map(); // tableId -> { table, products, sales, timestamp }
+        this._tableModalPrefetchTimeout = 10000; // Cache expires after 10 seconds
         this.init();
     }
 
@@ -914,12 +917,16 @@ class MekanApp {
         // Close customer selection modal on close button click
         document.querySelectorAll('.modal .close').forEach(closeBtn => {
             closeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 const modal = e.target.closest('.modal');
                 if (modal && modal.id === 'app-dialog') {
                     // Handled by app dialog itself
                     return;
                 }
-                if (modal) {
+                if (modal && modal.id === 'table-modal') {
+                    this.closeTableModal();
+                } else if (modal) {
                     modal.classList.remove('active');
                 }
             });
@@ -1185,7 +1192,7 @@ class MekanApp {
             products: 'Ürünler',
             customers: 'Müşteriler',
             expenses: 'Giderler',
-            sales: 'Satış Geçmişi',
+            sales: 'Geçmiş',
             daily: 'Rapor'
         };
         const label = map[viewName] || 'Masalar';
@@ -1366,9 +1373,7 @@ class MekanApp {
         const addCard = document.getElementById('add-table-card');
         if (addCard) addCard.onclick = () => this.openTableFormModal();
         
-        // Setup drag and drop for tables
-        this.setupTableDragAndDrop(container);
-        
+        // Setup long press for delete (old way - 3 seconds)
         // Add click listeners - special handling for hourly tables
         tables.forEach(table => {
             const card = document.getElementById(`table-${table.id}`);
@@ -1384,7 +1389,86 @@ class MekanApp {
                 });
             }
             
-            // Card click opens table modal
+            // Long press (3 seconds) to delete table
+            let pressTimer = null;
+            let hasLongPressed = false;
+            const longPressDelay = 3000; // 3 seconds
+            
+            const startLongPress = () => {
+                hasLongPressed = false;
+                // Don't allow deleting instant sale table
+                if (table.type === 'instant') {
+                    return;
+                }
+                pressTimer = setTimeout(async () => {
+                    hasLongPressed = true;
+                    if (await this.appConfirm(`"${table.name}" masasını silmek istediğinize emin misiniz?`, { title: 'Masa Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' })) {
+                        try {
+                            await this.db.deleteTable(table.id);
+                            await this.loadTables();
+                            if (this.currentView === 'daily') {
+                                await this.loadDailyDashboard();
+                            }
+                        } catch (error) {
+                            console.error('Masa silinirken hata:', error);
+                            await this.appAlert('Masa silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+                        }
+                    }
+                    // Reset flag after a short delay to allow cleanup
+                    setTimeout(() => {
+                        hasLongPressed = false;
+                    }, 100);
+                }, longPressDelay);
+            };
+            
+            const cancelLongPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+            
+            // Prefetch table data on touchstart/mousedown for faster modal opening
+            const prefetchTableData = async () => {
+                // Only prefetch if not already cached or cache expired
+                const cached = this._tableModalPrefetchCache.get(table.id);
+                const now = Date.now();
+                if (!cached || (now - cached.timestamp) >= this._tableModalPrefetchTimeout) {
+                    // Prefetch in background (don't await - non-blocking)
+                    Promise.all([
+                        this.db.getTable(table.id).catch(() => null),
+                        this.db.getUnpaidSalesByTable(table.id).catch(() => []),
+                        this.db.getAllProducts().then(products => this.sortProductsByStock(products)).catch(() => [])
+                    ]).then(([tableData, sales, products]) => {
+                        if (tableData) {
+                            this._tableModalPrefetchCache.set(table.id, {
+                                table: tableData,
+                                sales: sales,
+                                products: products,
+                                timestamp: now
+                            });
+                            debugLog(`Prefetched data for table ${table.id}`);
+                        }
+                    }).catch(err => {
+                        console.error('Prefetch error:', err);
+                    });
+                }
+            };
+            
+            // Support both touch and mouse events for long press + prefetch
+            card.addEventListener('touchstart', (e) => {
+                startLongPress();
+                prefetchTableData(); // Prefetch on touchstart
+            }, { passive: true });
+            card.addEventListener('touchend', cancelLongPress);
+            card.addEventListener('touchcancel', cancelLongPress);
+            card.addEventListener('mousedown', (e) => {
+                startLongPress();
+                prefetchTableData(); // Prefetch on mousedown
+            });
+            card.addEventListener('mouseup', cancelLongPress);
+            card.addEventListener('mouseleave', cancelLongPress);
+            
             if (table.type === 'hourly') {
                 // Hourly tables: double-tap to open when closed, single-tap to open modal when open
                 let tapTimer = null;
@@ -1392,10 +1476,14 @@ class MekanApp {
                 const tapDelay = 300; // 300ms window for double tap
                 
                 card.addEventListener('click', async (e) => {
-                    // Don't trigger if in edit mode
-                    if (card.classList.contains('editing')) {
+                    // Don't trigger click if long press was triggered
+                    if (hasLongPressed) {
+                        hasLongPressed = false;
                         return;
                     }
+                    
+                    // Cancel any pending long press
+                    cancelLongPress();
                     
                     e.preventDefault();
                     
@@ -1466,10 +1554,14 @@ class MekanApp {
             } else {
                 // Regular tables: single tap to open modal
                 card.addEventListener('click', (e) => {
-                    // Don't trigger if in edit mode
-                    if (card.classList.contains('editing')) {
+                    // Don't trigger click if long press was triggered
+                    if (hasLongPressed) {
+                        hasLongPressed = false;
                         return;
                     }
+                    
+                    // Cancel any pending long press
+                    cancelLongPress();
                     
                     this.openTableModal(table.id, { preSync: true });
                 });
@@ -1625,9 +1717,8 @@ class MekanApp {
             ? `<button class="table-delay-btn" data-table-id="${effectiveTable.id}" title="Gecikmeli Başlat">⏱</button>`
             : '';
 
-        const sortOrder = effectiveTable.sortOrder !== undefined ? effectiveTable.sortOrder : 9999;
         return `
-            <div class="table-card ${statusClass} ${instantClass}" id="table-${effectiveTable.id}" draggable="true" data-table-id="${effectiveTable.id}" data-sort-order="${sortOrder}">
+            <div class="table-card ${statusClass} ${instantClass}" id="table-${effectiveTable.id}">
                 ${delayedStartBtn}
                 <div class="table-icon">${icon}</div>
                     <h3>${effectiveTable.name}</h3>
@@ -2122,6 +2213,22 @@ class MekanApp {
 
     async openTableModal(tableId, opts = {}) {
         const { preSync = false } = opts || {};
+        
+        // If modal is closing, cancel the closing animation and reset state
+        let tableModalEl = document.getElementById('table-modal');
+        if (tableModalEl && tableModalEl.classList.contains('closing')) {
+            // Cancel closing animation
+            const modalContent = tableModalEl.querySelector('.modal-content');
+            if (modalContent) {
+                modalContent.style.transition = '';
+                modalContent.style.transform = '';
+                modalContent.style.opacity = '';
+                modalContent.style.transformOrigin = '';
+            }
+            tableModalEl.classList.remove('active', 'closing');
+            document.body.classList.remove('table-modal-open');
+        }
+        
         // Clear any existing interval
         if (this.hourlyUpdateInterval) {
             clearInterval(this.hourlyUpdateInterval);
@@ -2154,7 +2261,7 @@ class MekanApp {
         }
 
         // Open modal shell immediately
-        const tableModalEl = document.getElementById('table-modal');
+        tableModalEl = document.getElementById('table-modal');
         if (tableModalEl) {
             const modalContent = tableModalEl.querySelector('.modal-content');
             if (modalContent) {
@@ -2223,18 +2330,36 @@ class MekanApp {
 
         let table = null;
         try {
-            // User request: when opening the table detail screen, refresh DB once beforehand.
-            // While modal is open we avoid background refreshes.
-            if (preSync && typeof this.db?.syncNow === 'function') {
-                try {
-                    await this.db.syncNow();
-                    if (typeof this.db?.syncTablesFull === 'function') {
-                        await this.db.syncTablesFull();
-                    }
-                } catch (_) {}
-            }
+            // Check prefetch cache first
+            const cachedData = this._tableModalPrefetchCache.get(tableId);
+            const now = Date.now();
+            let useCache = false;
+            
+            if (cachedData && (now - cachedData.timestamp) < this._tableModalPrefetchTimeout) {
+                // Cache is valid - use it
+                useCache = true;
+                table = cachedData.table;
+                debugLog(`Using prefetched data for table ${tableId}`);
+            } else {
+                // Cache expired or not available - fetch fresh data
+                if (cachedData) {
+                    this._tableModalPrefetchCache.delete(tableId);
+                }
+                
+                // User request: when opening the table detail screen, refresh DB once beforehand.
+                // While modal is open we avoid background refreshes.
+                if (preSync && typeof this.db?.syncNow === 'function') {
+                    try {
+                        await this.db.syncNow();
+                        if (typeof this.db?.syncTablesFull === 'function') {
+                            await this.db.syncTablesFull();
+                        }
+                    } catch (_) {}
+                }
 
-            table = await this.db.getTable(tableId);
+                // Fetch table data
+                table = await this.db.getTable(tableId);
+            }
             if (!table) {
                 unlockModal();
                 await this.appAlert('Masa bulunamadı.', 'Hata');
@@ -2253,7 +2378,13 @@ class MekanApp {
             }
 
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
-        const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+        // Use cache if available, otherwise fetch
+        let unpaidSales;
+        if (useCache && cachedData.sales) {
+            unpaidSales = cachedData.sales;
+        } else {
+            unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+        }
         const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
 
         // Sync table active status with unpaid sales - but hourly tables must be manually opened
@@ -2431,11 +2562,56 @@ class MekanApp {
             }
         }
 
-        // Load products for selection - always load fresh to ensure consistency
-        await this.loadTableProducts(tableId, { useCache: false });
-
-        // Load sales - wait for it to complete before showing content
-        await this.loadTableSales(tableId);
+        // Load products and sales - use cache if available, otherwise fetch in parallel
+        if (useCache && cachedData.products) {
+            // Render cached products immediately
+            const container = document.getElementById('table-products-grid');
+            if (container && cachedData.products.length > 0) {
+                container.dataset.tableId = String(tableId);
+                container.innerHTML = cachedData.products.map(product => this.createTableProductCard(product, tableId)).join('');
+                // Bind event delegation if not already bound
+                if (!this._tableProductsDelegationBound) {
+                    this._tableProductsDelegationBound = true;
+                    container.addEventListener('click', async (e) => {
+                        const card = e.target.closest('.product-card-mini');
+                        if (!card) return;
+                        if (card.classList.contains('out-of-stock')) return;
+                        const pid = card.getAttribute('data-product-id');
+                        const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                        if (!pid || !tid) return;
+                        const amount = (this.currentTableType === 'instant')
+                            ? this.getInstantSaleQty?.()
+                            : 1;
+                        this.queueQuickAddToTable(tid, pid, amount);
+                    });
+                }
+            }
+            // Render cached sales immediately
+            await this.loadTableSales(tableId);
+        } else {
+            // Fetch fresh data in parallel for better performance
+            const [products, _] = await Promise.all([
+                this.db.getAllProducts().then(products => {
+                    products = this.sortProductsByStock(products);
+                    return products;
+                }),
+                Promise.resolve() // Placeholder for future parallel operations
+            ]);
+            
+            // Load products
+            await this.loadTableProducts(tableId, { useCache: false });
+            
+            // Load sales
+            await this.loadTableSales(tableId);
+            
+            // Update cache for next time
+            this._tableModalPrefetchCache.set(tableId, {
+                table: table,
+                products: products,
+                sales: unpaidSales,
+                timestamp: Date.now()
+            });
+        }
 
         // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
@@ -2598,37 +2774,48 @@ class MekanApp {
         }
         
         const tableModalEl = document.getElementById('table-modal');
-        if (tableModalEl) {
-            // Get table card position for closing animation
-            const tableCard = this.getTableCardEl(this.currentTableId);
-            let cardRect = null;
-            let animationOrigin = { x: '50%', y: '50%' };
-            
-            if (tableCard) {
-                cardRect = tableCard.getBoundingClientRect();
+        if (!tableModalEl) {
+            document.body.classList.remove('table-modal-open');
+            return;
+        }
+        
+        // Don't close if already closing (prevent double close)
+        if (tableModalEl.classList.contains('closing')) {
+            return;
+        }
+        
+        tableModalEl.classList.add('closing');
+        
+        // Get table card position for closing animation
+        const tableCard = this.getTableCardEl(this.currentTableId);
+        let animationOrigin = { x: '50%', y: '50%' };
+        
+        if (tableCard) {
+            const cardRect = tableCard.getBoundingClientRect();
+            animationOrigin = {
+                x: `${cardRect.left + cardRect.width / 2}px`,
+                y: `${cardRect.top + cardRect.height / 2}px`
+            };
+        } else {
+            // For instant sale (no table card), use header button position
+            const instantSaleBtn = document.getElementById('instant-sale-btn');
+            if (instantSaleBtn) {
+                const btnRect = instantSaleBtn.getBoundingClientRect();
                 animationOrigin = {
-                    x: `${cardRect.left + cardRect.width / 2}px`,
-                    y: `${cardRect.top + cardRect.height / 2}px`
+                    x: `${btnRect.left + btnRect.width / 2}px`,
+                    y: `${btnRect.top + btnRect.height / 2}px`
                 };
-            } else {
-                // For instant sale (no table card), use header button position
-                const instantSaleBtn = document.getElementById('instant-sale-btn');
-                if (instantSaleBtn) {
-                    const btnRect = instantSaleBtn.getBoundingClientRect();
-                    animationOrigin = {
-                        x: `${btnRect.left + btnRect.width / 2}px`,
-                        y: `${btnRect.top + btnRect.height / 2}px`
-                    };
-                }
             }
+        }
+        
+        // Animate closing - shrink back to origin position
+        const modalContent = tableModalEl.querySelector('.modal-content');
+        if (modalContent) {
+            // Ensure we have the current transform origin
+            modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
             
-            // Animate closing - shrink back to origin position
-            const modalContent = tableModalEl.querySelector('.modal-content');
-            if (modalContent) {
-                // Ensure we have the current transform origin
-                modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
-                
-                // Start closing animation
+            // Start closing animation - use double requestAnimationFrame for smoother animation
+            requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     modalContent.style.transition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
                     modalContent.style.transform = `scale(0.1) translate(0, 0)`;
@@ -2636,19 +2823,20 @@ class MekanApp {
                     
                     // Remove active class after animation completes
                     setTimeout(() => {
-                        tableModalEl.classList.remove('active');
+                        tableModalEl.classList.remove('active', 'closing');
                         // Reset transform for next open
                         modalContent.style.transition = '';
                         modalContent.style.transform = '';
                         modalContent.style.opacity = '';
                         modalContent.style.transformOrigin = '';
+                        document.body.classList.remove('table-modal-open');
                     }, 350);
                 });
-            } else {
-                tableModalEl.classList.remove('active');
-            }
+            });
+        } else {
+            tableModalEl.classList.remove('active', 'closing');
+            document.body.classList.remove('table-modal-open');
         }
-        document.body.classList.remove('table-modal-open');
         
         // Refresh products cache in background after modal closes
         // This ensures products are up-to-date for the next modal open
@@ -2982,200 +3170,6 @@ class MekanApp {
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
         return `${hours}:${minutes}`;
-    }
-
-    setupProductDragAndDrop(container) {
-        let draggedElement = null;
-        let placeholder = null;
-        
-        // Create placeholder element
-        const createPlaceholder = () => {
-            const placeholderEl = document.createElement('div');
-            placeholderEl.className = 'drag-placeholder';
-            placeholderEl.style.height = '120px';
-            placeholderEl.style.border = '2px dashed rgba(52, 152, 219, 0.5)';
-            placeholderEl.style.borderRadius = '12px';
-            placeholderEl.style.margin = '4px';
-            placeholderEl.style.background = 'rgba(52, 152, 219, 0.1)';
-            return placeholderEl;
-        };
-        
-        container.addEventListener('dragstart', (e) => {
-            const card = e.target.closest('.product-card');
-            if (card && !card.classList.contains('add-card')) {
-                draggedElement = card;
-                card.style.opacity = '0.5';
-                card.style.cursor = 'grabbing';
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', ''); // Required for Firefox
-                
-                // Create placeholder
-                placeholder = createPlaceholder();
-                card.parentNode.insertBefore(placeholder, card);
-            }
-        });
-        
-        container.addEventListener('dragend', (e) => {
-            if (draggedElement) {
-                draggedElement.style.opacity = '';
-                draggedElement.style.cursor = '';
-                if (placeholder && placeholder.parentNode) {
-                    placeholder.parentNode.removeChild(placeholder);
-                }
-                draggedElement = null;
-                placeholder = null;
-            }
-        });
-        
-        container.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            
-            if (!draggedElement || !placeholder) return;
-            
-            const afterElement = this.getDragAfterElement(container, e.clientY);
-            
-            if (afterElement == null) {
-                container.appendChild(placeholder);
-            } else {
-                container.insertBefore(placeholder, afterElement);
-            }
-        });
-        
-        container.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            if (!draggedElement || !placeholder) return;
-            
-            // Move dragged element to placeholder position
-            if (placeholder.parentNode) {
-                placeholder.parentNode.insertBefore(draggedElement, placeholder);
-                placeholder.parentNode.removeChild(placeholder);
-            }
-            
-            const productCards = Array.from(container.querySelectorAll('.product-card:not(.add-card)'));
-            const newOrder = productCards.map((card, index) => ({
-                id: card.getAttribute('data-product-id'),
-                sortOrder: index
-            }));
-            
-            // Update sort order in database
-            for (const item of newOrder) {
-                const product = await this.db.getProduct(item.id);
-                if (product) {
-                    product.sortOrder = item.sortOrder;
-                    await this.db.updateProduct(product);
-                }
-            }
-            
-            draggedElement = null;
-            placeholder = null;
-        });
-    }
-    
-    setupTableDragAndDrop(container) {
-        let draggedElement = null;
-        let placeholder = null;
-        
-        // Create placeholder element
-        const createPlaceholder = () => {
-            const placeholderEl = document.createElement('div');
-            placeholderEl.className = 'drag-placeholder';
-            placeholderEl.style.height = '80px';
-            placeholderEl.style.border = '2px dashed rgba(52, 152, 219, 0.5)';
-            placeholderEl.style.borderRadius = '12px';
-            placeholderEl.style.margin = '4px';
-            placeholderEl.style.background = 'rgba(52, 152, 219, 0.1)';
-            return placeholderEl;
-        };
-        
-        container.addEventListener('dragstart', (e) => {
-            const card = e.target.closest('.table-card');
-            if (card && !card.classList.contains('add-card')) {
-                draggedElement = card;
-                card.style.opacity = '0.5';
-                card.style.cursor = 'grabbing';
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', ''); // Required for Firefox
-                
-                // Create placeholder
-                placeholder = createPlaceholder();
-                card.parentNode.insertBefore(placeholder, card);
-            }
-        });
-        
-        container.addEventListener('dragend', (e) => {
-            if (draggedElement) {
-                draggedElement.style.opacity = '';
-                draggedElement.style.cursor = '';
-                if (placeholder && placeholder.parentNode) {
-                    placeholder.parentNode.removeChild(placeholder);
-                }
-                draggedElement = null;
-                placeholder = null;
-            }
-        });
-        
-        container.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            
-            if (!draggedElement || !placeholder) return;
-            
-            const afterElement = this.getDragAfterElement(container, e.clientY);
-            
-            if (afterElement == null) {
-                container.appendChild(placeholder);
-            } else {
-                container.insertBefore(placeholder, afterElement);
-            }
-        });
-        
-        container.addEventListener('drop', async (e) => {
-            e.preventDefault();
-            if (!draggedElement || !placeholder) return;
-            
-            // Move dragged element to placeholder position
-            if (placeholder.parentNode) {
-                placeholder.parentNode.insertBefore(draggedElement, placeholder);
-                placeholder.parentNode.removeChild(placeholder);
-            }
-            
-            const tableCards = Array.from(container.querySelectorAll('.table-card:not(.add-card)'));
-            const newOrder = tableCards.map((card, index) => {
-                const tableId = card.getAttribute('data-table-id') || card.id.replace('table-', '');
-                return {
-                    id: tableId,
-                    sortOrder: index
-                };
-            });
-            
-            // Update sort order in database
-            for (const item of newOrder) {
-                const table = await this.db.getTable(item.id);
-                if (table) {
-                    table.sortOrder = item.sortOrder;
-                    await this.db.updateTable(table);
-                }
-            }
-            
-            draggedElement = null;
-            placeholder = null;
-        });
-    }
-    
-    getDragAfterElement(container, y) {
-        const draggableElements = [...container.querySelectorAll('.product-card:not(.dragging):not(.add-card), .table-card:not(.dragging):not(.add-card)')];
-        
-        return draggableElements.reduce((closest, child) => {
-            const box = child.getBoundingClientRect();
-            const offset = y - box.top - box.height / 2;
-            
-            if (offset < 0 && offset > closest.offset) {
-                return { offset: offset, element: child };
-            } else {
-                return closest;
-            }
-        }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
     formatHoursToReadable(hours) {
@@ -5811,9 +5805,8 @@ class MekanApp {
             stockText = `Stok: ${product.stock}`;
         }
 
-        const sortOrder = product.sortOrder !== undefined ? product.sortOrder : 9999;
         return `
-            <div class="product-card" draggable="true" data-product-id="${product.id}" data-sort-order="${sortOrder}">
+            <div class="product-card" data-product-id="${product.id}">
                 <div class="product-card-icon">${iconHtml}</div>
                 <div class="product-card-content">
                 <h3>${product.name}</h3>

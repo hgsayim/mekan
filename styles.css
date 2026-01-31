@@ -2832,7 +2832,7 @@ body:has(#auth-modal.modal.active) header {
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 8px;
     padding: 0;
     background: transparent;
     border-radius: 0;
@@ -5299,96 +5299,16 @@ form select:focus {
         display: none !important;
     }
 
-    /* Drag and Drop Styles */
-    .product-card[draggable="true"],
-    .table-card[draggable="true"] {
-        cursor: move;
-        user-select: none;
-    }
-    
-    .product-card[draggable="true"]:hover,
-    .table-card[draggable="true"]:hover {
-        opacity: 0.8;
-    }
-    
-    .product-card.dragging,
-    .table-card.dragging {
-        opacity: 0.5;
-    }
-    
-    .drag-placeholder {
-        transition: all 0.2s ease;
-    }
-    
-    /* Table Edit Mode (iOS style shake) */
-    @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        10%, 30%, 50%, 70%, 90% { transform: translateX(-3px) rotate(-1deg); }
-        20%, 40%, 60%, 80% { transform: translateX(3px) rotate(1deg); }
-    }
-    
-    .table-card.editing {
-        position: relative;
-        z-index: 10;
-        pointer-events: auto;
-    }
-    
-    .table-edit-actions {
-        position: absolute;
-        top: 50%;
-        right: 10px;
-        transform: translateY(-50%);
-        display: flex;
-        gap: 8px;
-        z-index: 11;
-    }
-    
-    .table-edit-btn,
-    .table-delete-btn {
-        width: 44px;
-        height: 44px;
-        border-radius: 50%;
-        border: none;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-        cursor: pointer;
-        transition: transform 0.2s, box-shadow 0.2s;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-    }
-    
-    .table-edit-btn {
-        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
-        color: white;
-    }
-    
-    .table-edit-btn:active {
-        transform: scale(0.95);
-    }
-    
-    .table-delete-btn {
-        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-        color: white;
-    }
-    
-    .table-delete-btn:active {
-        transform: scale(0.95);
-    }
-    
-    [data-theme="dark"] .table-edit-btn {
-        background: linear-gradient(135deg, rgba(74, 158, 255, 0.9) 0%, rgba(52, 152, 219, 0.9) 100%);
-    }
-    
-    [data-theme="dark"] .table-delete-btn {
-        background: linear-gradient(135deg, rgba(231, 76, 60, 0.9) 0%, rgba(192, 57, 43, 0.9) 100%);
-    }
 
     /* "Ürün Seçin" başlığını küçült */
+    #table-products-section {
+        margin-top: 4px !important;
+    }
+    
     #table-products-section h3 {
         font-size: 1rem !important;
-        margin-top: 8px !important;
-        margin-bottom: 8px !important;
+        margin-top: 4px !important;
+        margin-bottom: 4px !important;
     }
 
     /* Table detail product grid: like table cards (4 columns, square) */
