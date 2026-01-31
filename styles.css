@@ -137,7 +137,107 @@ header::before {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 15px;
+    gap: 12px;
+    flex-wrap: nowrap;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Sync Indicator */
+.sync-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(52, 152, 219, 0.1);
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.sync-indicator.syncing {
+    background: rgba(52, 152, 219, 0.15);
+}
+
+.sync-indicator.syncing .sync-icon {
+    animation: spin 1s linear infinite;
+}
+
+.sync-indicator.error {
+    background: rgba(231, 76, 60, 0.1);
+}
+
+.sync-indicator.offline {
+    background: rgba(149, 165, 166, 0.1);
+}
+
+.sync-icon {
+    font-size: 0.9rem;
+    display: inline-block;
+    line-height: 1;
+}
+
+.sync-status {
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 0.8rem;
+}
+
+[data-theme="dark"] .sync-indicator {
+    background: rgba(74, 158, 255, 0.15);
+}
+
+[data-theme="dark"] .sync-indicator.syncing {
+    background: rgba(74, 158, 255, 0.2);
+}
+
+[data-theme="dark"] .sync-indicator.error {
+    background: rgba(231, 76, 60, 0.2);
+}
+
+[data-theme="dark"] .sync-indicator.offline {
+    background: rgba(149, 165, 166, 0.15);
+}
+
+[data-theme="dark"] .sync-status {
+    color: var(--dark-text-primary);
+}
+
+.sync-indicator.error .sync-status {
+    color: var(--danger-color);
+}
+
+.sync-indicator.offline .sync-status {
+    color: #7f8c8d;
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+/* Mobile: Hide sync status text, show only icon */
+@media (max-width: 540px) {
+    .sync-indicator {
+        padding: 6px 8px;
+        min-width: 32px;
+        justify-content: center;
+    }
+    
+    .sync-status {
+        display: none;
+    }
+    
+    .sync-icon {
+        font-size: 1rem;
+    }
 }
 
 .instant-sale-btn {
@@ -688,21 +788,23 @@ header h1 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-    gap: 15px;
-    padding: 15px 20px;
+    margin-bottom: 16px;
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 10px 14px;
     background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
-    border-radius: 12px;
+    border-radius: 10px;
     border: 1px solid rgba(52, 152, 219, 0.1);
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
 .view-header h2 {
-    font-size: 1.8rem;
+    font-size: 1.3rem;
     color: var(--primary-color);
     font-weight: 700;
     margin: 0;
+    white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .filter-controls {
@@ -721,20 +823,20 @@ header h1 {
 /* Report Controls Styles */
 .report-controls {
     display: flex;
-    gap: 10px;
-    align-items: flex-end;
-    flex-wrap: wrap;
-    flex: 1;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: nowrap;
+    flex: 0 0 auto;
     justify-content: flex-end;
     max-height: none;
 }
 
 .report-date-controls {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     align-items: center;
     flex-wrap: nowrap;
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
 }
 
@@ -742,29 +844,29 @@ header h1 {
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 6px;
-    font-size: 0.85rem;
+    gap: 3px;
+    font-size: 0.75rem;
     white-space: nowrap;
 }
 
 .report-date-label-inline span {
     font-weight: 600;
     color: var(--dark-text);
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     white-space: nowrap;
 }
 
 .report-date-input {
-    padding: 8px 10px;
-    border: 2px solid rgba(52, 152, 219, 0.2);
-    border-radius: 6px;
-    font-size: 0.9rem;
+    padding: 5px 6px;
+    border: 1.5px solid rgba(52, 152, 219, 0.2);
+    border-radius: 5px;
+    font-size: 0.8rem;
     background: white;
     color: var(--dark-text);
-    width: 150px;
-    min-width: 120px;
+    width: 110px;
+    min-width: 100px;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .report-date-input:hover {
@@ -779,15 +881,15 @@ header h1 {
 }
 
 .report-btn {
-    padding: 8px 16px;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.8rem;
     font-weight: 600;
     white-space: nowrap;
-    min-width: 90px;
+    min-width: 65px;
     height: fit-content;
     transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .report-btn:hover {
@@ -800,7 +902,7 @@ header h1 {
 }
 
 .btn {
-    padding: 6px 12px;
+    padding: 10px 16px;
     border: none;
     border-radius: 5px;
     cursor: pointer;
@@ -808,6 +910,11 @@ header h1 {
     transition: all 0.3s;
     text-decoration: none;
     display: inline-block;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .btn-primary {
@@ -975,6 +1082,88 @@ header h1 {
     background-size: 200% 100%;
     animation: shimmer 1.2s ease-in-out infinite;
     border: 2px solid rgba(0,0,0,0.03);
+}
+
+/* Empty States */
+.empty-state {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+    min-height: 300px;
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    opacity: 0.6;
+}
+
+.empty-state-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0 0 10px 0;
+}
+
+.empty-state-message {
+    font-size: 1rem;
+    color: #7f8c8d;
+    margin: 0;
+    max-width: 400px;
+}
+
+[data-theme="dark"] .empty-state-title {
+    color: var(--dark-text-primary);
+}
+
+[data-theme="dark"] .empty-state-message {
+    color: var(--dark-text-secondary);
+}
+
+[data-theme="dark"] .empty-state-icon {
+    opacity: 0.5;
+}
+
+/* Progress Bars */
+.progress-bar-container {
+    width: 100%;
+    height: 4px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+[data-theme="dark"] .progress-bar-container {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--secondary-color), var(--primary-color));
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    animation: progress-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+.progress-bar-indeterminate {
+    width: 30%;
+    animation: progress-indeterminate 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
 }
 
 @keyframes shimmer {
@@ -1170,6 +1359,8 @@ header h1 {
     right: 0;
     width: 46px;
     height: 46px;
+    min-width: 44px;
+    min-height: 44px;
     border: none;
     border-radius: 0 12px 0 28px;
     background: var(--danger-color);
@@ -1659,16 +1850,16 @@ header h1 {
 }
 
 .btn-icon {
-    width: 28px;
-    height: 28px;
+    width: 44px;
+    height: 44px;
     padding: 0;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 1.1rem;
     line-height: 1;
-    min-width: 28px;
-    max-width: 28px;
+    min-width: 44px;
+    min-height: 44px;
     flex-shrink: 0;
     border-radius: 4px;
     cursor: pointer;
@@ -1691,7 +1882,7 @@ header h1 {
     padding: 12px;
     border-radius: 12px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
-    border: 2px solid transparent;
+    border: 2px solid rgba(52, 152, 219, 0.15);
     cursor: pointer;
     transition: all 0.3s ease;
     aspect-ratio: 1;
@@ -1703,6 +1894,22 @@ header h1 {
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
+}
+
+/* Light mode: ensure text is readable on dynamic backgrounds */
+.customer-card[style*="background"] {
+    border: 2px solid rgba(52, 152, 219, 0.25) !important;
+}
+
+.customer-card[style*="background"] h3 {
+    color: #2c3e50 !important;
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+}
+
+.customer-card[style*="background"] .customer-card-balance {
+    background: rgba(231, 76, 60, 0.15) !important;
+    color: #c0392b !important;
+    border: 1px solid rgba(231, 76, 60, 0.3) !important;
 }
 
 .customer-card:hover {
@@ -1742,6 +1949,8 @@ header h1 {
     line-height: 1.2;
     word-break: break-word;
     letter-spacing: 0.3px;
+    z-index: 1;
+    position: relative;
 }
 
 .customer-card-balance {
@@ -1756,6 +1965,9 @@ header h1 {
     line-height: 1;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     margin-top: 4px;
+    z-index: 1;
+    position: relative;
+    border: 1px solid rgba(231, 76, 60, 0.2);
 }
 
 .customer-actions {
@@ -4140,19 +4352,20 @@ form select:focus {
 }
 
 .stat-content h3 {
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     color: #7f8c8d;
-    margin-bottom: 3px;
-    font-weight: normal;
+    margin-bottom: 4px;
+    font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
+    line-height: 1.2;
 }
 
 .stat-value {
-    font-size: 1.3rem;
-    font-weight: bold;
+    font-size: 1.25rem;
+    font-weight: 700;
     color: var(--primary-color);
-    line-height: 1.2;
+    line-height: 1.3;
 }
 
 .charts-grid {
@@ -4417,9 +4630,10 @@ form select:focus {
 }
 
 .product-card-mini .quantity-btn {
-    width: 42px;
-    height: 42px;
-    min-width: 42px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     border: 1px solid var(--border-color);
     border-radius: 14px;
     background: var(--primary-color);
@@ -4479,6 +4693,8 @@ form select:focus {
     right: 0;
     width: 50px;
     height: 50px;
+    min-width: 44px;
+    min-height: 44px;
     border: none;
     border-radius: 0 10px 0 30px;
     background: var(--success-color);
@@ -4694,41 +4910,48 @@ form select:focus {
         margin-bottom: 0;
     }
 
-    /* Report controls - more compact on mobile */
+    /* Report controls - compact single row on mobile */
     .report-controls {
-        gap: 0;
-        flex-direction: column;
-        align-items: stretch;
+        gap: 8px;
+        flex-direction: row;
+        align-items: center;
         flex-wrap: nowrap;
         max-height: none;
         width: 100%;
     }
 
     .report-date-controls {
-        flex-direction: column;
-        gap: 12px;
+        flex-direction: row;
+        gap: 8px;
         width: 100%;
+        flex: 1;
+        min-width: 0;
     }
 
     .report-date-label-inline {
         font-size: 0.75rem;
+        gap: 4px;
+        flex: 1;
+        min-width: 0;
     }
 
     .report-date-label-inline span {
         font-size: 0.75rem;
+        white-space: nowrap;
     }
 
     .report-date-input {
-        width: 120px;
-        min-width: 100px;
-        padding: 8px 10px;
-        font-size: 0.85rem;
+        flex: 1;
+        min-width: 0;
+        padding: 6px 8px;
+        font-size: 0.8rem;
     }
 
     .report-btn {
-        padding: 8px 12px;
-        font-size: 0.85rem;
+        padding: 6px 12px;
+        font-size: 0.8rem;
         min-width: 70px;
+        flex-shrink: 0;
     }
 
     .customers-grid {
@@ -4868,14 +5091,16 @@ form select:focus {
 
     /* View header spacing on small screens */
     .view-header {
-        padding: 14px 16px;
-        border-radius: 14px;
-        margin-bottom: 16px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
     .view-header h2 {
-        font-size: 1.5rem;
-        margin-bottom: 12px;
+        font-size: 1.2rem;
+        margin-bottom: 0;
     }
 
     /* Report page mobile optimizations */
@@ -4951,6 +5176,36 @@ form select:focus {
     }
 
     /* Report page optimizations for very small screens (540px) */
+    .report-controls {
+        gap: 6px;
+    }
+
+    .report-date-controls {
+        gap: 6px;
+    }
+
+    .report-date-label-inline {
+        font-size: 0.7rem;
+        gap: 3px;
+    }
+
+    .report-date-label-inline span {
+        font-size: 0.7rem;
+    }
+
+    .report-date-input {
+        flex: 1;
+        min-width: 0;
+        padding: 5px 6px;
+        font-size: 0.75rem;
+    }
+
+    .report-btn {
+        padding: 5px 10px;
+        font-size: 0.75rem;
+        min-width: 60px;
+    }
+
     #daily-view .stats-grid {
         gap: 8px;
     }
@@ -5211,8 +5466,10 @@ form select:focus {
     }
 
     .product-card-mini .product-add-btn-top {
-        width: 42px;
-        height: 42px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
         border-radius: 0 12px 0 28px;
         font-size: 1.5rem;
     }
@@ -5473,8 +5730,10 @@ form select:focus {
         font-size: 0.95rem;
     }
     .product-card-mini .product-add-btn-top {
-        width: 36px;
-        height: 36px;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
         border-radius: 0 12px 0 24px;
         font-size: 1.35rem;
     }

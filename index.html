@@ -26,23 +26,29 @@
         <header id="main-header" style="display: none;">
             <div class="header-content">
                 <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span></h1>
-                <button id="instant-sale-btn" class="instant-sale-btn" title="Peşin">⚡</button>
-                <nav class="main-nav-compact">
-                    <button class="menu-toggle" id="menu-toggle">☰ Menü</button>
-                    <div class="menu-dropdown" id="menu-dropdown">
-                        <button class="nav-btn-compact active" data-view="tables">Masalar</button>
-                        <button class="nav-btn-compact" data-view="products">Ürünler</button>
-                        <button class="nav-btn-compact" data-view="customers">Müşteriler</button>
-                        <button class="nav-btn-compact" data-view="expenses">Giderler</button>
-                        <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
-                        <button class="nav-btn-compact" data-view="daily">Rapor</button>
-                        <div class="menu-divider"></div>
-                        <button class="nav-btn-compact dark-mode-toggle" id="dark-mode-toggle">
-                            <span class="dark-mode-icon">🌙</span>
-                            <span class="dark-mode-text">Karanlık Mod</span>
-                        </button>
+                <div class="header-actions">
+                    <div id="sync-indicator" class="sync-indicator" title="Senkronizasyon durumu">
+                        <span class="sync-icon">🔄</span>
+                        <span class="sync-status">Senkronize</span>
                     </div>
-                </nav>
+                    <button id="instant-sale-btn" class="instant-sale-btn" title="Peşin">⚡</button>
+                    <nav class="main-nav-compact">
+                        <button class="menu-toggle" id="menu-toggle">☰ Menü</button>
+                        <div class="menu-dropdown" id="menu-dropdown">
+                            <button class="nav-btn-compact active" data-view="tables">Masalar</button>
+                            <button class="nav-btn-compact" data-view="products">Ürünler</button>
+                            <button class="nav-btn-compact" data-view="customers">Müşteriler</button>
+                            <button class="nav-btn-compact" data-view="expenses">Giderler</button>
+                            <button class="nav-btn-compact" data-view="sales">Satış Geçmişi</button>
+                            <button class="nav-btn-compact" data-view="daily">Rapor</button>
+                            <div class="menu-divider"></div>
+                            <button class="nav-btn-compact dark-mode-toggle" id="dark-mode-toggle">
+                                <span class="dark-mode-icon">🌙</span>
+                                <span class="dark-mode-text">Karanlık Mod</span>
+                            </button>
+                        </div>
+                    </nav>
+                </div>
                 <button id="pwa-install-btn" class="btn btn-secondary install-btn" style="display: none;">📲 Ana Ekrana Ekle</button>
             </div>
         </header>
@@ -114,7 +120,7 @@
                                 <div class="stat-icon" style="color: white;">📊</div>
                                 <div class="stat-content">
                                     <h3 style="color: rgba(255,255,255,0.9);">TOPLAM GELİR</h3>
-                                    <p class="stat-value" id="total-revenue" style="color: white; font-size: 1.5rem;">0 ₺</p>
+                                    <p class="stat-value" id="total-revenue" style="color: white;">0 ₺</p>
                                 </div>
                             </div>
                             <div class="stat-card">

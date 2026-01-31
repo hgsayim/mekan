@@ -215,7 +215,31 @@ class MekanApp {
         this._tableModalPrefetchTimeout = 10000; // Cache expires after 10 seconds
         this.currentUser = null;
         this.userRole = null; // 'admin' or 'garson'
+        this._hapticEnabled = 'vibrate' in navigator;
+        this._syncState = 'synced'; // 'synced', 'syncing', 'error', 'offline'
+        this._offlineQueue = []; // Queue for offline operations
         this.init();
+    }
+
+    // Haptic feedback for mobile devices
+    hapticFeedback(pattern = 'light') {
+        if (!this._hapticEnabled) return;
+        
+        try {
+            const patterns = {
+                light: 10,      // Light tap
+                medium: 20,     // Medium tap
+                heavy: 30,      // Heavy tap
+                success: [10, 50, 10],  // Success pattern
+                error: [20, 50, 20, 50, 20],  // Error pattern
+                warning: [10, 30, 10]   // Warning pattern
+            };
+            
+            const vibration = patterns[pattern] || patterns.light;
+            navigator.vibrate(vibration);
+        } catch (e) {
+            // Silently fail if vibration is not supported
+        }
     }
 
     // Get current user and role from Supabase
@@ -332,6 +356,8 @@ class MekanApp {
     }
 
     async init() {
+        // Load offline queue on startup
+        await this.loadOfflineQueue();
         try {
             // Get user role first
             await this.getUserRole();
@@ -553,6 +579,228 @@ class MekanApp {
         }
     }
 
+    // Update sync indicator
+    updateSyncIndicator(state = null) {
+        const indicator = document.getElementById('sync-indicator');
+        if (!indicator) return;
+
+        const statusEl = indicator.querySelector('.sync-status');
+        if (!statusEl) return;
+
+        if (state) {
+            this._syncState = state;
+        }
+
+        // Remove all state classes
+        indicator.classList.remove('syncing', 'error', 'offline');
+        
+        switch (this._syncState) {
+            case 'syncing':
+                indicator.classList.add('syncing');
+                statusEl.textContent = 'Senkronize ediliyor...';
+                break;
+            case 'error':
+                indicator.classList.add('error');
+                statusEl.textContent = 'Hata';
+                break;
+            case 'offline':
+                indicator.classList.add('offline');
+                statusEl.textContent = 'Çevrimdışı';
+                break;
+            default:
+                statusEl.textContent = 'Senkronize';
+        }
+    }
+
+    setupSyncIndicator() {
+        // Initial state
+        this.updateSyncIndicator(navigator.onLine ? 'synced' : 'offline');
+        
+        // Listen to online/offline events
+        window.addEventListener('online', () => {
+            this.updateSyncIndicator('syncing');
+            // Process offline queue when coming back online
+            this.processOfflineQueue();
+            // Simulate sync completion after a short delay
+            setTimeout(() => {
+                this.updateSyncIndicator('synced');
+            }, 1000);
+        });
+        
+        window.addEventListener('offline', () => {
+            this.updateSyncIndicator('offline');
+        });
+        
+        // Monitor Supabase connection (if available)
+        if (this.supabase) {
+            // Check connection periodically
+            setInterval(async () => {
+                if (!navigator.onLine) {
+                    this.updateSyncIndicator('offline');
+                    return;
+                }
+                
+                try {
+                    const { error } = await this.supabase.from('tables').select('id').limit(1);
+                    this.updateSyncIndicator(error ? 'error' : 'synced');
+                } catch (e) {
+                    this.updateSyncIndicator('offline');
+                }
+            }, 30000); // Check every 30 seconds
+        }
+    }
+
+    // Helper: Get IndexedDB database for offline queue
+    async _getOfflineQueueDB() {
+        if (!('indexedDB' in window)) return null;
+        
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open('mekanapp_offline_queue', 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('queue')) {
+                    db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true });
+                }
+            };
+        });
+    }
+
+    // Load offline queue from IndexedDB
+    async loadOfflineQueue() {
+        try {
+            const db = await this._getOfflineQueueDB();
+            if (!db) {
+                this._offlineQueue = [];
+                return;
+            }
+            
+            const tx = db.transaction('queue', 'readonly');
+            const store = tx.objectStore('queue');
+            const items = await store.getAll();
+            
+            this._offlineQueue = items || [];
+        } catch (e) {
+            console.error('Error loading offline queue:', e);
+            this._offlineQueue = [];
+        }
+    }
+
+    // Save offline queue to IndexedDB
+    async saveOfflineQueue() {
+        try {
+            const db = await this._getOfflineQueueDB();
+            if (!db) return;
+            
+            const tx = db.transaction('queue', 'readwrite');
+            const store = tx.objectStore('queue');
+            
+            // Clear existing
+            await store.clear();
+            
+            // Add all queued items
+            for (const item of this._offlineQueue) {
+                await store.add(item);
+            }
+        } catch (e) {
+            console.error('Error saving offline queue:', e);
+        }
+    }
+
+    // Remove item from offline queue in IndexedDB
+    async removeFromOfflineQueue(item) {
+        try {
+            if (!item.id) return;
+            
+            const db = await this._getOfflineQueueDB();
+            if (!db) return;
+            
+            const tx = db.transaction('queue', 'readwrite');
+            const store = tx.objectStore('queue');
+            await store.delete(item.id);
+        } catch (e) {
+            console.error('Error removing from offline queue:', e);
+        }
+    }
+
+    // Add operation to offline queue
+    addToOfflineQueue(operation) {
+        this._offlineQueue.push({
+            ...operation,
+            timestamp: Date.now(),
+            retries: 0
+        });
+        
+        // Save to IndexedDB for persistence
+        this.saveOfflineQueue();
+        
+        // Try to process immediately if online
+        if (navigator.onLine) {
+            this.processOfflineQueue();
+        }
+    }
+
+    // Process offline queue
+    async processOfflineQueue() {
+        if (!navigator.onLine || this._offlineQueue.length === 0) {
+            return;
+        }
+
+        this.updateSyncIndicator('syncing');
+        
+        const queue = [...this._offlineQueue];
+        this._offlineQueue = [];
+        
+        // Operation handlers map - eliminates long if-else chain
+        const operationHandlers = {
+            createTable: (data) => this.db.createTable(data),
+            updateTable: (id, data) => this.db.updateTable(id, data),
+            createProduct: (data) => this.db.createProduct(data),
+            updateProduct: (id, data) => this.db.updateProduct(id, data),
+            createSale: (data) => this.db.createSale(data),
+            updateSale: (id, data) => this.db.updateSale(id, data),
+            createCustomer: (data) => this.db.createCustomer(data),
+            updateCustomer: (id, data) => this.db.updateCustomer(id, data),
+            createExpense: (data) => this.db.createExpense(data)
+        };
+        
+        for (const item of queue) {
+            try {
+                const handler = operationHandlers[item.type];
+                if (!handler) {
+                    console.warn(`Unknown operation type: ${item.type}`);
+                    continue;
+                }
+                
+                // Execute the operation
+                if (item.id && item.type.startsWith('update')) {
+                    await handler(item.id, item.data);
+                } else {
+                    await handler(item.data);
+                }
+                
+                // Remove from IndexedDB
+                await this.removeFromOfflineQueue(item);
+            } catch (error) {
+                console.error('Error processing offline queue item:', error);
+                // Re-add to queue if retries < 3
+                if (item.retries < 3) {
+                    item.retries++;
+                    this._offlineQueue.push(item);
+                }
+            }
+        }
+        
+        await this.saveOfflineQueue();
+        this.updateSyncIndicator('synced');
+        
+        // Refresh current view if queue was processed
+        if (queue.length > 0) {
+            await this.refreshAllFromDb();
+        }
+    }
+
     setupEventListeners() {
         this.initAppDialog();
 
@@ -602,7 +850,8 @@ class MekanApp {
         const addTableBtn = document.getElementById('add-table-btn');
         if (addTableBtn) {
             addTableBtn.addEventListener('click', () => {
-            this.openTableFormModal();
+                this.hapticFeedback('light');
+                this.openTableFormModal();
         });
         }
 
@@ -610,7 +859,8 @@ class MekanApp {
         const addProductBtn = document.getElementById('add-product-btn');
         if (addProductBtn) {
             addProductBtn.addEventListener('click', () => {
-            this.openProductFormModal();
+                this.hapticFeedback('light');
+                this.openProductFormModal();
         });
         }
 
@@ -661,6 +911,7 @@ class MekanApp {
         const addCustomerBtn = document.getElementById('add-customer-btn');
         if (addCustomerBtn) {
             addCustomerBtn.addEventListener('click', () => {
+                this.hapticFeedback('light');
                 this.openCustomerFormModal();
             });
         }
@@ -669,6 +920,7 @@ class MekanApp {
         const instantSaleBtn = document.getElementById('instant-sale-btn');
         if (instantSaleBtn) {
             instantSaleBtn.addEventListener('click', async () => {
+                this.hapticFeedback('medium');
                 await this.openInstantSaleTable();
             });
         }
@@ -1351,7 +1603,7 @@ class MekanApp {
             tables = await this.db.getAllTables();
             
             if (tables.length === 0) {
-                container.innerHTML = this.createAddTableCard();
+                container.innerHTML = this.createEmptyState('tables') + this.createAddTableCard();
                 const addCard = document.getElementById('add-table-card');
                 if (addCard) addCard.onclick = () => this.openTableFormModal();
                 return;
@@ -1481,6 +1733,9 @@ class MekanApp {
         tables.forEach(table => {
             const card = document.getElementById(`table-${table.id}`);
             if (!card) return;
+
+            // Add swipe gesture for closing table (mobile)
+            this.setupSwipeGesture(card, table);
 
             // Delayed start icon (hourly tables)
             const delayBtn = card.querySelector('.table-delay-btn');
@@ -1678,6 +1933,175 @@ class MekanApp {
         } finally {
             this.setTablesLoading(false);
         }
+    }
+
+    // Setup swipe gesture for table cards (mobile)
+    setupSwipeGesture(card, table) {
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchEndX = 0;
+        let touchEndY = 0;
+        let isSwiping = false;
+        let swipeThreshold = 50; // Minimum swipe distance in pixels
+        let swipeVelocity = 0;
+
+        card.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            isSwiping = false;
+            swipeVelocity = 0;
+        }, { passive: true });
+
+        card.addEventListener('touchmove', (e) => {
+            if (!touchStartX || !touchStartY) return;
+            
+            touchEndX = e.touches[0].clientX;
+            touchEndY = e.touches[0].clientY;
+            
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            
+            // Check if horizontal swipe is dominant
+            if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+                isSwiping = true;
+                swipeVelocity = deltaX;
+                
+                // Visual feedback: move card slightly
+                const translateX = Math.max(-100, Math.min(0, deltaX));
+                card.style.transform = `translateX(${translateX}px)`;
+                card.style.transition = 'none';
+                
+                // Add visual indicator (red background on right side)
+                if (deltaX < -30) {
+                    card.style.opacity = '0.8';
+                }
+            }
+        }, { passive: true });
+
+        card.addEventListener('touchend', async (e) => {
+            if (!touchStartX || !touchStartY) return;
+            
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const distance = Math.abs(deltaX);
+            
+            // Reset visual state
+            card.style.transition = 'all 0.3s ease';
+            card.style.opacity = '';
+            
+            // Check if swipe is valid (left swipe, sufficient distance, fast enough)
+            if (isSwiping && deltaX < -swipeThreshold && Math.abs(deltaX) > Math.abs(deltaY) && 
+                (distance > 80 || Math.abs(swipeVelocity) > 0.5)) {
+                
+                // Swipe to close - only for active tables
+                if (table.isActive) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    // Animate card out
+                    card.style.transform = 'translateX(-100%)';
+                    card.style.opacity = '0';
+                    
+                    // Close table after animation
+                    setTimeout(async () => {
+                        // Check if table is still active (might have been closed by another action)
+                        const currentTable = await this.db.getTable(table.id);
+                        if (currentTable && currentTable.isActive) {
+                            // For hourly tables, show cancel confirmation
+                            if (table.type === 'hourly') {
+                                const confirmed = await this.appConfirm(
+                                    'Masayı kapatmak istediğinize emin misiniz?',
+                                    { title: 'Masa Kapat', confirmText: 'Kapat', cancelText: 'İptal', confirmVariant: 'danger' }
+                                );
+                                if (confirmed) {
+                                    await this.cancelHourlyGame(table.id);
+                                } else {
+                                    // Reset card position if cancelled
+                                    card.style.transform = '';
+                                    card.style.opacity = '';
+                                }
+                            } else {
+                                // Regular table - just close
+                                this.currentTableId = table.id;
+                                await this.processPayment();
+                            }
+                        }
+                        
+                        // Reset card position
+                        card.style.transform = '';
+                        card.style.opacity = '';
+                    }, 300);
+                }
+            } else {
+                // Reset card position if swipe was not valid
+                card.style.transform = '';
+            }
+            
+            // Reset touch tracking
+            touchStartX = 0;
+            touchStartY = 0;
+            touchEndX = 0;
+            touchEndY = 0;
+            isSwiping = false;
+        }, { passive: false });
+    }
+
+    // Setup bottom sheet swipe down to close
+    setupBottomSheetSwipe(modalEl) {
+        const modalContent = modalEl.querySelector('.modal-content');
+        if (!modalContent) return;
+
+        let touchStartY = 0;
+        let touchCurrentY = 0;
+        let isDragging = false;
+        let startScrollTop = 0;
+
+        modalContent.addEventListener('touchstart', (e) => {
+            startScrollTop = modalContent.scrollTop;
+            touchStartY = e.touches[0].clientY;
+            isDragging = false;
+        }, { passive: true });
+
+        modalContent.addEventListener('touchmove', (e) => {
+            if (!touchStartY) return;
+            
+            touchCurrentY = e.touches[0].clientY;
+            const deltaY = touchCurrentY - touchStartY;
+            
+            // Only allow swipe down if at top of scroll
+            if (startScrollTop === 0 && deltaY > 0) {
+                isDragging = true;
+                e.preventDefault();
+                
+                // Move modal down
+                const translateY = Math.max(0, deltaY);
+                modalContent.style.transform = `translateY(${translateY}px)`;
+                modalContent.style.transition = 'none';
+            }
+        }, { passive: false });
+
+        modalContent.addEventListener('touchend', () => {
+            if (!isDragging || !touchStartY) {
+                touchStartY = 0;
+                return;
+            }
+
+            const deltaY = touchCurrentY - touchStartY;
+            const threshold = 100; // Minimum swipe distance to close
+
+            if (deltaY > threshold) {
+                // Close modal
+                this.closeTableModal();
+            } else {
+                // Snap back
+                modalContent.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+                modalContent.style.transform = 'translateY(0)';
+            }
+
+            touchStartY = 0;
+            touchCurrentY = 0;
+            isDragging = false;
+        }, { passive: true });
     }
 
     createAddTableCard() {
@@ -2418,23 +2842,40 @@ class MekanApp {
         tableModalEl = document.getElementById('table-modal');
         if (tableModalEl) {
             const modalContent = tableModalEl.querySelector('.modal-content');
+            const isMobile = window.innerWidth <= 768;
+            
             if (modalContent) {
-                // Set initial position for animation
-                modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
-                modalContent.style.transform = `scale(0.1) translate(0, 0)`;
-                modalContent.style.opacity = '0';
+                if (isMobile) {
+                    // Bottom sheet: start from bottom
+                    modalContent.style.transform = 'translateY(100%)';
+                    modalContent.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+                } else {
+                    // Desktop: scale animation from card
+                    modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
+                    modalContent.style.transform = `scale(0.1) translate(0, 0)`;
+                    modalContent.style.opacity = '0';
+                }
             }
             tableModalEl.classList.add('active');
             // Trigger animation after a tiny delay
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     if (modalContent) {
-                        modalContent.style.transition = 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1)';
-                        modalContent.style.transform = 'scale(1) translate(0, 0)';
-                        modalContent.style.opacity = '1';
+                        if (isMobile) {
+                            modalContent.style.transform = 'translateY(0)';
+                        } else {
+                            modalContent.style.transition = 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1)';
+                            modalContent.style.transform = 'scale(1) translate(0, 0)';
+                            modalContent.style.opacity = '1';
+                        }
                     }
                 });
             });
+            
+            // Add swipe down to close on mobile
+            if (isMobile) {
+                this.setupBottomSheetSwipe(tableModalEl);
+            }
         }
         document.body.classList.add('table-modal-open');
 
@@ -5566,6 +6007,7 @@ class MekanApp {
 
     async processCreditTable(selectedCustomerId) {
         if (!this.currentTableId) return;
+        this.hapticFeedback('medium');
 
         const tableId = this.currentTableId;
         const table = await this.db.getTable(tableId);
@@ -6473,25 +6915,25 @@ class MekanApp {
             if (isDarkMode) {
                 return 'linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%)';
             }
-            return 'linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%)';
+            return 'linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%)';
         } else if (daysSincePayment <= 30) {
             // Medium - slightly darker
             if (isDarkMode) {
                 return 'linear-gradient(135deg, #1f1f1f 0%, #151515 100%)';
             }
-            return 'linear-gradient(135deg, #ecf0f1 0%, #dfe6e9 100%)';
+            return 'linear-gradient(135deg, #e8f0f5 0%, #d5e3ea 100%)';
         } else if (daysSincePayment <= 90) {
             // Dark - more noticeable
             if (isDarkMode) {
                 return 'linear-gradient(135deg, #151515 0%, #0f0f0f 100%)';
             }
-            return 'linear-gradient(135deg, #bdc3c7 0%, #95a5a6 100%)';
+            return 'linear-gradient(135deg, #d0d9de 0%, #b8c5cc 100%)';
         } else {
             // Darkest - longest time without payment
             if (isDarkMode) {
                 return 'linear-gradient(135deg, #0a0a0a 0%, #000000 100%)';
             }
-            return 'linear-gradient(135deg, #7f8c8d 0%, #5d6d7e 100%)';
+            return 'linear-gradient(135deg, #a8b5ba 0%, #8a9ba1 100%)';
         }
     }
 
@@ -6888,58 +7330,7 @@ class MekanApp {
         // Build content HTML
         let contentHTML = '';
         
-        // Add manual sessions section (grouped by date like receipts)
-        if (customerSessions.length > 0) {
-            const sessionsByDate = new Map();
-            customerSessions.forEach(session => {
-                const date = session.closeTime ? new Date(session.closeTime) : (session.createdAt ? new Date(session.createdAt) : new Date());
-                const dateKey = date.toLocaleDateString('tr-TR', { year: 'numeric', month: '2-digit', day: '2-digit' });
-                if (!sessionsByDate.has(dateKey)) {
-                    sessionsByDate.set(dateKey, []);
-                }
-                sessionsByDate.get(dateKey).push(session);
-            });
-            
-            const sortedSessionDates = Array.from(sessionsByDate.keys()).sort((a, b) => {
-                const dateA = new Date(a.split('.').reverse().join('-'));
-                const dateB = new Date(b.split('.').reverse().join('-'));
-                return dateB - dateA;
-            });
-            
-            contentHTML += '<div style="margin-bottom: 20px;"><h3 style="margin-bottom: 10px; color: var(--primary-color);">Oyun Saatleri</h3>';
-            sortedSessionDates.forEach(dateKey => {
-                const dateSessions = sessionsByDate.get(dateKey);
-                contentHTML += `<div style="margin-bottom: 15px;"><h4 style="margin-bottom: 8px; color: var(--secondary-color); font-size: 0.95rem;">${dateKey}</h4>`;
-                
-                dateSessions.forEach(session => {
-                    const hours = (typeof session.hoursUsed === 'number' ? session.hoursUsed : parseFloat(session.hoursUsed)) || 0;
-                    const amount = session.hourlyRate ? (hours * session.hourlyRate) : (session.amount || 0);
-                    const date = session.closeTime ? new Date(session.closeTime) : (session.createdAt ? new Date(session.createdAt) : new Date());
-                    const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-                    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-                    const sessionBg = isDark ? 'var(--dark-surface-elevated)' : '#f8f9fa';
-                    const sessionText = isDark ? 'var(--dark-text-primary)' : 'inherit';
-                    const sessionTextSecondary = isDark ? 'var(--dark-text-secondary)' : '#7f8c8d';
-                    
-                    contentHTML += `
-                        <div style="padding: 10px; margin-bottom: 8px; background: ${sessionBg}; border-radius: 8px; color: ${sessionText};">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <strong style="color: ${sessionText};">${session.tableName || 'Masa'}</strong>
-                                    <div style="font-size: 0.9rem; color: ${sessionTextSecondary};">${timeStr}</div>
-                                </div>
-                                <div style="text-align: right;">
-                                    <div><strong style="color: ${sessionText};">${formatHoursToReadable(hours)}</strong></div>
-                                    <div style="color: var(--success-color); font-weight: 700;">${Math.round(amount)} ₺</div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-                contentHTML += '</div>';
-            });
-            contentHTML += '</div>';
-        }
+        // Manual sessions section removed - not used
         
         // Add sales by date - Group sales from same table closure into single receipt
         // Filter out dates that have no valid sales (only credit sales, no items, no hourly)
