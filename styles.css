@@ -2909,6 +2909,46 @@ body:has(#auth-modal.modal.active) header {
     display: none; /* Chrome, Safari, Opera */
 }
 
+/* Table modal loading state */
+.table-modal-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    padding: 40px 20px;
+    gap: 24px;
+}
+
+.table-modal-loading-spinner {
+    width: 56px;
+    height: 56px;
+    border: 4px solid rgba(44, 62, 80, 0.1);
+    border-top-color: var(--secondary-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.table-modal-loading-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+[data-theme="dark"] .table-modal-loading-spinner {
+    border-color: rgba(255, 255, 255, 0.1);
+    border-top-color: var(--secondary-color);
+}
+
+[data-theme="dark"] .table-modal-loading-text {
+    color: var(--dark-text-secondary);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
 /* Table modal loading overlay (shown while content is being fetched/rendered) */
 #table-modal-body.is-loading {
     position: relative;

@@ -209,6 +209,7 @@ class MekanApp {
         }
         
         // Directly add 1 product per click (no batching/queuing)
+        // This function is kept for backward compatibility but now just calls addProductToTableFromModal directly
         this.addProductToTableFromModal(tableId, productId, 1);
     }
 
@@ -1300,7 +1301,7 @@ class MekanApp {
             products: 'Ürünler',
             customers: 'Müşteriler',
             expenses: 'Giderler',
-            sales: 'Satış Geçmişi',
+            sales: 'Geçmiş',
             daily: 'Rapor'
         };
         const label = map[viewName] || 'Masalar';
@@ -2301,7 +2302,6 @@ class MekanApp {
         // CRITICAL: Clear modal content IMMEDIATELY before opening to prevent old data from showing
         let productsGridEl = document.getElementById('table-products-grid');
         if (productsGridEl) {
-            // Clear content and reset attributes (event listeners are on container, not children)
             productsGridEl.innerHTML = '';
             productsGridEl.removeAttribute('data-table-id');
             productsGridEl.removeAttribute('data-events-bound');
@@ -2311,63 +2311,37 @@ class MekanApp {
         let modalTitleEl = document.getElementById('table-modal-title');
         if (modalTitleEl) modalTitleEl.textContent = 'Masa';
 
+        // Store original modal body content
+        const modalBodyEl = document.getElementById('table-modal-body');
+        const modalFooterEl = document.querySelector('.table-modal-footer');
+        const originalBodyContent = modalBodyEl ? modalBodyEl.innerHTML : '';
+        
+        // Hide all modal content initially and show loading state
+        if (modalBodyEl) {
+            modalBodyEl.classList.add('is-loading');
+            modalBodyEl.innerHTML = `
+                <div class="table-modal-loading">
+                    <div class="table-modal-loading-spinner"></div>
+                    <div class="table-modal-loading-text">Masa yükleniyor...</div>
+                </div>
+            `;
+        }
+        
+        if (modalFooterEl) {
+            modalFooterEl.style.display = 'none';
+        }
+
         // Open modal shell immediately (avoid perceived lag)
         const tableModalEl = document.getElementById('table-modal');
         if (tableModalEl) tableModalEl.classList.add('active');
         document.body.classList.add('table-modal-open');
+        
+        // Update title with table name from card (if available)
         if (modalTitleEl) {
-            // Table names are stable; show immediately (avoid "Yükleniyor..." in title)
             const card = this.getTableCardEl?.(tableId);
             const cardName = card?.querySelector?.('h3')?.textContent?.trim?.() || null;
-            modalTitleEl.textContent = cardName || modalTitleEl.textContent || 'Masa';
+            modalTitleEl.textContent = cardName || 'Masa';
         }
-
-        const modalBodyEl = document.getElementById('table-modal-body');
-        // Show loading overlay only if the work is actually slow (avoids spinner flash when using local cache)
-        // If products cache exists, don't show loading at all (products are already rendered)
-        let loadingTimer = null;
-        const hasCachedProducts = this._cachedProducts && this._cachedProducts.length > 0;
-        if (modalBodyEl && !hasCachedProducts) {
-            loadingTimer = setTimeout(() => {
-                modalBodyEl.classList.add('is-loading');
-            }, 180);
-        }
-
-        // If cache exists, render products immediately (no loading message)
-        if (productsGridEl && hasCachedProducts) {
-            // Render cached products immediately for instant display
-            productsGridEl.dataset.tableId = String(tableId);
-            productsGridEl.innerHTML = this._cachedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
-            productsGridEl.dataset.tableId = String(tableId);
-            // Bind event delegation for cached products (same as fresh products)
-            this.setupProductCardEvents(productsGridEl);
-        } else if (productsGridEl) {
-            productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
-        }
-
-        if (salesListEl) salesListEl.innerHTML = '<div class="empty-state"><p>Yükleniyor...</p></div>';
-
-        const footerBtns = [
-            document.getElementById('pay-table-btn'),
-            document.getElementById('credit-table-btn'),
-            document.getElementById('cancel-hourly-btn')
-        ].filter(Boolean);
-        footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
-
-        // Track if modal data is fully loaded
-        let modalDataReady = false;
-
-        const unlockModal = () => {
-            if (loadingTimer) {
-                clearTimeout(loadingTimer);
-                loadingTimer = null;
-            }
-            if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
-            // Only enable buttons if data is ready AND table is still open
-            if (modalDataReady) {
-                footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
-            }
-        };
 
         let table = null;
         try {
@@ -2456,7 +2430,6 @@ class MekanApp {
         const payBtn = document.getElementById('pay-table-btn');
         const creditBtn = document.getElementById('credit-table-btn');
         const cancelHourlyBtn = document.getElementById('cancel-hourly-btn');
-        const productsSection = document.getElementById('table-products-section');
 
         if (table.type === 'hourly') {
             // Use grid so mobile stays single-row (CSS sets the grid template)
@@ -2496,6 +2469,7 @@ class MekanApp {
                 }, 60000); // Update every minute
                 
                 // Table is open - show products section
+                const productsSection = document.getElementById('table-products-section');
                 if (productsSection) {
                     productsSection.style.display = 'block';
                 }
@@ -2517,8 +2491,9 @@ class MekanApp {
                 if (payBtnTxt) payBtnTxt.textContent = `${Math.round(table.checkTotal)} ₺`;
                 
                 // Table is not open - hide products section
-                if (productsSection) {
-                    productsSection.style.display = 'none';
+                const productsSection2 = document.getElementById('table-products-section');
+                if (productsSection2) {
+                    productsSection2.style.display = 'none';
                 }
                 // Hide open button for hourly tables (now handled by double-tap on card)
                 if (openBtn) {
@@ -2543,8 +2518,9 @@ class MekanApp {
             openBtn.style.display = 'none';
             }
             // Regular tables always show products section
-            if (productsSection) {
-                productsSection.style.display = 'block';
+            const productsSection3 = document.getElementById('table-products-section');
+            if (productsSection3) {
+                productsSection3.style.display = 'block';
             }
             if (this.hourlyUpdateInterval) {
                 clearInterval(this.hourlyUpdateInterval);
@@ -2575,23 +2551,28 @@ class MekanApp {
             }
         }
 
-        // Load products for selection
-        // If cache exists, products are already rendered above, just refresh if needed
-        // Otherwise load from cache or DB
-        if (!this._cachedProducts || this._cachedProducts.length === 0) {
-            await this.loadTableProducts(tableId, { useCache: true });
-        } else {
-            // Cache exists and products are already rendered, just ensure they're sorted correctly
-            // No need to reload - they're already displayed
-            debugLog('Products already rendered from cache, skipping reload');
+        // Restore modal body content
+        if (modalBodyEl) {
+            modalBodyEl.innerHTML = originalBodyContent;
+            modalBodyEl.classList.remove('is-loading');
         }
+        
+        // Re-get elements after restoring HTML
+        productsGridEl = document.getElementById('table-products-grid');
+        salesListEl = document.getElementById('table-sales-list');
+        const productsSectionEl = document.getElementById('table-products-section');
+        
+        // Load products and sales
+        await Promise.all([
+            this.loadTableProducts(tableId, { useCache: true }),
+            this.loadTableSales(tableId)
+        ]);
 
         // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
         const finalTableCheck = await this.db.getTable(tableId);
         if (!finalTableCheck) {
             // Table not found - close modal
-            unlockModal();
             this.closeTableModal();
             return;
         }
@@ -2605,29 +2586,31 @@ class MekanApp {
             : false; // Regular/instant: never close modal - always allow product addition
         
         if (isTableClosed) {
-            // Table is already closed - keep buttons disabled and close modal
-            unlockModal(); // Remove loading overlay
-            footerBtns.forEach((b) => { try { b.disabled = true; } catch (e) {} });
-            // Close modal after a brief delay to show user the table is closed
+            // Table is already closed - close modal
             setTimeout(() => {
                 this.closeTableModal();
             }, 500);
             return;
         }
 
-        // Table is open (or regular/instant table without closeTime) - mark data as ready and enable buttons
-        // Regular/instant tables can be opened even if they have no products (user wants to add products)
-        modalDataReady = true;
-        unlockModal();
-
-        // Load sales in the background to keep modal snappy
-        Promise.resolve()
-            .then(() => this.loadTableSales(tableId))
-            .catch((e) => console.error('loadTableSales error:', e));
+        // Show footer and enable buttons
+        if (modalFooterEl) {
+            modalFooterEl.style.display = '';
+        }
+        
+        const footerBtns = [
+            document.getElementById('pay-table-btn'),
+            document.getElementById('credit-table-btn'),
+            document.getElementById('cancel-hourly-btn')
+        ].filter(Boolean);
+        footerBtns.forEach((b) => { try { b.disabled = false; } catch (e) {} });
         } catch (error) {
             console.error('openTableModal error:', error, error?.message, error?.details, error?.hint, error?.code);
-            unlockModal();
+            if (modalBodyEl) {
+                modalBodyEl.classList.remove('is-loading');
+            }
             await this.appAlert('Masa detayları yüklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+            this.closeTableModal();
         }
     }
 
@@ -2990,6 +2973,9 @@ class MekanApp {
         }
         container.dataset.eventsBound = 'true';
         
+        // Track processing state per product to prevent multiple simultaneous adds
+        const processing = new Set();
+        
         // Click handler - single tap adds 1 product
         container.addEventListener('click', async (e) => {
             const card = e.target.closest('.product-card-mini');
@@ -3000,8 +2986,23 @@ class MekanApp {
             const tid = container.getAttribute('data-table-id');
             if (!cardId || !tid) return;
             
-            // Single tap = 1 item
-            this.queueQuickAddToTable(tid, cardId, 1);
+            // Prevent multiple simultaneous clicks on same product
+            const key = `${tid}:${cardId}`;
+            if (processing.has(key)) {
+                return; // Already processing, ignore this click
+            }
+            
+            processing.add(key);
+            
+            try {
+                // Single tap = 1 item, directly call addProductToTableFromModal
+                await this.addProductToTableFromModal(tid, cardId, 1);
+            } finally {
+                // Remove from processing set after a short delay to allow UI to update
+                setTimeout(() => {
+                    processing.delete(key);
+                }, 300);
+            }
         });
     }
 
