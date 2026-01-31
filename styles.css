@@ -2803,6 +2803,8 @@ body:has(#auth-modal.modal.active) header {
     background: rgba(44, 62, 80, 0.06);
     border: 1px solid rgba(44, 62, 80, 0.10);
     flex-shrink: 0;
+    /* Ensure vertical alignment with title */
+    align-self: center;
 }
 .instant-qty-btn {
     width: 38px;
@@ -2886,7 +2888,7 @@ body:has(#auth-modal.modal.active) header {
     font-size: 1.1rem;
     font-weight: 700;
     text-align: left;
-    line-height: 1.2;
+    line-height: 48px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2900,6 +2902,8 @@ body:has(#auth-modal.modal.active) header {
     box-sizing: border-box;
     max-width: 300px;
     z-index: 1;
+    /* Ensure vertical alignment with quantity controls */
+    flex-shrink: 0;
 }
 
 .table-modal-header-buttons {
