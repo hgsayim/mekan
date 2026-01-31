@@ -3444,6 +3444,9 @@ form select:focus {
     gap: 12px;
     position: relative;
     z-index: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
 }
 
 .sale-product-icon {
@@ -3469,8 +3472,10 @@ form select:focus {
     flex: 1 1 auto;
     min-width: 0;
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    overflow: hidden;
 }
 
 .sale-product-name {
@@ -3481,6 +3486,8 @@ form select:focus {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 [data-theme="dark"] .sale-product-name {
@@ -3492,6 +3499,8 @@ form select:focus {
     align-items: center;
     gap: 12px;
     font-size: 0.85rem;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .sale-product-amount {
@@ -3513,23 +3522,8 @@ form select:focus {
     color: var(--primary-color) !important;
 }
 
-.sale-product-time {
-    flex: 0 0 auto;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #95a5a6;
-    padding: 4px 8px;
-    background: rgba(149, 165, 166, 0.1);
-    border-radius: 6px;
-    white-space: nowrap;
-}
 
-[data-theme="dark"] .sale-product-time {
-    color: var(--dark-text-secondary) !important;
-    background: rgba(149, 165, 166, 0.15) !important;
-}
-
-/* Action Buttons (Hidden by default, shown on long press) */
+/* Action Buttons (Hidden by default, shown on tap) */
 .sale-item-actions {
     position: absolute;
     right: 14px;
@@ -3542,6 +3536,13 @@ form select:focus {
     pointer-events: none;
     transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     z-index: 10;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 50%, transparent 100%);
+    padding-left: 20px;
+    border-radius: 0 10px 10px 0;
+}
+
+[data-theme="dark"] .sale-item-actions {
+    background: linear-gradient(to left, var(--dark-surface) 0%, rgba(0, 0, 0, 0.8) 50%, transparent 100%) !important;
 }
 
 .sale-product-line.active .sale-item-actions {
@@ -3622,11 +3623,7 @@ form select:focus {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 2px 6px rgba(0, 0, 0, 0.15) !important;
 }
 
-/* Adjust content when actions are visible */
-.sale-product-line.active .sale-product-line-content {
-    padding-right: 180px;
-    transition: padding-right 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
+/* Butonlar overlay olarak gösteriliyor, içerik kaymıyor - padding-right kaldırıldı */
 
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
@@ -3649,10 +3646,6 @@ form select:focus {
         gap: 8px;
     }
 
-    .sale-product-time {
-        font-size: 0.75rem;
-        padding: 3px 6px;
-    }
 
     .sale-action-btn {
         width: 42px !important;
@@ -3662,9 +3655,6 @@ form select:focus {
         font-size: 1.2rem !important;
     }
 
-    .sale-product-line.active .sale-product-line-content {
-        padding-right: 150px;
-    }
 
     .sale-item-actions {
         gap: 6px;
@@ -5124,10 +5114,6 @@ form select:focus {
         gap: 8px;
     }
 
-    .sale-product-time {
-        font-size: 0.75rem;
-        padding: 3px 6px;
-    }
 
     .sale-action-btn {
         width: 42px !important;
@@ -5137,9 +5123,6 @@ form select:focus {
         font-size: 1.2rem !important;
     }
 
-    .sale-product-line.active .sale-product-line-content {
-        padding-right: 150px;
-    }
 
     .sale-item-actions {
         gap: 6px;

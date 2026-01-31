@@ -2791,7 +2791,6 @@ class MekanApp {
                                     <span class="sale-product-total">${Math.round(it.total || 0)} ₺</span>
                                 </div>
                             </div>
-                            <div class="sale-product-time">${itemTime}</div>
                         </div>
                         ${buttons}
                     </div>
