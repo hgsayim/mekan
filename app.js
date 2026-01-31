@@ -2608,15 +2608,37 @@ class MekanApp {
             }
         } else {
             hourlyInfo.style.display = 'none';
-            // Total moved to header; hide footer info for regular tables to free space.
-            regularInfo.style.display = 'none';
-            table.checkTotal = computedSalesTotal;
-            document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
-            if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+            
+            // Handle instant sale table separately
+            if (table.type === 'instant') {
+                regularInfo.style.display = 'none';
+                const instantInfo = document.getElementById('instant-info');
+                if (instantInfo) {
+                    instantInfo.style.display = 'flex';
+                    // Get today's total sales for instant sale table
+                    const dailyTotal = await this.getInstantTableDailyTotal(tableId);
+                    const instantTotalEl = document.getElementById('modal-instant-daily-total');
+                    if (instantTotalEl) {
+                        instantTotalEl.textContent = `${Math.round(dailyTotal)} ₺`;
+                    }
+                }
+                // For instant sale, show unpaid sales total in pay button
+                table.checkTotal = computedSalesTotal;
+                if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+            } else {
+                // Regular tables: Total moved to header; hide footer info for regular tables to free space.
+                regularInfo.style.display = 'none';
+                const instantInfo = document.getElementById('instant-info');
+                if (instantInfo) instantInfo.style.display = 'none';
+                table.checkTotal = computedSalesTotal;
+                document.getElementById('modal-check-total-regular').textContent = Math.round(table.checkTotal);
+                if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+            }
+            
             if (openBtn) {
             openBtn.style.display = 'none';
             }
-            // Regular tables always show products section
+            // Regular and instant tables always show products section
             if (productsSection) {
                 productsSection.style.display = 'block';
             }
@@ -2746,6 +2768,18 @@ class MekanApp {
             table.checkTotal = hourlyTotal + salesTotal;
             const modalCheckTotal = document.getElementById('modal-check-total');
             if (modalCheckTotal) modalCheckTotal.textContent = Math.round(table.checkTotal);
+            if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+        } else if (table.type === 'instant') {
+            // For instant sale, update daily total in footer
+            const dailyTotal = await this.getInstantTableDailyTotal(tableId);
+            const instantTotalEl = document.getElementById('modal-instant-daily-total');
+            if (instantTotalEl) {
+                instantTotalEl.textContent = `${Math.round(dailyTotal)} ₺`;
+            }
+            // Update pay button with unpaid sales total
+            const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+            const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            table.checkTotal = salesTotal;
             if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
         } else if (table.type !== 'hourly') {
             const unpaid = await this.db.getUnpaidSalesByTable(tableId);

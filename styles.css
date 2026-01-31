@@ -5078,6 +5078,15 @@ form select:focus {
         width: 100%;
     }
 
+    #instant-info.table-info-grid {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: center;
+        gap: 6px;
+        width: 100%;
+    }
+
     /* Make info chips compact and distinct from action buttons */
     .table-modal-footer .table-info-grid span {
         display: flex;
