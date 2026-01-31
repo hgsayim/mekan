@@ -1679,8 +1679,9 @@ class MekanApp {
             ? `<button class="table-delay-btn" data-table-id="${effectiveTable.id}" title="Gecikmeli Başlat">⏱</button>`
             : '';
 
+        const sortOrder = effectiveTable.sortOrder !== undefined ? effectiveTable.sortOrder : 9999;
         return `
-            <div class="table-card ${statusClass} ${instantClass}" id="table-${effectiveTable.id}">
+            <div class="table-card ${statusClass} ${instantClass}" id="table-${effectiveTable.id}" draggable="true" data-table-id="${effectiveTable.id}" data-sort-order="${sortOrder}">
                 ${delayedStartBtn}
                 <div class="table-icon">${icon}</div>
                     <h3>${effectiveTable.name}</h3>
@@ -3035,6 +3036,132 @@ class MekanApp {
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
         return `${hours}:${minutes}`;
+    }
+
+    setupProductDragAndDrop(container) {
+        let draggedElement = null;
+        
+        container.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('product-card') && !e.target.classList.contains('add-card')) {
+                draggedElement = e.target;
+                e.target.style.opacity = '0.5';
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', e.target.outerHTML);
+            }
+        });
+        
+        container.addEventListener('dragend', (e) => {
+            if (e.target.classList.contains('product-card')) {
+                e.target.style.opacity = '';
+            }
+        });
+        
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const afterElement = this.getDragAfterElement(container, e.clientY);
+            const dragging = container.querySelector('.dragging');
+            
+            if (afterElement == null) {
+                container.appendChild(draggedElement);
+            } else {
+                container.insertBefore(draggedElement, afterElement);
+            }
+        });
+        
+        container.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            if (!draggedElement) return;
+            
+            const productCards = Array.from(container.querySelectorAll('.product-card:not(.add-card)'));
+            const newOrder = productCards.map((card, index) => ({
+                id: card.getAttribute('data-product-id'),
+                sortOrder: index
+            }));
+            
+            // Update sort order in database
+            for (const item of newOrder) {
+                const product = await this.db.getProduct(item.id);
+                if (product) {
+                    product.sortOrder = item.sortOrder;
+                    await this.db.updateProduct(product);
+                }
+            }
+            
+            draggedElement = null;
+        });
+    }
+    
+    setupTableDragAndDrop(container) {
+        let draggedElement = null;
+        
+        container.addEventListener('dragstart', (e) => {
+            if (e.target.classList.contains('table-card') && !e.target.classList.contains('add-card')) {
+                draggedElement = e.target;
+                e.target.style.opacity = '0.5';
+                e.dataTransfer.effectAllowed = 'move';
+            }
+        });
+        
+        container.addEventListener('dragend', (e) => {
+            if (e.target.classList.contains('table-card')) {
+                e.target.style.opacity = '';
+            }
+        });
+        
+        container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const afterElement = this.getDragAfterElement(container, e.clientY);
+            
+            if (afterElement == null) {
+                container.appendChild(draggedElement);
+            } else {
+                container.insertBefore(draggedElement, afterElement);
+            }
+        });
+        
+        container.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            if (!draggedElement) return;
+            
+            const tableCards = Array.from(container.querySelectorAll('.table-card:not(.add-card)'));
+            const newOrder = tableCards.map((card, index) => {
+                const tableId = card.getAttribute('data-table-id') || card.id.replace('table-', '');
+                return {
+                    id: tableId,
+                    sortOrder: index
+                };
+            });
+            
+            // Update sort order in database
+            for (const item of newOrder) {
+                const table = await this.db.getTable(item.id);
+                if (table) {
+                    table.sortOrder = item.sortOrder;
+                    await this.db.updateTable(table);
+                }
+            }
+            
+            draggedElement = null;
+        });
+    }
+    
+    getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.product-card:not(.dragging):not(.add-card), .table-card:not(.dragging):not(.add-card)')];
+        
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
     }
 
     formatHoursToReadable(hours) {
