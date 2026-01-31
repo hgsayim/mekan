@@ -202,13 +202,13 @@ export class SupabaseDatabase {
       try { delete insertRow.category; } catch (_) {}
     }
     try {
-      const res = await this.supabase
-        .from(this.tables.products)
-        .insert([insertRow])
-        .select('*')
-        .single();
-      this._throwIfError(res);
-      return res.data?.id;
+    const res = await this.supabase
+      .from(this.tables.products)
+      .insert([insertRow])
+      .select('*')
+      .single();
+    this._throwIfError(res);
+    return res.data?.id;
     } catch (e) {
       // If the DB doesn't have the "icon" column yet, retry without it (avoid breaking the app).
       const msg = String(e?.message || '');
@@ -261,9 +261,9 @@ export class SupabaseDatabase {
       try { delete updatePatch.category; } catch (_) {}
     }
     try {
-      const res = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
-      this._throwIfError(res);
-      return res.data?.id;
+    const res = await this.supabase.from(this.tables.products).update(updatePatch).eq('id', id).select('*').single();
+    this._throwIfError(res);
+    return res.data?.id;
     } catch (e) {
       const msg = String(e?.message || '');
       if (this._supports.productIcon && msg.toLowerCase().includes('column') && msg.toLowerCase().includes('icon')) {

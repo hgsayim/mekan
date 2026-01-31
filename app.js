@@ -186,7 +186,16 @@ class MekanApp {
         if (!tableId || !productId) return;
         const key = `${String(tableId)}:${String(productId)}`;
         const state = this._quickAddState.get(key) || { pending: 0, timer: null, chain: Promise.resolve() };
-        state.pending += (Number(deltaAmount) || 0);
+        const delta = Number(deltaAmount) || 0;
+        
+        // Handle negative amounts (reduction/cancellation)
+        if (delta < 0) {
+            // For negative amounts, handle directly without queuing
+            this.handleProductReduction(tableId, productId, Math.abs(delta));
+            return;
+        }
+        
+        state.pending += delta;
         if (state.pending <= 0) {
             this._quickAddState.set(key, state);
             return;
@@ -213,6 +222,61 @@ class MekanApp {
 
         scheduleFlush(120);
         this._quickAddState.set(key, state);
+    }
+
+    async handleProductReduction(tableId, productId, reduceBy) {
+        try {
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            let remaining = reduceBy;
+            
+            // Sort by date (newest first) to reduce from most recent
+            const sortedSales = [...unpaidSales].sort((a, b) => 
+                new Date(b.sellDateTime).getTime() - new Date(a.sellDateTime).getTime()
+            );
+            
+            // Find and reduce items, starting from most recent
+            for (const sale of sortedSales) {
+                if (!sale.items || !Array.isArray(sale.items)) continue;
+                // Process items in reverse order (last item first)
+                for (let i = sale.items.length - 1; i >= 0; i--) {
+                    const item = sale.items[i];
+                    if (item.productId == productId && !item.isCancelled && remaining > 0) {
+                        const currentAmount = Number(item.amount) || 0;
+                        if (currentAmount <= remaining) {
+                            // Cancel entire item
+                            await this.deleteItemFromSale(sale.id, i, true); // Skip confirm for swipe gesture
+                            remaining -= currentAmount;
+                        } else {
+                            // Reduce item amount
+                            item.amount = currentAmount - remaining;
+                            
+                            // Restore stock
+                            const product = await this.db.getProduct(productId);
+                            if (product && this.tracksStock(product)) {
+                                product.stock += remaining;
+                                await this.db.updateProduct(product);
+                            }
+                            
+                            // Recalculate sale total
+                            sale.saleTotal = sale.items
+                                .filter(item => !item.isCancelled)
+                                .reduce((sum, item) => sum + (item.price * item.amount), 0);
+                            
+                            await this.db.updateSale(sale);
+                            remaining = 0;
+                        }
+                    }
+                }
+            }
+            
+            // Refresh table display
+            if (this.currentTableId === tableId) {
+                await this.loadTableSales(tableId);
+                await this.refreshSingleTableCard(tableId);
+            }
+        } catch (e) {
+            console.error('Error reducing product:', e);
+        }
     }
 
     async init() {
@@ -1801,10 +1865,10 @@ class MekanApp {
                 return;
             }
             
-            // For hourly tables: closeTime + no openTime + not active = closed
+            // For hourly tables: closeTime means payment was processed - table MUST be closed
             // For regular tables: closeTime or not active = closed
             const isTableClosed = table.type === 'hourly' 
-                ? (table.closeTime && !table.openTime && !table.isActive)
+                ? (table.closeTime || (!table.openTime && !table.isActive))
                 : (table.closeTime || !table.isActive);
             
             if (isTableClosed) {
@@ -1905,9 +1969,9 @@ class MekanApp {
         }
     }
 
-    _markTableSettling(tableId, ms = 10000) {
-        // Increased to 10 seconds to prevent realtime updates from reopening tables
-        // during the critical closure period
+    _markTableSettling(tableId, ms = 20000) {
+        // Increased to 20 seconds to prevent realtime updates from reopening tables
+        // during the critical closure period (especially for hourly tables with payment)
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
     }
@@ -2138,8 +2202,9 @@ class MekanApp {
             // Render cached products immediately for instant display
             productsGridEl.dataset.tableId = String(tableId);
             productsGridEl.innerHTML = this._cachedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
-            // Event delegation is handled in loadTableProducts for swipe support
-            // This ensures both cached and fresh products have the same behavior
+            productsGridEl.dataset.tableId = String(tableId);
+            // Bind event delegation for cached products (same as fresh products)
+            this.setupProductCardEvents(productsGridEl);
         } else if (productsGridEl) {
             productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
         }
@@ -2575,20 +2640,8 @@ class MekanApp {
             }
             container.dataset.tableId = String(tableId);
             container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
-            // Bind event delegation if not already bound
-            if (!this._tableProductsDelegationBound) {
-                this._tableProductsDelegationBound = true;
-                container.addEventListener('click', async (e) => {
-                    const card = e.target.closest('.product-card-mini');
-                    if (!card) return;
-                    if (card.classList.contains('out-of-stock')) return;
-                    const pid = card.getAttribute('data-product-id');
-                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
-                    if (!pid || !tid) return;
-                    // Single tap = 1 item (swipe up handled separately)
-                    this.queueQuickAddToTable(tid, pid, 1);
-                });
-            }
+            // Bind event delegation with swipe support
+            this.setupProductCardEvents(container);
             return; // Early return - no async operation needed
         } else {
             // Load fresh products from DB
@@ -2607,20 +2660,8 @@ class MekanApp {
         container.dataset.tableId = String(tableId);
         container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
 
-        // Bind once: event delegation
-        if (!this._tableProductsDelegationBound) {
-            this._tableProductsDelegationBound = true;
-            container.addEventListener('click', async (e) => {
-                const card = e.target.closest('.product-card-mini');
-                if (!card) return;
-                if (card.classList.contains('out-of-stock')) return;
-                const pid = card.getAttribute('data-product-id');
-                const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
-                if (!pid || !tid) return;
-                // Single tap = 1 item (swipe up handled separately)
-                this.queueQuickAddToTable(tid, pid, 1);
-            });
-        }
+        // Bind event delegation with swipe support
+        this.setupProductCardEvents(container);
     }
 
     createTableProductCard(product, tableId) {
@@ -2783,6 +2824,224 @@ class MekanApp {
             });
 
         return rows;
+    }
+
+    setupProductCardEvents(container) {
+        if (this._tableProductsDelegationBound) return;
+        this._tableProductsDelegationBound = true;
+        
+        // Track swipe state per product card
+        const swipeState = new Map();
+        
+        // Click handler
+        container.addEventListener('click', async (e) => {
+            const card = e.target.closest('.product-card-mini');
+            if (!card) return;
+            if (card.classList.contains('out-of-stock')) return;
+            
+            // If there's a recent swipe, don't process click (swipe handles it)
+            const cardId = card.getAttribute('data-product-id');
+            const state = swipeState.get(cardId);
+            if (state && state.recentSwipe) {
+                return; // Swipe already handled this
+            }
+            
+            const pid = cardId;
+            const tid = container.getAttribute('data-table-id');
+            if (!pid || !tid) return;
+            
+            // Single tap = 1 item
+            this.queueQuickAddToTable(tid, pid, 1);
+        });
+        
+        // Touch events for swipe gestures
+        let touchStartY = null;
+        let touchStartTime = null;
+        let currentCard = null;
+        let swipeCount = 0;
+        let swipeTimeout = null;
+        let swipeDirection = null; // 'up' or 'down'
+        
+        container.addEventListener('touchstart', (e) => {
+            const card = e.target.closest('.product-card-mini');
+            if (!card || card.classList.contains('out-of-stock')) {
+                touchStartY = null;
+                currentCard = null;
+                return;
+            }
+            
+            currentCard = card;
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+            swipeCount = 0;
+            swipeDirection = null;
+            
+            // Clear any existing timeout
+            if (swipeTimeout) {
+                clearTimeout(swipeTimeout);
+                swipeTimeout = null;
+            }
+        }, { passive: true });
+        
+        container.addEventListener('touchmove', (e) => {
+            if (!currentCard || touchStartY === null) return;
+            
+            const touchY = e.touches[0].clientY;
+            const deltaY = touchStartY - touchY; // Positive = swipe up, Negative = swipe down
+            
+            // Swipe up (at least 30px)
+            if (deltaY > 30) {
+                swipeDirection = 'up';
+                currentCard.classList.remove('swiping-down');
+                currentCard.classList.add('swiping-up');
+            }
+            // Swipe down (at least 30px)
+            else if (deltaY < -30) {
+                swipeDirection = 'down';
+                currentCard.classList.remove('swiping-up');
+                currentCard.classList.add('swiping-down');
+            }
+            else {
+                currentCard.classList.remove('swiping-up', 'swiping-down');
+                swipeDirection = null;
+            }
+        }, { passive: true });
+        
+        container.addEventListener('touchend', async (e) => {
+            if (!currentCard || touchStartY === null) return;
+            
+            const touchEndY = e.changedTouches[0].clientY;
+            const deltaY = touchStartY - touchEndY; // Positive = swipe up, Negative = swipe down
+            const deltaTime = Date.now() - touchStartTime;
+            
+            // Reset visual feedback
+            currentCard.classList.remove('swiping-up', 'swiping-down');
+            
+            const cardId = currentCard.getAttribute('data-product-id');
+            const tid = container.getAttribute('data-table-id');
+            
+            if (!cardId || !tid) {
+                touchStartY = null;
+                touchStartTime = null;
+                currentCard = null;
+                return;
+            }
+            
+            // Swipe up detected (at least 50px upward, within 300ms)
+            if (deltaY > 50 && deltaTime < 300 && swipeDirection === 'up') {
+                swipeCount++;
+                
+                // Mark as recent swipe to prevent click handler
+                const state = swipeState.get(cardId) || {};
+                state.recentSwipe = true;
+                swipeState.set(cardId, state);
+                
+                // Clear swipe flag after a short delay
+                setTimeout(() => {
+                    const s = swipeState.get(cardId);
+                    if (s) s.recentSwipe = false;
+                }, 300);
+                
+                // Add product with quantity = swipe count
+                this.queueQuickAddToTable(tid, cardId, swipeCount);
+                
+                // Reset swipe count after processing
+                swipeTimeout = setTimeout(() => {
+                    swipeCount = 0;
+                }, 500); // 500ms window for multiple swipes
+            }
+            // Swipe down detected (at least 50px downward, within 300ms)
+            else if (deltaY < -50 && deltaTime < 300 && swipeDirection === 'down') {
+                swipeCount++;
+                
+                // Mark as recent swipe to prevent click handler
+                const state = swipeState.get(cardId) || {};
+                state.recentSwipe = true;
+                swipeState.set(cardId, state);
+                
+                // Clear swipe flag after a short delay
+                setTimeout(() => {
+                    const s = swipeState.get(cardId);
+                    if (s) s.recentSwipe = false;
+                }, 300);
+                
+                // Get current quantity of product in table
+                const currentQty = await this.getProductQuantityInTable(tid, cardId);
+                
+                if (currentQty > 1) {
+                    // Reduce quantity by swipe count
+                    this.queueQuickAddToTable(tid, cardId, -swipeCount);
+                } else if (currentQty === 1) {
+                    // Cancel the entire product (remove it)
+                    await this.cancelLastProductFromTable(tid, cardId);
+                }
+                // If currentQty === 0, do nothing
+                
+                // Reset swipe count after processing
+                swipeTimeout = setTimeout(() => {
+                    swipeCount = 0;
+                }, 500);
+            }
+            
+            // Reset
+            touchStartY = null;
+            touchStartTime = null;
+            currentCard = null;
+            swipeDirection = null;
+        }, { passive: true });
+    }
+
+    async getProductQuantityInTable(tableId, productId) {
+        try {
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            let totalQty = 0;
+            
+            for (const sale of unpaidSales) {
+                if (!sale.items || !Array.isArray(sale.items)) continue;
+                for (const item of sale.items) {
+                    if (item.productId == productId && !item.isCancelled) {
+                        totalQty += (Number(item.amount) || 0);
+                    }
+                }
+            }
+            
+            return totalQty;
+        } catch (e) {
+            console.error('Error getting product quantity:', e);
+            return 0;
+        }
+    }
+
+    async cancelLastProductFromTable(tableId, productId) {
+        try {
+            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            
+            // Find the most recent sale item with this product
+            let targetSale = null;
+            let targetItemIndex = -1;
+            let latestTs = 0;
+            
+            for (const sale of unpaidSales) {
+                if (!sale.items || !Array.isArray(sale.items)) continue;
+                for (let i = 0; i < sale.items.length; i++) {
+                    const item = sale.items[i];
+                    if (item.productId == productId && !item.isCancelled) {
+                        const saleTs = new Date(sale.sellDateTime).getTime();
+                        if (saleTs > latestTs) {
+                            latestTs = saleTs;
+                            targetSale = sale;
+                            targetItemIndex = i;
+                        }
+                    }
+                }
+            }
+            
+            if (targetSale && targetItemIndex >= 0) {
+                await this.deleteItemFromSale(targetSale.id, targetItemIndex, true); // Skip confirm for swipe gesture
+            }
+        } catch (e) {
+            console.error('Error canceling product:', e);
+        }
     }
 
     createGroupedTableSaleRow(row) {
@@ -2982,8 +3241,8 @@ class MekanApp {
         }
     }
 
-    async deleteItemFromSale(saleId, itemIndex) {
-        if (!(await this.appConfirm('Bu ürünü iptal etmek istediğinize emin misiniz?', { title: 'İptal Onayı', confirmText: 'İptal Et', cancelText: 'Vazgeç', confirmVariant: 'danger' }))) return;
+    async deleteItemFromSale(saleId, itemIndex, skipConfirm = false) {
+        if (!skipConfirm && !(await this.appConfirm('Bu ürünü iptal etmek istediğinize emin misiniz?', { title: 'İptal Onayı', confirmText: 'İptal Et', cancelText: 'Vazgeç', confirmVariant: 'danger' }))) return;
 
         try {
             const sale = await this.db.getSale(saleId);
@@ -3316,7 +3575,9 @@ class MekanApp {
 
         // Step 4: Mark as settling IMMEDIATELY to prevent race conditions
         // Extended duration to prevent realtime updates from interfering during closure
-        this._markTableSettling(tableId, 15000); // 15 seconds for closure operations
+        // For hourly tables, use longer duration to prevent reopening after payment
+        const settlingDuration = table.type === 'hourly' ? 25000 : 20000; // 25s for hourly, 20s for others
+        this._markTableSettling(tableId, settlingDuration);
 
         try {
             // Step 5: Get unpaid sales BEFORE closing table
@@ -3409,11 +3670,20 @@ class MekanApp {
             // Step 10: Multiple verification passes to ensure table stays closed
             // This prevents race conditions where realtime updates reopen the table
             // Extended verification period to catch delayed realtime updates
-            for (let verifyAttempt = 0; verifyAttempt < 5; verifyAttempt++) {
-                await new Promise(resolve => setTimeout(resolve, 300)); // Wait between attempts
+            // For hourly tables, use more attempts since payment closure is critical
+            const maxAttempts = table.type === 'hourly' ? 8 : 5;
+            for (let verifyAttempt = 0; verifyAttempt < maxAttempts; verifyAttempt++) {
+                await new Promise(resolve => setTimeout(resolve, 400)); // Wait between attempts (longer for hourly)
                 
                 const verifyTable = await this.db.getTable(tableId);
-                if (verifyTable && (verifyTable.isActive || (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime))) {
+                // CRITICAL: For hourly tables, if closeTime exists, table MUST be closed
+                const shouldBeClosed = verifyTable && (
+                    verifyTable.isActive || 
+                    (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime) ||
+                    (verifyTable.type === 'hourly' && verifyTable.closeTime && (verifyTable.openTime || verifyTable.isActive))
+                );
+                
+                if (shouldBeClosed) {
                     // Force close if verification fails
                     debugLog(`Verification attempt ${verifyAttempt + 1}: Table ${tableId} was reopened, forcing close again`);
                     verifyTable.isActive = false;
@@ -3427,8 +3697,8 @@ class MekanApp {
                     await this.db.updateTable(verifyTable);
                 } else {
                     // Table is properly closed, but continue verification to catch delayed updates
-                    if (verifyAttempt >= 2) {
-                        // After 2 successful checks, we can be more confident
+                    if (verifyAttempt >= 3) {
+                        // After 3 successful checks, we can be more confident
                         break;
                     }
                 }
@@ -3935,20 +4205,28 @@ class MekanApp {
                 // This prevents cancelled tables from being reopened by realtime updates
                 if (tableName === 'tables') {
                     try {
-                        const updatedTable = this.db.getTable ? await this.db.getTable(changedTableId) : null;
-                        // Check if table is currently being settled (prevent interference during closure)
+                        // CRITICAL: Check if table is currently being settled FIRST
+                        // This prevents any updates during closure operations
                         const isSettling = this._isTableSettling(changedTableId);
-                        
-                        // If table is being settled, skip refresh to prevent race conditions
                         if (isSettling) {
-                            debugLog(`Realtime: Table ${changedTableId} is being settled, skipping card refresh`);
-                            return;
+                            debugLog(`Table ${changedTableId} is being settled, skipping realtime update to prevent race condition`);
+                            return; // Don't process this realtime update
                         }
                         
-                        // If table was closed (has closeTime, no openTime, not active), don't refresh
-                        if (updatedTable && updatedTable.closeTime && !updatedTable.openTime && !updatedTable.isActive) {
+                        const updatedTable = this.db.getTable ? await this.db.getTable(changedTableId) : null;
+                        
+                        // If table was closed, don't refresh
+                        // For hourly tables: closeTime means payment was processed - table MUST be closed
+                        // For regular tables: closeTime or not active = closed
+                        const isTableClosed = updatedTable && (
+                            updatedTable.closeTime || 
+                            !updatedTable.isActive ||
+                            (updatedTable.type === 'hourly' && !updatedTable.openTime && !updatedTable.isActive)
+                        );
+                        
+                        if (isTableClosed) {
                             // Table was cancelled/closed - don't refresh, keep it closed
-                            debugLog(`Realtime: Table ${changedTableId} was closed, skipping card refresh to keep it closed`);
+                            debugLog(`Realtime: Table ${changedTableId} was closed (closeTime: ${updatedTable.closeTime}), skipping card refresh to keep it closed`);
                             // Ensure UI shows closed state
                             this.setTableCardState(changedTableId, {
                                 isActive: false,
@@ -3958,6 +4236,22 @@ class MekanApp {
                                 salesTotal: 0,
                                 checkTotal: 0
                             });
+                            
+                            // CRITICAL: If table has closeTime but is still marked as active or has openTime, force close
+                            if (updatedTable.closeTime && (updatedTable.isActive || (updatedTable.type === 'hourly' && updatedTable.openTime))) {
+                                debugLog(`Realtime: Table ${changedTableId} has closeTime but is still open, forcing close`);
+                                const forceClosed = {
+                                    ...updatedTable,
+                                    isActive: false,
+                                    openTime: null,
+                                    salesTotal: 0,
+                                    checkTotal: 0
+                                };
+                                if (forceClosed.type === 'hourly') {
+                                    forceClosed.hourlyTotal = 0;
+                                }
+                                await this.db.updateTable(forceClosed);
+                            }
                             return;
                         }
                     } catch (e) {
