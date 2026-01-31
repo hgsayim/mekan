@@ -225,6 +225,11 @@ class MekanApp {
             this.setupEventListeners();
             this.updateHeaderViewTitle(this.currentView);
             await this.loadInitialData();
+            // Pre-load products cache for instant modal display
+            this.refreshProductsCache().catch(err => {
+                console.error('Error pre-loading products cache:', err);
+                // Non-critical - cache will be loaded on first modal open
+            });
             this.startDailyReset();
             this.startRealtimeSubscriptions();
             this.startPollSync();
@@ -1999,15 +2004,40 @@ class MekanApp {
 
         const modalBodyEl = document.getElementById('table-modal-body');
         // Show loading overlay only if the work is actually slow (avoids spinner flash when using local cache)
+        // If products cache exists, don't show loading at all (products are already rendered)
         let loadingTimer = null;
-        if (modalBodyEl) {
+        const hasCachedProducts = this._cachedProducts && this._cachedProducts.length > 0;
+        if (modalBodyEl && !hasCachedProducts) {
             loadingTimer = setTimeout(() => {
                 modalBodyEl.classList.add('is-loading');
             }, 180);
         }
 
         const productsGridEl = document.getElementById('table-products-grid');
-        if (productsGridEl) productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
+        // If cache exists, render products immediately (no loading message)
+        if (productsGridEl && hasCachedProducts) {
+            // Render cached products immediately for instant display
+            productsGridEl.dataset.tableId = String(tableId);
+            productsGridEl.innerHTML = this._cachedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
+            // Bind event delegation if not already bound
+            if (!this._tableProductsDelegationBound) {
+                this._tableProductsDelegationBound = true;
+                productsGridEl.addEventListener('click', async (e) => {
+                    const card = e.target.closest('.product-card-mini');
+                    if (!card) return;
+                    if (card.classList.contains('out-of-stock')) return;
+                    const pid = card.getAttribute('data-product-id');
+                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                    if (!pid || !tid) return;
+                    const amount = (this.currentTableType === 'instant')
+                        ? this.getInstantSaleQty?.()
+                        : 1;
+                    this.queueQuickAddToTable(tid, pid, amount);
+                });
+            }
+        } else if (productsGridEl) {
+            productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
+        }
 
         const salesListEl = document.getElementById('table-sales-list');
         if (salesListEl) salesListEl.innerHTML = '<div class="empty-state"><p>Yükleniyor...</p></div>';
@@ -2246,8 +2276,15 @@ class MekanApp {
         }
 
         // Load products for selection
-        // Load products from cache if available, otherwise load from DB
-        await this.loadTableProducts(tableId, { useCache: true });
+        // If cache exists, products are already rendered above, just refresh if needed
+        // Otherwise load from cache or DB
+        if (!this._cachedProducts || this._cachedProducts.length === 0) {
+            await this.loadTableProducts(tableId, { useCache: true });
+        } else {
+            // Cache exists and products are already rendered, just ensure they're sorted correctly
+            // No need to reload - they're already displayed
+            debugLog('Products already rendered from cache, skipping reload');
+        }
 
         // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
@@ -2412,9 +2449,33 @@ class MekanApp {
         let products = null;
 
         // Use cache if available and requested
-        if (useCache && this._cachedProducts) {
+        if (useCache && this._cachedProducts && this._cachedProducts.length > 0) {
             products = this._cachedProducts;
             debugLog('Using cached products for table modal');
+            // Render immediately (synchronous) - no loading delay
+            if (products.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>Ürün bulunamadı</p></div>';
+                return;
+            }
+            container.dataset.tableId = String(tableId);
+            container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
+            // Bind event delegation if not already bound
+            if (!this._tableProductsDelegationBound) {
+                this._tableProductsDelegationBound = true;
+                container.addEventListener('click', async (e) => {
+                    const card = e.target.closest('.product-card-mini');
+                    if (!card) return;
+                    if (card.classList.contains('out-of-stock')) return;
+                    const pid = card.getAttribute('data-product-id');
+                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
+                    if (!pid || !tid) return;
+                    const amount = (this.currentTableType === 'instant')
+                        ? this.getInstantSaleQty?.()
+                        : 1;
+                    this.queueQuickAddToTable(tid, pid, amount);
+                });
+            }
+            return; // Early return - no async operation needed
         } else {
             // Load fresh products from DB
             products = this.sortProductsByStock(await this.db.getAllProducts());
