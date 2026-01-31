@@ -38,7 +38,7 @@
     --dark-surface-elevated: #141414;
     --dark-text-primary: #ffffff;
     --dark-text-secondary: #a0a0a0;
-    --dark-border: #1a1a1a;
+    --dark-border: #2a2a2a; /* Daha açık border rengi - masa kenarları için daha görünür */
     --dark-shadow: 0 4px 12px rgba(0, 0, 0, 0.8), 0 2px 4px rgba(0, 0, 0, 0.6);
     --dark-shadow-lg: 0 10px 24px rgba(0, 0, 0, 0.9), 0 4px 8px rgba(0, 0, 0, 0.7);
 }
@@ -620,10 +620,50 @@ header h1 {
 
 .view {
     display: none;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
 }
 
 .view.active {
     display: block;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.view-fade-in {
+    animation: viewFadeIn 0.3s ease forwards;
+}
+
+.view-fade-out {
+    animation: viewFadeOut 0.15s ease forwards;
+}
+
+@keyframes viewFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes viewFadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+}
+
+/* Dark mode transition */
+.theme-transitioning * {
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease !important;
 }
 
 
@@ -933,6 +973,31 @@ header h1 {
     background-size: 200% 100%;
     animation: shimmer 1.2s ease-in-out infinite;
     border: 2px solid rgba(0,0,0,0.03);
+    pointer-events: none;
+}
+
+[data-theme="dark"] .table-card.skeleton {
+    background: linear-gradient(110deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 40%, var(--dark-surface) 80%) !important;
+    background-size: 200% 100%;
+    border-color: var(--dark-border) !important;
+}
+
+/* Skeleton screens for other cards */
+.product-card.skeleton,
+.customer-card.skeleton,
+.expense-card.skeleton {
+    background: linear-gradient(110deg, #ffffff 0%, #f6f7f8 40%, #ffffff 80%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s ease-in-out infinite;
+    pointer-events: none;
+    min-height: 60px;
+}
+
+[data-theme="dark"] .product-card.skeleton,
+[data-theme="dark"] .customer-card.skeleton,
+[data-theme="dark"] .expense-card.skeleton {
+    background: linear-gradient(110deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 40%, var(--dark-surface) 80%) !important;
+    background-size: 200% 100%;
 }
 
 @keyframes shimmer {
@@ -969,6 +1034,7 @@ header h1 {
 [data-theme="dark"] .table-card {
     background: linear-gradient(135deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 100%) !important;
     border-color: var(--dark-border) !important;
+    border-width: 2px !important;
 }
 
 .table-card-loading {
@@ -1238,28 +1304,6 @@ header h1 {
     line-height: 1;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
     transition: transform 0.3s ease;
-}
-
-.table-customer-icon {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    font-size: 1.2rem;
-    width: 28px;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(52, 152, 219, 0.15);
-    border-radius: 50%;
-    border: 2px solid rgba(52, 152, 219, 0.3);
-    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
-    z-index: 10;
-}
-
-[data-theme="dark"] .table-customer-icon {
-    background: rgba(74, 158, 255, 0.2) !important;
-    border-color: rgba(74, 158, 255, 0.4) !important;
 }
 
 [data-theme="dark"] .table-icon {
@@ -3998,12 +4042,100 @@ form textarea:focus {
 
 .empty-state {
     text-align: center;
-    padding: 40px;
+    padding: 60px 20px;
     color: #7f8c8d;
+    animation: fadeIn 0.4s ease;
+}
+
+.empty-state-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    opacity: 0.6;
 }
 
 .empty-state h3 {
     margin-bottom: 10px;
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--dark-text);
+}
+
+.empty-state p {
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+[data-theme="dark"] .empty-state {
+    color: var(--dark-text-secondary);
+}
+
+[data-theme="dark"] .empty-state h3 {
+    color: var(--dark-text-primary);
+}
+
+/* Stock warning toast notification */
+.stock-warning-toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+    color: white;
+    padding: 16px 20px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.4), 0 4px 8px rgba(245, 158, 11, 0.3);
+    z-index: 10000;
+    max-width: 90%;
+    width: auto;
+    min-width: 300px;
+    cursor: pointer;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+    opacity: 0;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.stock-warning-toast.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+}
+
+.stock-warning-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.stock-warning-icon {
+    font-size: 1.5rem;
+    flex-shrink: 0;
+}
+
+.stock-warning-text {
+    font-weight: 600;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+[data-theme="dark"] .stock-warning-toast {
+    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+    box-shadow: 0 8px 24px rgba(245, 158, 11, 0.5), 0 4px 8px rgba(245, 158, 11, 0.4);
+}
+
+[data-theme="dark"] .empty-state h3 {
+    color: var(--dark-text-primary);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 /* Daily Dashboard Styles */
