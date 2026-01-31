@@ -2142,58 +2142,30 @@ class MekanApp {
 
         this.currentTableId = tableId;
 
-        // Open modal shell immediately (avoid perceived lag)
+        // Open modal shell immediately
         const tableModalEl = document.getElementById('table-modal');
         if (tableModalEl) tableModalEl.classList.add('active');
         document.body.classList.add('table-modal-open');
 
+        // Hide title initially - will show after loading
         const modalTitleEl = document.getElementById('table-modal-title');
         if (modalTitleEl) {
-            // Table names are stable; show immediately (avoid "Yükleniyor..." in title)
-            const card = this.getTableCardEl?.(tableId);
-            const cardName = card?.querySelector?.('h3')?.textContent?.trim?.() || null;
-            modalTitleEl.textContent = cardName || modalTitleEl.textContent || 'Masa';
+            modalTitleEl.textContent = 'Yükleniyor...';
         }
 
+        // Show loading overlay immediately - hide all content until fully loaded
         const modalBodyEl = document.getElementById('table-modal-body');
-        // Show loading overlay only if the work is actually slow (avoids spinner flash when using local cache)
-        // If products cache exists, don't show loading at all (products are already rendered)
-        let loadingTimer = null;
-        const hasCachedProducts = this._cachedProducts && this._cachedProducts.length > 0;
-        if (modalBodyEl && !hasCachedProducts) {
-            loadingTimer = setTimeout(() => {
-                modalBodyEl.classList.add('is-loading');
-            }, 180);
-        }
-
-        const productsGridEl = document.getElementById('table-products-grid');
-        // If cache exists, render products immediately (no loading message)
-        if (productsGridEl && hasCachedProducts) {
-            // Render cached products immediately for instant display
-            productsGridEl.dataset.tableId = String(tableId);
-            productsGridEl.innerHTML = this._cachedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
-            // Bind event delegation if not already bound
-            if (!this._tableProductsDelegationBound) {
-                this._tableProductsDelegationBound = true;
-                productsGridEl.addEventListener('click', async (e) => {
-                    const card = e.target.closest('.product-card-mini');
-                    if (!card) return;
-                    if (card.classList.contains('out-of-stock')) return;
-                    const pid = card.getAttribute('data-product-id');
-                    const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
-                    if (!pid || !tid) return;
-                    const amount = (this.currentTableType === 'instant')
-                        ? this.getInstantSaleQty?.()
-                        : 1;
-                    this.queueQuickAddToTable(tid, pid, amount);
-                });
+        if (modalBodyEl) {
+            modalBodyEl.classList.add('is-loading');
+            // Hide all child sections - don't clear innerHTML to preserve structure
+            const productsSection = document.getElementById('table-products-section');
+            if (productsSection) productsSection.style.display = 'none';
+            const salesListEl = document.getElementById('table-sales-list');
+            if (salesListEl) {
+                salesListEl.innerHTML = '';
+                salesListEl.style.display = 'none';
             }
-        } else if (productsGridEl) {
-            productsGridEl.innerHTML = '<div class="empty-state"><p>Ürünler yükleniyor...</p></div>';
         }
-
-        const salesListEl = document.getElementById('table-sales-list');
-        if (salesListEl) salesListEl.innerHTML = '<div class="empty-state"><p>Yükleniyor...</p></div>';
 
         const footerBtns = [
             document.getElementById('pay-table-btn'),
@@ -2206,10 +2178,6 @@ class MekanApp {
         let modalDataReady = false;
 
         const unlockModal = () => {
-            if (loadingTimer) {
-                clearTimeout(loadingTimer);
-                loadingTimer = null;
-            }
             if (modalBodyEl) modalBodyEl.classList.remove('is-loading');
             // Only enable buttons if data is ready AND table is still open
             if (modalDataReady) {
@@ -2428,16 +2396,11 @@ class MekanApp {
             }
         }
 
-        // Load products for selection
-        // If cache exists, products are already rendered above, just refresh if needed
-        // Otherwise load from cache or DB
-        if (!this._cachedProducts || this._cachedProducts.length === 0) {
-            await this.loadTableProducts(tableId, { useCache: true });
-        } else {
-            // Cache exists and products are already rendered, just ensure they're sorted correctly
-            // No need to reload - they're already displayed
-            debugLog('Products already rendered from cache, skipping reload');
-        }
+        // Load products for selection - always load fresh to ensure consistency
+        await this.loadTableProducts(tableId, { useCache: false });
+
+        // Load sales - wait for it to complete before showing content
+        await this.loadTableSales(tableId);
 
         // CRITICAL: Verify table state before enabling buttons
         // Re-read table from DB to ensure we have the latest state
@@ -2470,13 +2433,18 @@ class MekanApp {
 
         // Table is open (or regular/instant table without closeTime) - mark data as ready and enable buttons
         // Regular/instant tables can be opened even if they have no products (user wants to add products)
+        // All data is now loaded - show content and unlock modal
+        const productsSectionEl = document.getElementById('table-products-section');
+        if (productsSectionEl && (table.type !== 'hourly' || (table.isActive && table.openTime))) {
+            productsSectionEl.style.display = 'block';
+        }
+        const salesListEl = document.getElementById('table-sales-list');
+        if (salesListEl) {
+            salesListEl.style.display = 'block';
+        }
+        
         modalDataReady = true;
         unlockModal();
-
-        // Load sales in the background to keep modal snappy
-        Promise.resolve()
-            .then(() => this.loadTableSales(tableId))
-            .catch((e) => console.error('loadTableSales error:', e));
         } catch (error) {
             console.error('openTableModal error:', error, error?.message, error?.details, error?.hint, error?.code);
             unlockModal();
