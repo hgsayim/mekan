@@ -2494,12 +2494,22 @@ class MekanApp {
         } else if (unpaidSales.length === 0 && table.isActive) {
             // Table has no unpaid sales.
             // Hourly tables: if manually opened (have openTime), keep active and update totals.
-            // Regular tables: DO NOT auto-deactivate; empty-but-occupied is a valid state.
+            // Regular tables: Auto-close if no unpaid sales and checkTotal is 0
             if (table.type === 'hourly' && table.openTime) {
                 const hoursUsed = this.calculateHoursUsed(table.openTime);
                 table.hourlyTotal = hoursUsed * table.hourlyRate;
                 table.checkTotal = table.hourlyTotal + table.salesTotal;
                 tableUpdated = true;
+            } else if (table.type !== 'hourly' && table.type !== 'instant') {
+                // Regular tables: close if no unpaid sales and totals are 0
+                if (computedSalesTotal === 0 && table.checkTotal === 0) {
+                    table.isActive = false;
+                    table.openTime = null;
+                    table.closeTime = table.closeTime || new Date().toISOString();
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                    tableUpdated = true;
+                }
             }
         } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || (table.hourlyTotal > 0 && (!table.openTime || table.type !== 'hourly')))) {
             // Table is inactive but has totals - reset them (this handles cases where payment was processed)
@@ -3704,12 +3714,34 @@ class MekanApp {
                     table.closeTime = new Date().toISOString();
                     table.salesTotal = 0;
                     table.checkTotal = 0;
+                    await this.db.updateTable(table);
+                    
+                    // Close modal if it's open for this table
+                    if (this.currentTableId === sale.tableId) {
+                        this.closeTableModal();
+                    }
+                    
+                    // Update UI immediately
+                    this.setTableCardState(sale.tableId, {
+                        isActive: false,
+                        salesTotal: 0,
+                        checkTotal: 0,
+                        openTime: null
+                    });
+                } else {
+                    await this.db.updateTable(table);
                 }
-                await this.db.updateTable(table);
             }
 
-            await this.loadTableProducts(sale.tableId);
-            await this.openTableModal(sale.tableId);
+            // Only reload and reopen modal if table is still active
+            if (table && table.isActive) {
+                await this.loadTableProducts(sale.tableId);
+                await this.openTableModal(sale.tableId);
+            } else {
+                // Table is closed, just refresh the view
+                this.closeTableModal();
+            }
+            
             await this.loadTables();
             await this.loadCustomers(true); // Reset pagination
             
