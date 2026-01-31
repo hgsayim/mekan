@@ -2534,6 +2534,24 @@ class MekanApp {
             clearInterval(this.hourlyUpdateInterval);
             this.hourlyUpdateInterval = null;
         }
+        
+        // Clear modal content immediately to prevent showing old data
+        const salesListEl = document.getElementById('table-sales-list');
+        if (salesListEl) salesListEl.innerHTML = '';
+        
+        const productsGridEl = document.getElementById('table-products-grid');
+        if (productsGridEl) {
+            productsGridEl.innerHTML = '';
+            productsGridEl.removeAttribute('data-table-id');
+        }
+        
+        const modalTitleEl = document.getElementById('table-modal-title');
+        if (modalTitleEl) modalTitleEl.textContent = 'Masa';
+        
+        // Reset quantity controls
+        this.setInstantSaleQtyControlsVisible?.(false);
+        this.setInstantSaleQty?.(1);
+        
         document.getElementById('table-modal').classList.remove('active');
         document.body.classList.remove('table-modal-open');
         
