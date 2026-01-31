@@ -2640,32 +2640,8 @@ class MekanApp {
         const groupedRows = this.groupUnpaidSalesForTableModal(unpaidSales, iconByProductId);
         container.innerHTML = groupedRows.map((row) => this.createGroupedTableSaleRow(row)).join('');
         
-        // Add delete, pay, and credit listeners for each item
-        unpaidSales.forEach(sale => {
-            sale.items.forEach((item, index) => {
-                const deleteBtn = document.getElementById(`delete-sale-item-${sale.id}-${index}`);
-                const payBtn = document.getElementById(`pay-sale-item-${sale.id}-${index}`);
-                const creditBtn = document.getElementById(`credit-sale-item-${sale.id}-${index}`);
-                
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', () => {
-                        this.deleteItemFromSale(sale.id, index);
-                    });
-                }
-                
-                if (payBtn) {
-                    payBtn.addEventListener('click', () => {
-                        this.payItemFromSale(sale.id, index);
-                    });
-                }
-                
-                if (creditBtn) {
-                    creditBtn.addEventListener('click', () => {
-                        this.creditItemFromSale(sale.id, index);
-                    });
-                }
-            });
-        });
+        // Setup long press handlers and button listeners for each product line
+        this.setupSaleItemInteractions(unpaidSales);
     }
 
     // Convert unpaid sales list into compact rows:
@@ -2786,31 +2762,52 @@ class MekanApp {
     createGroupedTableSaleRow(row) {
         const rowCatKey = (row?.items?.[0]?.category != null) ? String(row.items[0].category) : '';
         const rowCatClass = this.getProductCategoryClass({ category: rowCatKey });
-        const itemsHtml = (row.items || [])
+        
+        // Create individual product lines (one per product)
+        const productLinesHtml = (row.items || [])
             .map((it) => {
                 const saleId = it.actionSaleId;
                 const idx = it.actionItemIndex;
-                const buttons = `
-                    <button class="btn btn-danger btn-icon" id="delete-sale-item-${saleId}-${idx}" title="Sil">×</button>
-                    <button class="btn btn-success btn-icon" id="pay-sale-item-${saleId}-${idx}" title="Öde">₺</button>
-                    <button class="btn btn-info btn-icon" id="credit-sale-item-${saleId}-${idx}" title="Veresiye">💳</button>
-                `;
                 const iconHtml = this.renderProductIcon(it.icon || '📦');
-                return `<span class="sale-item-product" title="${it.name}"><strong class="sale-item-ico" aria-hidden="true">${iconHtml}</strong> x${Math.round(it.amount || 0)} = ${Math.round(it.total || 0)} ₺${buttons}</span>`;
+                const itemTime = it.firstTs ? this.formatTimeOnly(new Date(it.firstTs).toISOString()) : row.timeOnly;
+                
+                // Hidden action buttons (shown on long press)
+                const buttons = `
+                    <div class="sale-item-actions" data-sale-id="${saleId}" data-item-index="${idx}">
+                        <button class="btn btn-danger btn-icon sale-action-btn" id="delete-sale-item-${saleId}-${idx}" title="İptal">×</button>
+                        <button class="btn btn-success btn-icon sale-action-btn" id="pay-sale-item-${saleId}-${idx}" title="Nakit Öde">₺</button>
+                        <button class="btn btn-info btn-icon sale-action-btn" id="credit-sale-item-${saleId}-${idx}" title="Veresiye">💳</button>
+                    </div>
+                `;
+                
+                return `
+                    <div class="sale-product-line" data-sale-id="${saleId}" data-item-index="${idx}">
+                        <div class="sale-product-line-content">
+                            <div class="sale-product-icon">${iconHtml}</div>
+                            <div class="sale-product-details">
+                                <div class="sale-product-name">${it.name || 'Ürün'}</div>
+                                <div class="sale-product-meta">
+                                    <span class="sale-product-amount">${Math.round(it.amount || 0)} adet</span>
+                                    <span class="sale-product-total">${Math.round(it.total || 0)} ₺</span>
+                                </div>
+                            </div>
+                            <div class="sale-product-time">${itemTime}</div>
+                        </div>
+                        ${buttons}
+                    </div>
+                `;
             })
-            .join(' <span class="sale-item-separator">•</span> ');
+            .join('');
 
         return `
-            <div class="sale-item-row ${rowCatClass}">
+            <div class="sale-item-row ${rowCatClass}" data-time="${row.timeOnly}">
                 <div class="sale-item-content">
-                    <div class="sale-item-info">
-                        <div class="sale-item-items">
-                            ${itemsHtml}
-                        </div>
-                        <div class="sale-item-meta">
-                            <span class="sale-item-total">${Math.round(row.total || 0)} ₺</span>
-                            <span class="sale-item-time">${row.timeOnly || ''}</span>
-                        </div>
+                    <div class="sale-item-header">
+                        <span class="sale-item-time-header">${row.timeOnly}</span>
+                        <span class="sale-item-total-header">${Math.round(row.total || 0)} ₺</span>
+                    </div>
+                    <div class="sale-item-products">
+                        ${productLinesHtml}
                     </div>
                 </div>
             </div>
@@ -2851,42 +2848,113 @@ class MekanApp {
     }
 
     createTableSaleItem(sale, iconByProductId = {}) {
-        const items = sale.items.map((item, index) => {
-            const buttons = !sale.isPaid ? `
-                <button class="btn btn-danger btn-icon" id="delete-sale-item-${sale.id}-${index}" title="Sil">×</button>
-                <button class="btn btn-success btn-icon" id="pay-sale-item-${sale.id}-${index}" title="Öde">₺</button>
-                <button class="btn btn-info btn-icon" id="credit-sale-item-${sale.id}-${index}" title="Veresiye">💳</button>
-            ` : '';
-
-            const icon =
-                item.icon ||
-                iconByProductId[String(item.productId)] ||
-                '📦';
-
-            const iconHtml = this.renderProductIcon(icon);
-            return `<span class="sale-item-product" title="${item.name}"><strong class="sale-item-ico" aria-hidden="true">${iconHtml}</strong> x${item.amount} = ${Math.round(item.price * item.amount)} ₺${buttons}</span>`;
-        }).join(' <span class="sale-item-separator">•</span> ');
-        
+        // This function is kept for backward compatibility but should use createGroupedTableSaleRow
+        // Convert single sale to grouped format
         const saleDate = new Date(sale.sellDateTime);
         const hours = String(saleDate.getHours()).padStart(2, '0');
         const minutes = String(saleDate.getMinutes()).padStart(2, '0');
         const timeOnly = `${hours}:${minutes}`;
         
-        return `
-            <div class="sale-item-row">
-                <div class="sale-item-content">
-                    <div class="sale-item-info">
-                        <div class="sale-item-items">
-                            ${items}
-                        </div>
-                        <div class="sale-item-meta">
-                            <span class="sale-item-total">${Math.round(sale.saleTotal)} ₺</span>
-                            <span class="sale-item-time">${timeOnly}</span>
-                        </div>
-                </div>
-                </div>
-            </div>
-        `;
+        const row = {
+            timeOnly,
+            total: sale.saleTotal,
+            items: sale.items.map((item, index) => {
+                const icon = item.icon || iconByProductId[String(item.productId)] || '📦';
+                return {
+                    name: item.name || 'Ürün',
+                    icon,
+                    amount: item.amount,
+                    total: item.price * item.amount,
+                    firstTs: new Date(sale.sellDateTime).getTime(),
+                    lastTs: new Date(sale.sellDateTime).getTime(),
+                    actionSaleId: sale.id,
+                    actionItemIndex: index,
+                };
+            }),
+        };
+        
+        return this.createGroupedTableSaleRow(row);
+    }
+
+    setupSaleItemInteractions(unpaidSales) {
+        // Close any open action menus first
+        const closeAllMenus = () => {
+            document.querySelectorAll('.sale-product-line.active').forEach(line => {
+                line.classList.remove('active');
+            });
+        };
+
+        // Setup click/tap for each product line
+        unpaidSales.forEach(sale => {
+            sale.items.forEach((item, index) => {
+                const lineEl = document.querySelector(`.sale-product-line[data-sale-id="${sale.id}"][data-item-index="${index}"]`);
+                if (!lineEl) return;
+
+                // Toggle menu on click/tap
+                const handleClick = (e) => {
+                    // Don't toggle if clicking on buttons
+                    if (e.target.closest('.sale-item-actions')) {
+                        return;
+                    }
+                    
+                    // If this line is already active, close it
+                    if (lineEl.classList.contains('active')) {
+                        lineEl.classList.remove('active');
+                    } else {
+                        // Close other menus first
+                        closeAllMenus();
+                        // Show this menu
+                        lineEl.classList.add('active');
+                    }
+                    e.stopPropagation();
+                };
+
+                // Add click handler
+                lineEl.addEventListener('click', handleClick);
+
+                // Button click handlers
+                const deleteBtn = lineEl.querySelector(`#delete-sale-item-${sale.id}-${index}`);
+                const payBtn = lineEl.querySelector(`#pay-sale-item-${sale.id}-${index}`);
+                const creditBtn = lineEl.querySelector(`#credit-sale-item-${sale.id}-${index}`);
+
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeAllMenus();
+                        this.deleteItemFromSale(sale.id, index);
+                    });
+                }
+
+                if (payBtn) {
+                    payBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeAllMenus();
+                        this.payItemFromSale(sale.id, index);
+                    });
+                }
+
+                if (creditBtn) {
+                    creditBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeAllMenus();
+                        this.creditItemFromSale(sale.id, index);
+                    });
+                }
+            });
+        });
+
+        // Close menus when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.sale-product-line')) {
+                closeAllMenus();
+            }
+        });
+
+        // Close menus on scroll
+        const salesListEl = document.getElementById('table-sales-list');
+        if (salesListEl) {
+            salesListEl.addEventListener('scroll', closeAllMenus);
+        }
     }
 
     async deleteItemFromSale(saleId, itemIndex) {
