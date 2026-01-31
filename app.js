@@ -2145,31 +2145,46 @@ class MekanApp {
         // Get table card position for animation
         const tableCard = this.getTableCardEl(tableId);
         let cardRect = null;
+        let animationOrigin = { x: '50%', y: '50%' };
+        
         if (tableCard) {
             cardRect = tableCard.getBoundingClientRect();
+            animationOrigin = {
+                x: `${cardRect.left + cardRect.width / 2}px`,
+                y: `${cardRect.top + cardRect.height / 2}px`
+            };
+        } else {
+            // For instant sale (no table card), use header button position
+            const instantSaleBtn = document.getElementById('instant-sale-btn');
+            if (instantSaleBtn) {
+                const btnRect = instantSaleBtn.getBoundingClientRect();
+                animationOrigin = {
+                    x: `${btnRect.left + btnRect.width / 2}px`,
+                    y: `${btnRect.top + btnRect.height / 2}px`
+                };
+            }
         }
 
         // Open modal shell immediately
         const tableModalEl = document.getElementById('table-modal');
         if (tableModalEl) {
-            // Set initial position for animation (from table card)
-            if (cardRect) {
-                const modalContent = tableModalEl.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transformOrigin = `${cardRect.left + cardRect.width / 2}px ${cardRect.top + cardRect.height / 2}px`;
-                    modalContent.style.transform = `scale(0.1) translate(0, 0)`;
-                    modalContent.style.opacity = '0';
-                }
+            const modalContent = tableModalEl.querySelector('.modal-content');
+            if (modalContent) {
+                // Set initial position for animation
+                modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
+                modalContent.style.transform = `scale(0.1) translate(0, 0)`;
+                modalContent.style.opacity = '0';
             }
             tableModalEl.classList.add('active');
             // Trigger animation after a tiny delay
             requestAnimationFrame(() => {
-                const modalContent = tableModalEl.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transition = 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1)';
-                    modalContent.style.transform = 'scale(1) translate(0, 0)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    if (modalContent) {
+                        modalContent.style.transition = 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1)';
+                        modalContent.style.transform = 'scale(1) translate(0, 0)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
         }
         document.body.classList.add('table-modal-open');
@@ -2178,6 +2193,12 @@ class MekanApp {
         const modalTitleEl = document.getElementById('table-modal-title');
         if (modalTitleEl) {
             modalTitleEl.textContent = 'Yükleniyor...';
+        }
+
+        // Set pay button text to "Yükleniyor..." immediately (before any data loads)
+        const payBtnTxtEl = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt') || null;
+        if (payBtnTxtEl) {
+            payBtnTxtEl.textContent = 'Yükleniyor...';
         }
 
         // Show loading overlay immediately - hide all content until fully loaded
@@ -2293,10 +2314,7 @@ class MekanApp {
         const modalTitle = document.getElementById('table-modal-title');
         modalTitle.textContent = table.name;
 
-        // Total is shown on the green pay button (not in header) - hide until loaded
-        // Get pay button text element once and reuse
-        const payBtnTxtEl = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt') || null;
-        if (payBtnTxtEl) payBtnTxtEl.textContent = 'Yükleniyor...';
+        // Pay button text is already set to "Yükleniyor..." above, no need to set again
         
         // Update modal content
         // Hourly table info
@@ -2596,27 +2614,48 @@ class MekanApp {
             // Get table card position for closing animation
             const tableCard = this.getTableCardEl(this.currentTableId);
             let cardRect = null;
+            let animationOrigin = { x: '50%', y: '50%' };
+            
             if (tableCard) {
                 cardRect = tableCard.getBoundingClientRect();
+                animationOrigin = {
+                    x: `${cardRect.left + cardRect.width / 2}px`,
+                    y: `${cardRect.top + cardRect.height / 2}px`
+                };
+            } else {
+                // For instant sale (no table card), use header button position
+                const instantSaleBtn = document.getElementById('instant-sale-btn');
+                if (instantSaleBtn) {
+                    const btnRect = instantSaleBtn.getBoundingClientRect();
+                    animationOrigin = {
+                        x: `${btnRect.left + btnRect.width / 2}px`,
+                        y: `${btnRect.top + btnRect.height / 2}px`
+                    };
+                }
             }
             
-            // Animate closing - shrink back to table card position
+            // Animate closing - shrink back to origin position
             const modalContent = tableModalEl.querySelector('.modal-content');
-            if (modalContent && cardRect) {
-                modalContent.style.transition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
-                modalContent.style.transformOrigin = `${cardRect.left + cardRect.width / 2}px ${cardRect.top + cardRect.height / 2}px`;
-                modalContent.style.transform = `scale(0.1) translate(0, 0)`;
-                modalContent.style.opacity = '0';
+            if (modalContent) {
+                // Ensure we have the current transform origin
+                modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
                 
-                // Remove active class after animation completes
-                setTimeout(() => {
-                    tableModalEl.classList.remove('active');
-                    // Reset transform for next open
-                    modalContent.style.transition = '';
-                    modalContent.style.transform = '';
-                    modalContent.style.opacity = '';
-                    modalContent.style.transformOrigin = '';
-                }, 350);
+                // Start closing animation
+                requestAnimationFrame(() => {
+                    modalContent.style.transition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
+                    modalContent.style.transform = `scale(0.1) translate(0, 0)`;
+                    modalContent.style.opacity = '0';
+                    
+                    // Remove active class after animation completes
+                    setTimeout(() => {
+                        tableModalEl.classList.remove('active');
+                        // Reset transform for next open
+                        modalContent.style.transition = '';
+                        modalContent.style.transform = '';
+                        modalContent.style.opacity = '';
+                        modalContent.style.transformOrigin = '';
+                    }, 350);
+                });
             } else {
                 tableModalEl.classList.remove('active');
             }
