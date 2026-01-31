@@ -2236,6 +2236,9 @@ header h1 {
     height: 100%;
     background-color: rgba(0,0,0,0.5);
     overflow-y: auto;
+    /* Backdrop animation */
+    opacity: 0;
+    transition: opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .modal.active {
@@ -2243,6 +2246,12 @@ header h1 {
     align-items: center;
     justify-content: center;
     padding: 20px;
+    opacity: 1;
+}
+
+.modal.closing {
+    opacity: 0;
+    transition: opacity 0.25s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* App dialog (must be above every panel/modal) */

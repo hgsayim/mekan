@@ -2201,22 +2201,7 @@ class MekanApp {
         if (modal.classList.contains('closing')) {
             modal.classList.remove('closing');
         }
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
         
         // Trigger animation
         requestAnimationFrame(() => {
@@ -2241,7 +2226,7 @@ class MekanApp {
         
         modal.classList.add('closing');
         
-        // iOS-like closing animation
+        // iOS-like closing animation - both backdrop and content
         const modalContent = modal.querySelector('.modal-content');
         if (modalContent) {
             requestAnimationFrame(() => {
@@ -2249,16 +2234,20 @@ class MekanApp {
                     modalContent.style.transform = 'scale(0.85)';
                     modalContent.style.opacity = '0';
                     
+                    // Remove active class after animation completes (backdrop fades out)
                     setTimeout(() => {
                         modal.classList.remove('active', 'closing');
                         // Reset transform for next open
                         modalContent.style.transform = '';
                         modalContent.style.opacity = '';
-                    }, 300);
+                    }, 250); // Match backdrop animation duration
                 });
             });
         } else {
-            modal.classList.remove('active', 'closing');
+            // If no content, just remove after backdrop animation
+            setTimeout(() => {
+                modal.classList.remove('active', 'closing');
+            }, 250);
         }
     }
 
@@ -2915,11 +2904,11 @@ class MekanApp {
             // Start closing animation - use double requestAnimationFrame for smoother animation
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    modalContent.style.transition = 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
+                    modalContent.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
                     modalContent.style.transform = `scale(0.1) translate(0, 0)`;
                     modalContent.style.opacity = '0';
                     
-                    // Remove active class after animation completes
+                    // Remove active class after animation completes (backdrop fades out in sync)
                     setTimeout(() => {
                         tableModalEl.classList.remove('active', 'closing');
                         // Reset transform for next open
@@ -2928,12 +2917,15 @@ class MekanApp {
                         modalContent.style.opacity = '';
                         modalContent.style.transformOrigin = '';
                         document.body.classList.remove('table-modal-open');
-                    }, 350);
+                    }, 250); // Match backdrop animation duration
                 });
             });
         } else {
-            tableModalEl.classList.remove('active', 'closing');
-            document.body.classList.remove('table-modal-open');
+            // If no content, just remove after backdrop animation
+            setTimeout(() => {
+                tableModalEl.classList.remove('active', 'closing');
+                document.body.classList.remove('table-modal-open');
+            }, 250);
         }
         
         // Refresh products cache in background after modal closes
@@ -5781,22 +5773,7 @@ class MekanApp {
         if (modal.classList.contains('closing')) {
             modal.classList.remove('closing');
         }
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
         
         // Trigger animation
         requestAnimationFrame(() => {
@@ -6125,22 +6102,7 @@ class MekanApp {
         if (modal.classList.contains('closing')) {
             modal.classList.remove('closing');
         }
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
         
         // Trigger animation
         requestAnimationFrame(() => {
@@ -6457,22 +6419,7 @@ class MekanApp {
         if (modal.classList.contains('closing')) {
             modal.classList.remove('closing');
         }
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
         
         // Trigger animation
         requestAnimationFrame(() => {
