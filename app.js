@@ -2472,13 +2472,8 @@ class MekanApp {
             }
 
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
-        // Use cache if available, otherwise fetch
-        let unpaidSales;
-        if (useCache && cachedData.sales) {
-            unpaidSales = cachedData.sales;
-        } else {
-            unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
-        }
+        // ALWAYS fetch fresh unpaid sales - don't use cache to avoid stale data causing button visibility issues
+        const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
         const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
 
         // Sync table active status with unpaid sales - but hourly tables must be manually opened
@@ -2679,27 +2674,6 @@ class MekanApp {
             actualCheckTotal = hourlyTotal + computedSalesTotal;
         }
         
-        // Show pay button if there are unpaid sales OR if there's a check total (for hourly tables with only time charges)
-        // For hourly tables, also show if table is open (has openTime)
-        // Use computedSalesTotal and actualCheckTotal instead of table.checkTotal (which may be stale)
-        if (unpaidSales.length === 0 && actualCheckTotal === 0 && !(table.type === 'hourly' && table.isActive && table.openTime)) {
-            payBtn.style.display = 'none';
-        } else {
-            payBtn.style.display = 'inline-block';
-        }
-
-        // Show/hide credit button based on unpaid sales
-        if (creditBtn) {
-            const hasUnpaidSales = unpaidSales.length > 0;
-            const hasCheckTotal = actualCheckTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
-            
-            if (hasUnpaidSales || hasCheckTotal) {
-                creditBtn.style.display = 'inline-block';
-            } else {
-                creditBtn.style.display = 'none';
-            }
-        }
-
         // Load products and sales - use cache if available, otherwise fetch in parallel
         if (useCache && cachedData.products) {
             // Render cached products immediately
@@ -2815,6 +2789,39 @@ class MekanApp {
             const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
             table.checkTotal = salesTotal;
             if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
+        }
+        
+        // CRITICAL: Re-fetch unpaid sales AFTER loadTableSales completes to ensure we have the latest data
+        // This fixes the issue where buttons disappear and reappear after 10 seconds
+        const finalUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+        const finalComputedSalesTotal = (finalUnpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+        let finalActualCheckTotal = finalComputedSalesTotal;
+        if (table.type === 'hourly' && table.isActive && table.openTime) {
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+            finalActualCheckTotal = hourlyTotal + finalComputedSalesTotal;
+        }
+        
+        // Update button visibility based on final unpaid sales data
+        // Re-use payBtn and creditBtn variables that were already declared above
+        const finalPayBtn = document.getElementById('pay-table-btn');
+        const finalCreditBtn = document.getElementById('credit-table-btn');
+        if (finalPayBtn) {
+            if (finalUnpaidSales.length === 0 && finalActualCheckTotal === 0 && !(table.type === 'hourly' && table.isActive && table.openTime)) {
+                finalPayBtn.style.display = 'none';
+            } else {
+                finalPayBtn.style.display = 'inline-block';
+            }
+        }
+        
+        if (finalCreditBtn) {
+            const hasUnpaidSales = finalUnpaidSales.length > 0;
+            const hasCheckTotal = finalActualCheckTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            if (hasUnpaidSales || hasCheckTotal) {
+                finalCreditBtn.style.display = 'inline-block';
+            } else {
+                finalCreditBtn.style.display = 'none';
+            }
         }
         
         const productsSectionEl = document.getElementById('table-products-section');
