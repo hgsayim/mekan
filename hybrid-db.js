@@ -49,10 +49,24 @@ export class HybridDatabase {
   }
 
   async init() {
-    await this.remote.init();
-    await this.local.init();
-    // Initial sync so app starts with a warm local cache.
-    await this.syncNow({ force: true, forceFull: true });
+    try {
+      await this.remote.init();
+      await this.local.init();
+      // Initial sync so app starts with a warm local cache.
+      // Use timeout to prevent blocking app startup if network is slow/unavailable
+      // If sync fails or times out, app will still start (local cache may be stale)
+      const syncPromise = this.syncNow({ force: true, forceFull: true });
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          console.warn('HybridDatabase: Initial sync timeout - app will start with local cache');
+          resolve(false);
+        }, 10000); // 10 second timeout
+      });
+      await Promise.race([syncPromise, timeoutPromise]);
+    } catch (error) {
+      // Don't fail init if sync fails - app can work with local cache
+      console.error('HybridDatabase: Initial sync error (app will start with local cache):', error);
+    }
     return true;
   }
 

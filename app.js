@@ -55,11 +55,23 @@ function showAuthModal(show) {
 }
 
 async function ensureSignedIn(supabase) {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-        console.error('Auth session error:', error);
+    // Add timeout to getSession to prevent hanging
+    let session = null;
+    try {
+        const sessionPromise = supabase.auth.getSession();
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Session check timeout')), 10000)
+        );
+        const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
+        if (error) {
+            console.error('Auth session error:', error);
+        }
+        session = data?.session || null;
+    } catch (err) {
+        console.error('Error checking session:', err);
+        // Continue - will show login modal
+        session = null;
     }
-    const session = data?.session || null;
     if (session) {
         // Session exists, ensure auth modal is closed and header is shown
         const authModal = document.getElementById('auth-modal');
@@ -221,19 +233,61 @@ class MekanApp {
                 header.style.display = '';
             }
             
-            await this.db.init();
+            // Initialize database with timeout protection
+            try {
+                await Promise.race([
+                    this.db.init(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Database init timeout')), 15000))
+                ]);
+            } catch (dbError) {
+                console.error('Database init error (app will continue with limited functionality):', dbError);
+                // Continue anyway - some features may not work but app won't be completely broken
+            }
+            
             this.setupEventListeners();
             this.updateHeaderViewTitle(this.currentView);
-            await this.loadInitialData();
-            // Pre-load products cache for instant modal display
+            
+            // Load initial data with error handling
+            try {
+                await Promise.race([
+                    this.loadInitialData(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Load initial data timeout')), 10000))
+                ]);
+            } catch (loadError) {
+                console.error('Load initial data error (app will continue):', loadError);
+                // Continue anyway - user can manually refresh
+            }
+            
+            // Pre-load products cache for instant modal display (non-blocking)
             this.refreshProductsCache().catch(err => {
                 console.error('Error pre-loading products cache:', err);
                 // Non-critical - cache will be loaded on first modal open
             });
-            this.startDailyReset();
-            this.startRealtimeSubscriptions();
-            this.startPollSync();
-            this.setupOrientationLock();
+            
+            // Start background services (non-critical if they fail)
+            try {
+                this.startDailyReset();
+            } catch (e) {
+                console.error('Error starting daily reset:', e);
+            }
+            
+            try {
+                this.startRealtimeSubscriptions();
+            } catch (e) {
+                console.error('Error starting realtime subscriptions:', e);
+            }
+            
+            try {
+                this.startPollSync();
+            } catch (e) {
+                console.error('Error starting poll sync:', e);
+            }
+            
+            try {
+                this.setupOrientationLock();
+            } catch (e) {
+                console.error('Error setting up orientation lock:', e);
+            }
             
             // Handle page visibility changes (screen lock/unlock on tablets)
             document.addEventListener('visibilitychange', () => {
@@ -936,12 +990,43 @@ class MekanApp {
 
     async loadInitialData() {
         try {
-            await this.ensureInstantSaleTable();
-            await this.reloadViews(['tables', 'products', 'customers', 'sales']);
+            // Ensure instant sale table exists (non-blocking)
+            this.ensureInstantSaleTable().catch(err => {
+                console.error('Error ensuring instant sale table:', err);
+                // Non-critical - can be created later
+            });
+            
+            // Load views in parallel with individual error handling
+            // This ensures that if one view fails, others can still load
+            const viewPromises = [
+                this.loadTables().catch(err => {
+                    console.error('Error loading tables:', err);
+                    return false;
+                }),
+                this.loadProducts().catch(err => {
+                    console.error('Error loading products:', err);
+                    return false;
+                }),
+                this.loadCustomers().catch(err => {
+                    console.error('Error loading customers:', err);
+                    return false;
+                }),
+                this.loadSales().catch(err => {
+                    console.error('Error loading sales:', err);
+                    return false;
+                })
+            ];
+            
+            await Promise.allSettled(viewPromises);
             
             // Start auto-update for table cards if we're on the tables view (default view)
             if (this.currentView === 'tables') {
-                this.startTableCardPriceUpdates();
+                try {
+                    this.startTableCardPriceUpdates();
+                } catch (err) {
+                    console.error('Error starting table card updates:', err);
+                    // Non-critical
+                }
             }
         } catch (error) {
             console.error('Error loading initial data:', error, error?.message, error?.details, error?.hint, error?.code);
@@ -6959,11 +7044,53 @@ initDarkModeEarly();
 
 // Bootstrap Supabase + Auth + App
 document.addEventListener('DOMContentLoaded', async () => {
-    // Create global supabase client (frontend-safe: anon key only)
-    window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    try {
+        // Create global supabase client (frontend-safe: anon key only)
+        if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+            throw new Error('Supabase configuration missing. Please check env.js');
+        }
+        window.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // Require login before app boot (RLS will enforce anyway, but this improves UX)
-    await ensureSignedIn(window.supabase);
+        // Require login before app boot (RLS will enforce anyway, but this improves UX)
+        // Add timeout to prevent infinite waiting
+        try {
+            await Promise.race([
+                ensureSignedIn(window.supabase),
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Giriş işlemi zaman aşımına uğradı. Lütfen internet bağlantınızı kontrol edin.')), 30000)
+                )
+            ]);
+        } catch (authError) {
+            console.error('Auth error:', authError);
+            // If auth fails, show error but don't prevent app from initializing
+            // User can retry login
+            const errorMsg = document.createElement('div');
+            errorMsg.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #e74c3c; color: white; padding: 15px 20px; border-radius: 8px; z-index: 10000; text-align: center; max-width: 90%; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
+            errorMsg.innerHTML = `
+                <p style="margin: 0 0 10px 0;">${authError.message || 'Giriş hatası'}</p>
+                <button onclick="location.reload()" style="background: white; color: #e74c3c; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    Yeniden Dene
+                </button>
+            `;
+            document.body.appendChild(errorMsg);
+            // Don't proceed if auth fails - app needs authenticated user
+            return;
+        }
 
-    window.app = new MekanApp();
+        // Initialize app with error handling
+        window.app = new MekanApp();
+    } catch (error) {
+        console.error('Uygulama başlatılırken kritik hata:', error);
+        // Show user-friendly error message
+        const errorMsg = document.createElement('div');
+        errorMsg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #e74c3c; color: white; padding: 20px; border-radius: 8px; z-index: 10000; text-align: center; max-width: 90%;';
+        errorMsg.innerHTML = `
+            <h2 style="margin: 0 0 10px 0;">Uygulama Başlatılamadı</h2>
+            <p style="margin: 0 0 15px 0;">${error.message || 'Bilinmeyen bir hata oluştu'}</p>
+            <button onclick="location.reload()" style="background: white; color: #e74c3c; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                Sayfayı Yenile
+            </button>
+        `;
+        document.body.appendChild(errorMsg);
+    }
 });
