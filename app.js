@@ -2148,9 +2148,7 @@ class MekanApp {
                     const pid = card.getAttribute('data-product-id');
                     const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                     if (!pid || !tid) return;
-                    const amount = (this.currentTableType === 'instant')
-                        ? this.getInstantSaleQty?.()
-                        : 1;
+                    const amount = this.getInstantSaleQty();
                     this.queueQuickAddToTable(tid, pid, amount);
                 });
             }
@@ -2587,9 +2585,7 @@ class MekanApp {
                     const pid = card.getAttribute('data-product-id');
                     const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                     if (!pid || !tid) return;
-                    const amount = (this.currentTableType === 'instant')
-                        ? this.getInstantSaleQty?.()
-                        : 1;
+                    const amount = this.getInstantSaleQty();
                     this.queueQuickAddToTable(tid, pid, amount);
                 });
             }
