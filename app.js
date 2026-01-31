@@ -1641,20 +1641,6 @@ class MekanApp {
         return document.getElementById(`table-${tableId}`);
     }
 
-    setTableCardLoading(tableId, isLoading) {
-        const card = this.getTableCardEl(tableId);
-        if (!card) return;
-        if (isLoading) {
-            if (card.querySelector('.table-card-loading')) return;
-            const overlay = document.createElement('div');
-            overlay.className = 'table-card-loading';
-            overlay.innerHTML = `<div class="table-card-loading-spinner" aria-hidden="true"></div>`;
-            card.appendChild(overlay);
-        } else {
-            card.querySelectorAll('.table-card-loading').forEach((el) => el.remove());
-        }
-    }
-
     setTableCardOpening(tableId, isOpening) {
         const card = this.getTableCardEl(tableId);
         if (!card) return;
@@ -2223,10 +2209,9 @@ class MekanApp {
 
             // Instant sale: show qty controls next to title; default 1 every time modal opens
             this.setupInstantSaleQtyControls?.();
-            this.setInstantSaleQtyControlsVisible?.(table.type === 'instant');
-            if (table.type === 'instant') {
-                this.setInstantSaleQty?.(1);
-            }
+            // Show quantity controls for all tables (not just instant sale)
+            this.setInstantSaleQtyControlsVisible?.(true);
+            this.setInstantSaleQty?.(1);
 
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
         const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
@@ -4207,7 +4192,7 @@ class MekanApp {
         if (!root) return;
         root.style.display = visible ? 'inline-flex' : 'none';
 
-        // Toggle a class to allow CSS to optimize header layout only for instant sale
+        // Toggle a class to allow CSS to optimize header layout for all tables with qty controls
         const titlebar = document.querySelector('.table-modal-titlebar');
         if (titlebar) {
             titlebar.classList.toggle('instant-mode', Boolean(visible));
@@ -4418,8 +4403,6 @@ class MekanApp {
     async addProductToTableFromModal(tableId, productId, amount) {
         if (!tableId || !productId || !amount) return;
 
-        // Card-level loading so the whole tables grid doesn't get blurred
-        this.setTableCardLoading(tableId, true);
         try {
             const table = await this.db.getTable(tableId);
             const product = await this.db.getProduct(productId);
@@ -4539,7 +4522,7 @@ class MekanApp {
             await this.appAlert('Ürün eklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
             this.closeAddProductModal();
         } finally {
-            this.setTableCardLoading(tableId, false);
+            this.clearTableCardLoading(tableId);
         }
     }
 
