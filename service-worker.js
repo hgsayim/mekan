@@ -1,10 +1,12 @@
 // Service Worker for MekanApp
-const CACHE_NAME = 'mekanapp-v38';
+const CACHE_NAME = 'mekanapp-v39';
+const STATIC_CACHE = 'mekanapp-static-v39';
+const API_CACHE = 'mekanapp-api-v39';
 
 // Get base URL from service worker location
 const BASE_URL = self.location.href.replace(/\/service-worker\.js$/, '/');
 
-const urlsToCache = [
+const staticUrlsToCache = [
   BASE_URL,
   BASE_URL + 'index.html',
   BASE_URL + 'styles.css',
@@ -21,19 +23,22 @@ const urlsToCache = [
   'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js'
 ];
 
-// Install event - cache files
+// Install event - cache static files
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-      .catch((error) => {
-        console.log('Cache installation failed:', error);
-        // Continue even if cache fails
+    Promise.all([
+      caches.open(STATIC_CACHE).then((cache) => {
+        console.log('Caching static files');
+        return cache.addAll(staticUrlsToCache).catch((error) => {
+          console.log('Static cache installation failed:', error);
+          return Promise.resolve();
+        });
+      }),
+      caches.open(API_CACHE).then((cache) => {
+        console.log('API cache ready');
         return Promise.resolve();
       })
+    ])
   );
   // Force the waiting service worker to become the active service worker
   self.skipWaiting();
@@ -45,7 +50,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          if (cacheName !== CACHE_NAME && cacheName !== STATIC_CACHE && cacheName !== API_CACHE) {
             console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -57,7 +62,43 @@ self.addEventListener('activate', (event) => {
   return self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Cache strategy helper
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    if (request.destination === 'document') {
+      return cache.match(BASE_URL + 'index.html');
+    }
+    throw error;
+  }
+}
+
+// Network first with cache fallback for API calls
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    throw error;
+  }
+}
+
+// Fetch event - smart caching strategy
 self.addEventListener('fetch', (event) => {
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
@@ -69,16 +110,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request).catch(() => {
-          // If fetch fails, return offline page if available
-          if (event.request.destination === 'document') {
-            return caches.match(BASE_URL + 'index.html');
-          }
-        });
-      })
-  );
+  const url = new URL(event.request.url);
+
+  // Static files: Cache First strategy
+  if (url.origin === location.origin && 
+      (url.pathname.endsWith('.js') || 
+       url.pathname.endsWith('.css') || 
+       url.pathname.endsWith('.html') ||
+       url.pathname.endsWith('.svg') ||
+       url.pathname.endsWith('.png') ||
+       url.pathname.endsWith('.json'))) {
+    event.respondWith(cacheFirst(event.request, STATIC_CACHE));
+    return;
+  }
+
+  // Supabase API calls: Network First strategy (with cache fallback for offline)
+  if (url.hostname.includes('supabase.co') || url.hostname.includes('supabase')) {
+    event.respondWith(networkFirst(event.request, API_CACHE));
+    return;
+  }
+
+  // External CDN (Chart.js): Cache First
+  if (url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('cdn')) {
+    event.respondWith(cacheFirst(event.request, STATIC_CACHE));
+    return;
+  }
+
+  // Default: Network First with cache fallback
+  event.respondWith(networkFirst(event.request, API_CACHE));
 });

@@ -5294,6 +5294,23 @@ form select:focus {
         display: none !important;
     }
 
+    /* Drag and Drop Styles */
+    .product-card[draggable="true"],
+    .table-card[draggable="true"] {
+        cursor: move;
+        user-select: none;
+    }
+    
+    .product-card[draggable="true"]:hover,
+    .table-card[draggable="true"]:hover {
+        opacity: 0.8;
+    }
+    
+    .product-card.dragging,
+    .table-card.dragging {
+        opacity: 0.5;
+    }
+
     /* "Ürün Seçin" başlığını küçült */
     #table-products-section h3 {
         font-size: 1rem !important;

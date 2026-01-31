@@ -178,7 +178,44 @@ class MekanApp {
         this._productsDelegationBound = false;
         this._pollSyncInterval = null;
         this._cachedProducts = null; // Cache products to avoid reloading on every modal open
+        this._productsPageSize = 20; // Items per page for lazy loading
+        this._productsCurrentPage = 0;
+        this._productsAllLoaded = false;
+        this._productsObserver = null; // Intersection Observer for infinite scroll
+        this._salesPageSize = 30; // Items per page for virtual scrolling
+        this._salesCurrentPage = 0;
+        this._salesAllData = null;
+        this._salesObserver = null;
+        this._customersPageSize = 30;
+        this._customersCurrentPage = 0;
+        this._customersAllData = null;
+        this._customersObserver = null;
         this.init();
+    }
+
+    // Utility: Debounce function for input events
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    // Utility: Throttle function for scroll/resize events
+    throttle(func, limit) {
+        let inThrottle;
+        return function executedFunction(...args) {
+            if (!inThrottle) {
+                func.apply(this, args);
+                inThrottle = true;
+                setTimeout(() => inThrottle = false, limit);
+            }
+        };
     }
 
     // Batch + serialize product additions per table/product to avoid stock races on rapid taps.
@@ -844,19 +881,19 @@ class MekanApp {
         });
         }
 
-        // Sales filters
+        // Sales filters with debounce for better performance
         const salesTableFilter = document.getElementById('sales-table-filter');
         if (salesTableFilter) {
-            salesTableFilter.addEventListener('change', () => {
-            this.filterSales();
-        });
+            salesTableFilter.addEventListener('change', this.debounce(() => {
+                this.filterSales();
+            }, 300));
         }
 
         const salesStatusFilter = document.getElementById('sales-status-filter');
         if (salesStatusFilter) {
-            salesStatusFilter.addEventListener('change', () => {
-            this.filterSales();
-        });
+            salesStatusFilter.addEventListener('change', this.debounce(() => {
+                this.filterSales();
+            }, 300));
         }
 
         // Close modal on outside click
@@ -1134,9 +1171,9 @@ class MekanApp {
         if (token !== this._viewSyncToken || this.currentView !== viewName) return;
 
         if (viewName === 'products') {
-            await this.loadProducts();
+            await this.loadProducts(true); // Reset pagination
         } else if (viewName === 'customers') {
-            await this.loadCustomers();
+            await this.loadCustomers(true); // Reset pagination
         }
     }
 
@@ -1328,6 +1365,9 @@ class MekanApp {
 
         const addCard = document.getElementById('add-table-card');
         if (addCard) addCard.onclick = () => this.openTableFormModal();
+        
+        // Setup drag and drop for tables
+        this.setupTableDragAndDrop(container);
         
         // Add click listeners - special handling for hourly tables
         tables.forEach(table => {
@@ -1885,9 +1925,10 @@ class MekanApp {
         }
     }
 
-    _markTableSettling(tableId, ms = 10000) {
-        // Increased to 10 seconds to prevent realtime updates from reopening tables
+    _markTableSettling(tableId, ms = 20000) {
+        // Increased to 20 seconds to prevent realtime updates from reopening tables
         // during the critical closure period
+        // Extended duration ensures closed tables stay closed even with delayed realtime updates
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
     }
@@ -2673,7 +2714,17 @@ class MekanApp {
      */
     async refreshProductsCache() {
         try {
-            const products = this.sortProductsByStock(await this.db.getAllProducts());
+            let products = await this.db.getAllProducts();
+        // Sort by sortOrder first, then by stock
+        products.sort((a, b) => {
+            if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
+                return a.sortOrder - b.sortOrder;
+            }
+            if (a.sortOrder !== undefined) return -1;
+            if (b.sortOrder !== undefined) return 1;
+            return 0; // Keep original order if no sortOrder
+        });
+        products = this.sortProductsByStock(products);
             this._cachedProducts = products;
             debugLog('Products cache refreshed in background');
         } catch (error) {
@@ -3180,7 +3231,7 @@ class MekanApp {
             
             // Update products view if it's currently active (to show updated stock)
             if (this.currentView === 'products') {
-                await this.loadProducts();
+                await this.loadProducts(true); // Reset pagination
             }
         } catch (error) {
             console.error('Error deleting item:', error);
@@ -3376,7 +3427,7 @@ class MekanApp {
             await this.loadTableProducts(sale.tableId);
             await this.openTableModal(sale.tableId);
             await this.loadTables();
-            await this.loadCustomers();
+            await this.loadCustomers(true); // Reset pagination
             
             if (this.currentView === 'daily') {
                 await this.loadDailyDashboard();
@@ -3446,7 +3497,7 @@ class MekanApp {
 
         // Step 4: Mark as settling IMMEDIATELY to prevent race conditions
         // Extended duration to prevent realtime updates from interfering during closure
-        this._markTableSettling(tableId, 15000); // 15 seconds for closure operations
+        this._markTableSettling(tableId, 25000); // 25 seconds for closure operations (extended for hourly tables)
 
         try {
             // Step 5: Get unpaid sales BEFORE closing table
@@ -4075,10 +4126,32 @@ class MekanApp {
                             return;
                         }
                         
-                        // If table was closed (has closeTime, no openTime, not active), don't refresh
-                        if (updatedTable && updatedTable.closeTime && !updatedTable.openTime && !updatedTable.isActive) {
+                        // CRITICAL: If table was closed (has closeTime, no openTime, not active), keep it closed
+                        // For hourly tables: also check if openTime exists (should be null for closed tables)
+                        const isClosed = updatedTable && updatedTable.closeTime && !updatedTable.isActive && 
+                            (updatedTable.type !== 'hourly' || !updatedTable.openTime);
+                        
+                        if (isClosed) {
                             // Table was cancelled/closed - don't refresh, keep it closed
                             debugLog(`Realtime: Table ${changedTableId} was closed, skipping card refresh to keep it closed`);
+                            
+                            // Force close if DB state doesn't match (defensive)
+                            if (updatedTable.isActive || (updatedTable.type === 'hourly' && updatedTable.openTime)) {
+                                debugLog(`Realtime: Table ${changedTableId} DB state mismatch, forcing close`);
+                                const forceClosed = {
+                                    ...updatedTable,
+                                    isActive: false,
+                                    openTime: null,
+                                    closeTime: updatedTable.closeTime || new Date().toISOString(),
+                                    salesTotal: 0,
+                                    checkTotal: 0
+                                };
+                                if (forceClosed.type === 'hourly') {
+                                    forceClosed.hourlyTotal = 0;
+                                }
+                                await this.db.updateTable(forceClosed);
+                            }
+                            
                             // Ensure UI shows closed state
                             this.setTableCardState(changedTableId, {
                                 isActive: false,
@@ -4119,11 +4192,18 @@ class MekanApp {
                         // Don't clean if table is being opened (isActive: true, openTime exists)
                             // CRITICAL: If table was closed (payment/credit/cancel), ensure it stays closed
                             // and clean up any remaining unpaid sales on this device
-                            if (updatedTable && updatedTable.closeTime && !updatedTable.isActive && !updatedTable.openTime) {
+                            // CRITICAL: Check if table is closed (for hourly: closeTime + no openTime + not active)
+                            const isTableClosed = updatedTable && updatedTable.closeTime && !updatedTable.isActive && 
+                                (updatedTable.type !== 'hourly' || !updatedTable.openTime);
+                            
+                            if (isTableClosed) {
                                 // Table was closed - if realtime update tries to reopen it, force it closed again
-                                // Also check if table is being settled (additional protection)
-                                if (isSettling || payload?.new?.isActive || (payload?.new?.openTime && !payload?.new?.closeTime)) {
-                                    debugLog(`Realtime: Preventing closed table ${changedTableId} from being reopened (isSettling: ${isSettling})`);
+                                // Check if payload tries to reopen the table
+                                const payloadTriesToReopen = payload?.new?.isActive || 
+                                    (payload?.new?.openTime && !payload?.new?.closeTime && updatedTable.type === 'hourly');
+                                
+                                if (isSettling || payloadTriesToReopen) {
+                                    debugLog(`Realtime: Preventing closed table ${changedTableId} from being reopened (isSettling: ${isSettling}, payloadReopen: ${payloadTriesToReopen})`);
                                     // Force close again - don't use _closeTableSafely to avoid recursion
                                     const forceClosed = {
                                         ...updatedTable,
@@ -4723,7 +4803,7 @@ class MekanApp {
             
             // Update products view if it's currently active (to show updated stock)
             if (this.currentView === 'products') {
-            await this.loadProducts();
+            await this.loadProducts(true); // Reset pagination
             }
             
             // Always reload daily dashboard when sale is deleted (data has changed)
@@ -5432,15 +5512,32 @@ class MekanApp {
         return `${day}.${month}.${year}`;
     }
 
-    // Products Management
-    async loadProducts() {
-        const products = this.sortProductsByStock(await this.db.getAllProducts());
+    // Products Management with Lazy Loading
+    async loadProducts(reset = false) {
         const container = document.getElementById('products-container');
         
         if (!container) {
             console.error('Products container not found');
             return;
         }
+
+        // Reset pagination if needed
+        if (reset) {
+            this._productsCurrentPage = 0;
+            this._productsAllLoaded = false;
+            container.innerHTML = '';
+            if (this._productsObserver) {
+                this._productsObserver.disconnect();
+                this._productsObserver = null;
+            }
+        }
+
+        // Get all products (sorted)
+        if (!this._allProducts || reset) {
+            this._allProducts = this.sortProductsByStock(await this.db.getAllProducts());
+        }
+
+        const products = this._allProducts;
         
         if (products.length === 0) {
             container.innerHTML = this.createAddProductCard();
@@ -5449,41 +5546,95 @@ class MekanApp {
             return;
         }
 
-        container.innerHTML = products.map(product => this.createProductCard(product)).join('') + this.createAddProductCard();
+        // Calculate pagination
+        const startIndex = this._productsCurrentPage * this._productsPageSize;
+        const endIndex = Math.min(startIndex + this._productsPageSize, products.length);
+        const productsToShow = products.slice(startIndex, endIndex);
+        const hasMore = endIndex < products.length;
 
-        const addCard = document.getElementById('add-product-card');
-        if (addCard) addCard.onclick = () => this.openProductFormModal();
-        
-        // Use event delegation for edit/delete buttons (bind once)
+        // Render products for current page
+        const productsHTML = productsToShow.map(product => this.createProductCard(product)).join('');
+        container.insertAdjacentHTML('beforeend', productsHTML);
+
+        // Add "Add Product" card only on first page
+        if (this._productsCurrentPage === 0) {
+            container.insertAdjacentHTML('beforeend', this.createAddProductCard());
+            const addCard = document.getElementById('add-product-card');
+            if (addCard) addCard.onclick = () => this.openProductFormModal();
+        }
+
+        // Setup event delegation (only once)
         if (!this._productsDelegationBound) {
             this._productsDelegationBound = true;
             container.addEventListener('click', (e) => {
-            const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
-            if (!target) return;
+                const target = e.target.closest('[id^="edit-product-"], [id^="delete-product-"]');
+                if (!target) return;
 
-            const extractId = (prefix) => {
-                if (!target.id.startsWith(prefix)) return null;
-                const idPart = target.id.slice(prefix.length);
-                return idPart || null;
-            };
+                const extractId = (prefix) => {
+                    if (!target.id.startsWith(prefix)) return null;
+                    const idPart = target.id.slice(prefix.length);
+                    return idPart || null;
+                };
 
-            const editPrefix = 'edit-product-';
-            const deletePrefix = 'delete-product-';
+                const editPrefix = 'edit-product-';
+                const deletePrefix = 'delete-product-';
 
-            if (target.id.startsWith(editPrefix)) {
-                const id = extractId(editPrefix);
-                if (!id) return;
-                const product = products.find(p => String(p.id) === String(id));
-                if (product) {
-                    this.openProductFormModal(product);
+                if (target.id.startsWith(editPrefix)) {
+                    const id = extractId(editPrefix);
+                    if (!id) return;
+                    const product = products.find(p => String(p.id) === String(id));
+                    if (product) {
+                        this.openProductFormModal(product);
+                    }
+                } else if (target.id.startsWith(deletePrefix)) {
+                    const id = extractId(deletePrefix);
+                    if (!id) return;
+                    this.deleteProduct(id);
                 }
-            } else if (target.id.startsWith(deletePrefix)) {
-                const id = extractId(deletePrefix);
-                if (!id) return;
-                this.deleteProduct(id);
-            }
             });
         }
+
+        // Update pagination state
+        this._productsCurrentPage++;
+        this._productsAllLoaded = !hasMore;
+
+        // Setup infinite scroll observer if there's more to load
+        if (hasMore && !this._productsObserver) {
+            this.setupProductsInfiniteScroll();
+        } else if (this._productsAllLoaded && this._productsObserver) {
+            this._productsObserver.disconnect();
+            this._productsObserver = null;
+        }
+    }
+
+    setupProductsInfiniteScroll() {
+        const container = document.getElementById('products-container');
+        if (!container) return;
+
+        // Create sentinel element for intersection observer
+        let sentinel = container.querySelector('.products-load-more-sentinel');
+        if (!sentinel) {
+            sentinel = document.createElement('div');
+            sentinel.className = 'products-load-more-sentinel';
+            sentinel.style.height = '20px';
+            sentinel.style.width = '100%';
+            container.appendChild(sentinel);
+        }
+
+        // Setup Intersection Observer
+        this._productsObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && !this._productsAllLoaded) {
+                    this.loadProducts(false); // Load next page
+                }
+            });
+        }, {
+            root: null,
+            rootMargin: '100px', // Start loading 100px before reaching the sentinel
+            threshold: 0.1
+        });
+
+        this._productsObserver.observe(sentinel);
     }
 
     createAddProductCard() {
@@ -5519,8 +5670,9 @@ class MekanApp {
             stockText = `Stok: ${product.stock}`;
         }
 
+        const sortOrder = product.sortOrder !== undefined ? product.sortOrder : 9999;
         return `
-            <div class="product-card">
+            <div class="product-card" draggable="true" data-product-id="${product.id}" data-sort-order="${sortOrder}">
                 <div class="product-card-icon">${iconHtml}</div>
                 <div class="product-card-content">
                 <h3>${product.name}</h3>
@@ -5626,7 +5778,7 @@ class MekanApp {
             }
             
             document.getElementById('product-modal').classList.remove('active');
-            await this.loadProducts();
+            await this.loadProducts(true); // Reset pagination
         } catch (error) {
             console.error('Ürün kaydedilirken hata:', error);
             await this.appAlert('Ürün kaydedilirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
@@ -5638,7 +5790,7 @@ class MekanApp {
 
         try {
             await this.db.deleteProduct(id);
-            await this.loadProducts();
+            await this.loadProducts(true); // Reset pagination
         } catch (error) {
             console.error('Ürün silinirken hata:', error);
             await this.appAlert('Ürün silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
@@ -5646,15 +5798,38 @@ class MekanApp {
     }
 
     // Customers Management
-    async loadCustomers() {
+    async loadCustomers(reset = true) {
         try {
-            const customers = await this.db.getAllCustomers();
             const container = document.getElementById('customers-container');
             
             if (!container) {
                 console.error('Customers container not found');
                 return;
             }
+
+            // Reset pagination if needed
+            if (reset) {
+                this._customersCurrentPage = 0;
+                this._customersAllData = null;
+                container.innerHTML = '';
+                if (this._customersObserver) {
+                    this._customersObserver.disconnect();
+                    this._customersObserver = null;
+                }
+            }
+
+            // Get all customers
+            if (!this._customersAllData || reset) {
+                const customers = await this.db.getAllCustomers();
+                // Sort customers by balance (debt) in descending order - highest debt first
+                this._customersAllData = customers.sort((a, b) => {
+                    const balanceA = a.balance || 0;
+                    const balanceB = b.balance || 0;
+                    return balanceB - balanceA; // Descending order
+                });
+            }
+
+            const customers = this._customersAllData;
             
             if (customers.length === 0) {
                 container.innerHTML = this.createAddCustomerCard();
@@ -5663,20 +5838,25 @@ class MekanApp {
                 return;
             }
 
-            // Sort customers by balance (debt) in descending order - highest debt first
-            const sortedCustomers = customers.sort((a, b) => {
-                const balanceA = a.balance || 0;
-                const balanceB = b.balance || 0;
-                return balanceB - balanceA; // Descending order
-            });
+            // Calculate pagination
+            const startIndex = this._customersCurrentPage * this._customersPageSize;
+            const endIndex = Math.min(startIndex + this._customersPageSize, customers.length);
+            const customersToShow = customers.slice(startIndex, endIndex);
+            const hasMore = endIndex < customers.length;
 
-            container.innerHTML = sortedCustomers.map(customer => this.createCustomerCard(customer)).join('') + this.createAddCustomerCard();
+            // Render customers for current page
+            const customersHTML = customersToShow.map(customer => this.createCustomerCard(customer)).join('');
+            container.insertAdjacentHTML('beforeend', customersHTML);
 
-            const addCard = document.getElementById('add-customer-card');
-            if (addCard) addCard.onclick = () => this.openCustomerFormModal();
+            // Add "Add Customer" card only on first page
+            if (this._customersCurrentPage === 0) {
+                container.insertAdjacentHTML('beforeend', this.createAddCustomerCard());
+                const addCard = document.getElementById('add-customer-card');
+                if (addCard) addCard.onclick = () => this.openCustomerFormModal();
+            }
             
             // Add event listeners - card click opens detail modal
-            sortedCustomers.forEach(customer => {
+            customersToShow.forEach(customer => {
                 const card = document.getElementById(`customer-${customer.id}`);
                 if (card) {
                     card.addEventListener('click', () => {
@@ -5684,6 +5864,18 @@ class MekanApp {
                     });
                 }
             });
+
+            // Update pagination state
+            this._customersCurrentPage++;
+            const allLoaded = !hasMore;
+
+            // Setup infinite scroll observer if there's more to load
+            if (hasMore && !this._customersObserver) {
+                this.setupCustomersInfiniteScroll();
+            } else if (allLoaded && this._customersObserver) {
+                this._customersObserver.disconnect();
+                this._customersObserver = null;
+            }
         } catch (error) {
             console.error('Error loading customers:', error);
             const container = document.getElementById('customers-container');
@@ -5691,6 +5883,37 @@ class MekanApp {
                 container.innerHTML = '<div class="empty-state"><h3>Müşteriler yüklenirken hata oluştu</h3><p>Lütfen sayfayı yenileyin</p></div>';
             }
         }
+    }
+
+    setupCustomersInfiniteScroll() {
+        const container = document.getElementById('customers-container');
+        if (!container) return;
+
+        // Create sentinel element
+        let sentinel = container.querySelector('.customers-load-more-sentinel');
+        if (!sentinel) {
+            sentinel = document.createElement('div');
+            sentinel.className = 'customers-load-more-sentinel';
+            sentinel.style.height = '20px';
+            sentinel.style.width = '100%';
+            container.appendChild(sentinel);
+        }
+
+        // Setup Intersection Observer
+        this._customersObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && this._customersAllData && 
+                    this._customersCurrentPage * this._customersPageSize < this._customersAllData.length) {
+                    this.loadCustomers(false); // Load next page
+                }
+            });
+        }, {
+            root: null,
+            rootMargin: '200px',
+            threshold: 0.1
+        });
+
+        this._customersObserver.observe(sentinel);
     }
 
     createAddCustomerCard() {
@@ -5852,7 +6075,7 @@ class MekanApp {
             }
             
             document.getElementById('customer-modal').classList.remove('active');
-            await this.loadCustomers();
+            await this.loadCustomers(true); // Reset pagination
         } catch (error) {
             console.error('Müşteri kaydedilirken hata:', error);
             const errorMessage = error.message || 'Bilinmeyen bir hata oluştu';
@@ -5874,7 +6097,7 @@ class MekanApp {
 
         try {
             await this.db.deleteCustomer(id);
-            await this.loadCustomers();
+            await this.loadCustomers(true); // Reset pagination
         } catch (error) {
             console.error('Müşteri silinirken hata:', error);
             await this.appAlert('Müşteri silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
@@ -5967,7 +6190,7 @@ class MekanApp {
                 }
             }
             
-            await this.loadCustomers();
+            await this.loadCustomers(true); // Reset pagination
             
             if (this.currentView === 'daily') {
                 await this.loadDailyDashboard();
@@ -6403,27 +6626,44 @@ class MekanApp {
         await this.filterSales();
     }
 
-    async filterSales() {
+    async filterSales(reset = true) {
         const tableFilter = document.getElementById('sales-table-filter').value || null;
         const statusFilter = document.getElementById('sales-status-filter').value;
         
-        let sales = await this.db.getAllSales();
-        
-        // Filter by table
-        if (tableFilter) {
-            sales = sales.filter(s => String(s.tableId) === String(tableFilter));
+        // Reset pagination if needed
+        if (reset) {
+            this._salesCurrentPage = 0;
+            this._salesAllData = null;
+            const container = document.getElementById('sales-container');
+            if (container) container.innerHTML = '';
+            if (this._salesObserver) {
+                this._salesObserver.disconnect();
+                this._salesObserver = null;
+            }
         }
-        
-        // Filter by status
-        if (statusFilter === 'paid') {
-            sales = sales.filter(s => s.isPaid);
-        } else if (statusFilter === 'unpaid') {
-            sales = sales.filter(s => !s.isPaid);
+
+        // Get all sales and filter
+        if (!this._salesAllData || reset) {
+            let allSales = await this.db.getAllSales();
+            
+            // Filter by table
+            if (tableFilter) {
+                allSales = allSales.filter(s => String(s.tableId) === String(tableFilter));
+            }
+            
+            // Filter by status
+            if (statusFilter === 'paid') {
+                allSales = allSales.filter(s => s.isPaid);
+            } else if (statusFilter === 'unpaid') {
+                allSales = allSales.filter(s => !s.isPaid);
+            }
+            
+            // Sort by date (newest first)
+            allSales.sort((a, b) => new Date(b.sellDateTime) - new Date(a.sellDateTime));
+            this._salesAllData = allSales;
         }
-        
-        // Sort by date (newest first)
-        sales.sort((a, b) => new Date(b.sellDateTime) - new Date(a.sellDateTime));
-        
+
+        const sales = this._salesAllData;
         const container = document.getElementById('sales-container');
         
         if (sales.length === 0) {
@@ -6436,10 +6676,62 @@ class MekanApp {
         const tableMap = {};
         tables.forEach(t => tableMap[t.id] = t.name);
 
-        container.innerHTML = await Promise.all(sales.map(async (sale) => {
+        // Calculate pagination
+        const startIndex = this._salesCurrentPage * this._salesPageSize;
+        const endIndex = Math.min(startIndex + this._salesPageSize, sales.length);
+        const salesToShow = sales.slice(startIndex, endIndex);
+        const hasMore = endIndex < sales.length;
+
+        // Render sales for current page
+        const salesHTML = await Promise.all(salesToShow.map(async (sale) => {
             const tableName = sale.tableId ? (tableMap[sale.tableId] || 'Bilinmeyen Masa') : null;
             return await this.createSaleCard(sale, tableName);
         })).then(cards => cards.join(''));
+
+        container.insertAdjacentHTML('beforeend', salesHTML);
+
+        // Update pagination state
+        this._salesCurrentPage++;
+        const allLoaded = !hasMore;
+
+        // Setup infinite scroll observer if there's more to load
+        if (hasMore && !this._salesObserver) {
+            this.setupSalesInfiniteScroll();
+        } else if (allLoaded && this._salesObserver) {
+            this._salesObserver.disconnect();
+            this._salesObserver = null;
+        }
+    }
+
+    setupSalesInfiniteScroll() {
+        const container = document.getElementById('sales-container');
+        if (!container) return;
+
+        // Create sentinel element
+        let sentinel = container.querySelector('.sales-load-more-sentinel');
+        if (!sentinel) {
+            sentinel = document.createElement('div');
+            sentinel.className = 'sales-load-more-sentinel';
+            sentinel.style.height = '20px';
+            sentinel.style.width = '100%';
+            container.appendChild(sentinel);
+        }
+
+        // Setup Intersection Observer
+        this._salesObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting && this._salesAllData && 
+                    this._salesCurrentPage * this._salesPageSize < this._salesAllData.length) {
+                    this.filterSales(false); // Load next page
+                }
+            });
+        }, {
+            root: null,
+            rootMargin: '200px',
+            threshold: 0.1
+        });
+
+        this._salesObserver.observe(sentinel);
     }
 
     async createSaleCard(sale, tableName) {
@@ -7188,11 +7480,11 @@ class MekanApp {
                 await this.loadTables();
                 this.startTableCardPriceUpdates();
             } else if (this.currentView === 'products') {
-                await this.loadProducts();
+                await this.loadProducts(true); // Reset pagination
             } else if (this.currentView === 'sales') {
                 await this.loadSales();
             } else if (this.currentView === 'customers') {
-                await this.loadCustomers();
+                await this.loadCustomers(true); // Reset pagination
             } else if (this.currentView === 'daily') {
                 await this.loadDailyDashboard();
             }
