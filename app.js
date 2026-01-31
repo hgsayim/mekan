@@ -208,7 +208,86 @@ class MekanApp {
         // Prefetch cache for table modal data (table, products, sales)
         this._tableModalPrefetchCache = new Map(); // tableId -> { table, products, sales, timestamp }
         this._tableModalPrefetchTimeout = 10000; // Cache expires after 10 seconds
+        this.currentUser = null;
+        this.userRole = null; // 'admin' or 'garson'
         this.init();
+    }
+
+    // Get current user and role from Supabase
+    async getUserRole() {
+        try {
+            const { data: { user }, error } = await this.supabase.auth.getUser();
+            if (error || !user) {
+                console.error('Error getting user:', error);
+                return null;
+            }
+            
+            this.currentUser = user;
+            
+            // Get user role from user metadata
+            // Default to 'garson' for security if role not found
+            this.userRole = user.user_metadata?.role || 'garson';
+            
+            return this.userRole;
+        } catch (error) {
+            console.error('Error getting user role:', error);
+            return null;
+        }
+    }
+
+    // Check if current user is admin
+    isAdmin() {
+        return this.userRole === 'admin' || this.userRole === 'yönetici';
+    }
+
+    // Check if current user is garson
+    isGarson() {
+        return this.userRole === 'garson';
+    }
+
+    // Update menu visibility based on user role
+    updateMenuVisibility() {
+        const isAdmin = this.isAdmin();
+        
+        // Hide/show menu items
+        const productsBtn = document.querySelector('.nav-btn-compact[data-view="products"]');
+        const customersBtn = document.querySelector('.nav-btn-compact[data-view="customers"]');
+        const expensesBtn = document.querySelector('.nav-btn-compact[data-view="expenses"]');
+        const salesBtn = document.querySelector('.nav-btn-compact[data-view="sales"]');
+        const dailyBtn = document.querySelector('.nav-btn-compact[data-view="daily"]');
+        
+        // Garson can only see tables and sales
+        if (!isAdmin) {
+            if (productsBtn) productsBtn.style.display = 'none';
+            if (customersBtn) customersBtn.style.display = 'none';
+            if (expensesBtn) expensesBtn.style.display = 'none';
+            if (dailyBtn) dailyBtn.style.display = 'none';
+            // Sales is visible for garson
+        } else {
+            // Admin sees all
+            if (productsBtn) productsBtn.style.display = '';
+            if (customersBtn) customersBtn.style.display = '';
+            if (expensesBtn) expensesBtn.style.display = '';
+            if (dailyBtn) dailyBtn.style.display = '';
+        }
+        
+        // Hide add buttons for garson
+        const addTableBtn = document.getElementById('add-table-btn');
+        const addProductBtn = document.getElementById('add-product-btn');
+        const addCustomerBtn = document.getElementById('add-customer-btn');
+        const addExpenseBtn = document.getElementById('add-expense-btn');
+        
+        if (!isAdmin) {
+            if (addTableBtn) addTableBtn.style.display = 'none';
+            if (addProductBtn) addProductBtn.style.display = 'none';
+            if (addCustomerBtn) addCustomerBtn.style.display = 'none';
+            if (addExpenseBtn) addExpenseBtn.style.display = 'none';
+        } else {
+            if (addTableBtn) addTableBtn.style.display = '';
+            if (addProductBtn) addProductBtn.style.display = '';
+            if (addCustomerBtn) addCustomerBtn.style.display = '';
+            if (addExpenseBtn) addExpenseBtn.style.display = '';
+        }
     }
 
     // Utility: Debounce function for input events
@@ -272,6 +351,9 @@ class MekanApp {
 
     async init() {
         try {
+            // Get user role first
+            await this.getUserRole();
+            
             // Initialize dark mode from localStorage
             this.initDarkMode();
             
@@ -287,6 +369,9 @@ class MekanApp {
             if (header) {
                 header.style.display = '';
             }
+            
+            // Hide menu items based on role
+            this.updateMenuVisibility();
             
             // Initialize database with timeout protection
             try {
@@ -3553,7 +3638,10 @@ class MekanApp {
                 isPaid: true,
                 isCredit: false,
                 customerId: null,
-                paymentTime: new Date().toISOString()
+                paymentTime: new Date().toISOString(),
+                createdBy: this.currentUser?.id || this.currentUser?.email,
+                createdByName: this.currentUser?.email || 'Bilinmeyen',
+                createdByRole: this.userRole === 'admin' ? 'Yönetici' : 'Garson'
             };
             await this.db.addSale(newSale);
 
@@ -3698,7 +3786,10 @@ class MekanApp {
                 isPaid: true,
                 isCredit: true,
                 customerId: selectedCustomerId,
-                paymentTime: new Date().toISOString()
+                paymentTime: new Date().toISOString(),
+                createdBy: this.currentUser?.id || this.currentUser?.email,
+                createdByName: this.currentUser?.email || 'Bilinmeyen',
+                createdByRole: this.userRole === 'admin' ? 'Yönetici' : 'Garson'
             };
             await this.db.addSale(newSale);
 
@@ -3912,6 +4003,10 @@ class MekanApp {
                         sale.isCredit = true;
                         sale.customerId = customerId;
                     }
+                    // Update user info for payment/credit operations
+                    sale.createdBy = sale.createdBy || (this.currentUser?.id || this.currentUser?.email);
+                    sale.createdByName = sale.createdByName || (this.currentUser?.email || 'Bilinmeyen');
+                    sale.createdByRole = sale.createdByRole || (this.userRole === 'admin' ? 'Yönetici' : 'Garson');
                     await this.db.updateSale(sale);
                 }
 
@@ -5057,7 +5152,10 @@ class MekanApp {
                 isPaid: isInstant,
                 isCredit: false,
                 customerId: null,
-                paymentTime: isInstant ? new Date().toISOString() : null
+                paymentTime: isInstant ? new Date().toISOString() : null,
+                createdBy: this.currentUser?.id || this.currentUser?.email,
+                createdByName: this.currentUser?.email || 'Bilinmeyen',
+                createdByRole: this.userRole === 'admin' ? 'Yönetici' : 'Garson'
             };
 
             await this.db.addSale(sale);
@@ -6220,17 +6318,20 @@ class MekanApp {
         let stockClass = 'stock-high';
         let stockText = '';
         
-        if (!tracksStock) {
-            stockClass = 'stock-high';
-            stockText = '∞';
-        } else if (product.stock === 0) {
-            stockClass = 'stock-out';
-            stockText = '0';
-        } else if (product.stock < 10) {
-            stockClass = 'stock-low';
-            stockText = `${product.stock}`;
-        } else {
-            stockText = `${product.stock}`;
+        // Only admin can see stock information
+        if (this.isAdmin()) {
+            if (!tracksStock) {
+                stockClass = 'stock-high';
+                stockText = '∞';
+            } else if (product.stock === 0) {
+                stockClass = 'stock-out';
+                stockText = '0';
+            } else if (product.stock < 10) {
+                stockClass = 'stock-low';
+                stockText = `${product.stock}`;
+            } else {
+                stockText = `${product.stock}`;
+            }
         }
         
         return `
@@ -6238,16 +6339,23 @@ class MekanApp {
                 <div class="product-card-icon">${iconHtml}</div>
                 <div class="product-card-name">${product.name}</div>
                 <div class="product-card-price">${Math.round(product.price)} ₺</div>
-                <div class="product-card-stock ${stockClass}">${stockText}</div>
+                ${this.isAdmin() ? `<div class="product-card-stock ${stockClass}">${stockText}</div>` : ''}
                 <div class="product-actions">
-                    <button class="btn btn-primary btn-icon" id="edit-product-${product.id}" title="Düzenle">✎</button>
-                    <button class="btn btn-danger btn-icon" id="delete-product-${product.id}" title="Sil">×</button>
+                    ${this.isAdmin() ? `
+                        <button class="btn btn-primary btn-icon" id="edit-product-${product.id}" title="Düzenle">✎</button>
+                        <button class="btn btn-danger btn-icon" id="delete-product-${product.id}" title="Sil">×</button>
+                    ` : ''}
                 </div>
             </div>
         `;
     }
 
     openProductFormModal(product = null) {
+        // Only admin can add/edit products
+        if (!this.isAdmin()) {
+            this.appAlert('Ürün ekleme/düzenleme yetkiniz yok. Lütfen yönetici ile iletişime geçin.', 'Yetki Yok');
+            return;
+        }
         const modal = document.getElementById('product-modal');
         const title = document.getElementById('product-modal-title');
         const form = document.getElementById('product-form');
@@ -6359,6 +6467,11 @@ class MekanApp {
     }
 
     async deleteProduct(id) {
+        // Only admin can delete products
+        if (!this.isAdmin()) {
+            this.appAlert('Ürün silme yetkiniz yok. Lütfen yönetici ile iletişime geçin.', 'Yetki Yok');
+            return;
+        }
         if (!(await this.appConfirm('Bu ürünü silmek istediğinize emin misiniz?', { title: 'Ürün Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' }))) return;
 
         try {
@@ -7430,6 +7543,14 @@ class MekanApp {
                 customerInfo = `Müşteri: ${customer.name}`;
             }
         }
+        
+        // Get user info for display
+        let userInfo = '';
+        if (sale.createdBy || sale.userId) {
+            const userName = sale.createdByName || sale.userName || (sale.createdBy || sale.userId);
+            const roleDisplay = sale.createdByRole || 'Kullanıcı';
+            userInfo = `<span style="color: #7f8c8d; font-size: 0.85rem;">${roleDisplay}: ${userName}</span>`;
+        }
 
         return `
             <div class="sale-card">
@@ -7440,6 +7561,7 @@ class MekanApp {
                         <div class="sale-header-meta">
                             <span>${this.formatDateTimeWithoutSeconds(sale.sellDateTime)}</span>
                             ${customerInfo ? `<span style="color: #3498db;">${customerInfo}</span>` : ''}
+                            ${userInfo}
                         ${statusBadge}
                             <span class="sale-header-amount">${Math.round(sale.saleTotal)} ₺</span>
                     </div>
@@ -7818,9 +7940,7 @@ class MekanApp {
             monthlyExpensesEl.textContent = `${Math.round(monthlyExpenses)} ₺`;
         }
 
-        // Update charts
-        this.updateIncomeChart(totalHourlyIncome, totalProductIncome);
-        this.updateProductsChart(productCounts);
+        // Charts removed - keeping only basic reporting
 
         // Update table usage list
         this.updateTableUsageList(hourlyTablesToday);
@@ -7881,124 +8001,7 @@ class MekanApp {
         });
     }
 
-    updateIncomeChart(hourlyIncome, productIncome) {
-        const container = document.getElementById('income-chart-container');
-        if (!container) return;
-
-        // Destroy existing chart if it exists
-        if (this.incomeChart) {
-            this.incomeChart.destroy();
-            this.incomeChart = null;
-        }
-
-        // If no income, show empty state
-        if (hourlyIncome === 0 && productIncome === 0) {
-            container.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">Seçilen dönemde gelir yok</p>';
-            return;
-        }
-
-        // Ensure canvas exists
-        let ctx = document.getElementById('income-chart');
-        if (!ctx || !container.querySelector('canvas')) {
-            container.innerHTML = '<canvas id="income-chart"></canvas>';
-            ctx = document.getElementById('income-chart');
-            if (!ctx) return;
-        }
-
-        this.incomeChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Oyun Geliri', 'Ürün Geliri'],
-                datasets: [{
-                    data: [hourlyIncome, productIncome],
-                    backgroundColor: [
-                        'rgba(255, 159, 64, 0.8)',
-                        'rgba(54, 162, 235, 0.8)'
-                    ],
-                    borderColor: [
-                        'rgba(255, 159, 64, 1)',
-                        'rgba(54, 162, 235, 1)'
-                    ],
-                    borderWidth: 2
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        position: 'bottom'
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return context.label + ': ' + Math.round(context.parsed) + ' ₺';
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    }
-
-    updateProductsChart(productCounts) {
-        const container = document.getElementById('products-chart-container');
-        if (!container) return;
-
-        // Destroy existing chart if it exists
-        if (this.productsChart) {
-            this.productsChart.destroy();
-            this.productsChart = null;
-        }
-
-        const productNames = Object.keys(productCounts);
-        const productValues = Object.values(productCounts);
-
-        if (productNames.length === 0) {
-            // Show empty state
-            container.innerHTML = '<p style="text-align: center; padding: 40px; color: #7f8c8d;">Seçilen dönemde satılan ürün yok</p>';
-            return;
-        }
-
-        // Ensure canvas exists
-        let ctx = document.getElementById('products-chart');
-        if (!ctx || !container.querySelector('canvas')) {
-            container.innerHTML = '<canvas id="products-chart"></canvas>';
-            ctx = document.getElementById('products-chart');
-            if (!ctx) return;
-        }
-
-        this.productsChart = new Chart(ctx, {
-            type: 'bar',
-            data: {
-                labels: productNames,
-                datasets: [{
-                    label: 'Satılan Miktar',
-                    data: productValues,
-                    backgroundColor: 'rgba(46, 204, 113, 0.8)',
-                    borderColor: 'rgba(46, 204, 113, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: true,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            stepSize: 1
-                        }
-                    }
-                }
-            }
-        });
-    }
+    // Chart functions removed - keeping only basic reporting
 
     initDarkMode() {
         // Check if user has manually set a preference
