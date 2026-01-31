@@ -2671,9 +2671,18 @@ class MekanApp {
             }
         }
 
+        // Calculate actual check total from unpaid sales and hourly (if applicable)
+        let actualCheckTotal = computedSalesTotal;
+        if (table.type === 'hourly' && table.isActive && table.openTime) {
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+            actualCheckTotal = hourlyTotal + computedSalesTotal;
+        }
+        
         // Show pay button if there are unpaid sales OR if there's a check total (for hourly tables with only time charges)
         // For hourly tables, also show if table is open (has openTime)
-        if (unpaidSales.length === 0 && table.checkTotal === 0 && !(table.type === 'hourly' && table.isActive && table.openTime)) {
+        // Use computedSalesTotal and actualCheckTotal instead of table.checkTotal (which may be stale)
+        if (unpaidSales.length === 0 && actualCheckTotal === 0 && !(table.type === 'hourly' && table.isActive && table.openTime)) {
             payBtn.style.display = 'none';
         } else {
             payBtn.style.display = 'inline-block';
@@ -2682,7 +2691,7 @@ class MekanApp {
         // Show/hide credit button based on unpaid sales
         if (creditBtn) {
             const hasUnpaidSales = unpaidSales.length > 0;
-            const hasCheckTotal = table.checkTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            const hasCheckTotal = actualCheckTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
             
             if (hasUnpaidSales || hasCheckTotal) {
                 creditBtn.style.display = 'inline-block';
@@ -4314,7 +4323,7 @@ class MekanApp {
         const creditBtn = document.getElementById('credit-table-btn');
         const payTxt = payBtn?.querySelector?.('.btn-txt') || null;
         
-        // Get unpaid sales to determine button visibility
+        // Get unpaid sales to determine button visibility - always fetch fresh data
         let unpaidSales = [];
         try {
             unpaidSales = await this.db.getUnpaidSalesByTable(table.id || this.currentTableId);
@@ -4322,25 +4331,33 @@ class MekanApp {
             console.error('Error fetching unpaid sales:', e);
         }
         
+        // Calculate actual totals from unpaid sales (not from stale table.checkTotal)
+        const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+        let actualCheckTotal = computedSalesTotal;
+        if (table.type === 'hourly' && table.isActive && table.openTime) {
+            const hoursUsed = this.calculateHoursUsed(table.openTime);
+            const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+            actualCheckTotal = hourlyTotal + computedSalesTotal;
+        }
+        
         if (table.type === 'hourly') {
             const modalSalesTotal = document.getElementById('modal-sales-total');
             const modalCheckTotal = document.getElementById('modal-check-total');
-            if (modalSalesTotal) modalSalesTotal.textContent = Math.round(table.salesTotal || 0);
+            if (modalSalesTotal) modalSalesTotal.textContent = Math.round(computedSalesTotal);
             if (modalCheckTotal) {
-                const checkTotal = this.calculateCheckTotal(table);
-                modalCheckTotal.textContent = Math.round(checkTotal);
-                if (payTxt) payTxt.textContent = `${Math.round(checkTotal)} ₺`;
+                modalCheckTotal.textContent = Math.round(actualCheckTotal);
+                if (payTxt) payTxt.textContent = `${Math.round(actualCheckTotal)} ₺`;
             }
         } else {
             const modalCheckTotalRegular = document.getElementById('modal-check-total-regular');
-            if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(table.salesTotal || 0);
-            if (payTxt) payTxt.textContent = `${Math.round(table.checkTotal || table.salesTotal || 0)} ₺`;
+            if (modalCheckTotalRegular) modalCheckTotalRegular.textContent = Math.round(computedSalesTotal);
+            if (payTxt) payTxt.textContent = `${Math.round(actualCheckTotal)} ₺`;
         }
         
-        // Update button visibility based on unpaid sales and check total
+        // Update button visibility based on unpaid sales and actual check total
         if (payBtn) {
             const hasUnpaidSales = unpaidSales.length > 0;
-            const hasCheckTotal = table.checkTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            const hasCheckTotal = actualCheckTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
             if (hasUnpaidSales || hasCheckTotal) {
                 payBtn.style.display = 'inline-block';
             } else {
@@ -4350,7 +4367,7 @@ class MekanApp {
         
         if (creditBtn) {
             const hasUnpaidSales = unpaidSales.length > 0;
-            const hasCheckTotal = table.checkTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            const hasCheckTotal = actualCheckTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
             if (hasUnpaidSales || hasCheckTotal) {
                 creditBtn.style.display = 'inline-block';
             } else {
