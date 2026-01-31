@@ -1436,12 +1436,15 @@ class MekanApp {
                                 await new Promise(resolve => setTimeout(resolve, 50));
                             }
                             
-                            // CRITICAL: Update table state BEFORE clearing loading state
-                            // This ensures the table appears as open immediately when loading state is cleared
+                            // CRITICAL: DO NOT update table state while message is showing
+                            // setTableCardState would interfere with "Süre başlatılıyor..." message
+                            // Clear loading state FIRST, then update state
+                            this.setTableCardOpening(table.id, false);
+                            
+                            // NOW update the card state after message is cleared
                             try {
                                 const updatedTable = await this.db.getTable(table.id);
                                 if (updatedTable) {
-                                    // Update state optimistically - table should be open
                                     this.setTableCardState(table.id, {
                                         isActive: true,
                                         type: 'hourly',
@@ -1452,11 +1455,8 @@ class MekanApp {
                                     });
                                 }
                             } catch (e) {
-                                console.error('Error updating table state after opening:', e);
+                                console.error('Error updating table state after clearing loading:', e);
                             }
-                            
-                            // Clear loading state AFTER state is updated
-                            this.setTableCardOpening(table.id, false);
                         }
                     }
                 });
@@ -1721,8 +1721,9 @@ class MekanApp {
         const priceEl = card.querySelector('.table-price');
         if (!priceEl) return;
 
-        // If table is in opening state, don't update price (keep "Süre başlatılıyor..." message)
-        if (card.classList.contains('table-card-opening') && priceEl.dataset.originalText) {
+        // CRITICAL: If table is in opening state, NEVER update price (keep "Süre başlatılıyor..." message)
+        // This check must be absolute - don't update anything if opening state is active
+        if (card.classList.contains('table-card-opening')) {
             return;
         }
 
@@ -1889,7 +1890,7 @@ class MekanApp {
         return true;
     }
 
-    _markTableOpening(tableId, openTimeISO, ms = 3200) {
+    _markTableOpening(tableId, openTimeISO, ms = 2500) {
         if (tableId == null) return;
         this._openingTables.set(String(tableId), { until: Date.now() + ms, openTime: openTimeISO });
     }
