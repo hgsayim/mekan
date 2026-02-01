@@ -90,20 +90,22 @@
 
             <!-- Daily Dashboard View -->
             <section id="daily-view" class="view">
-                <div class="view-header">
-                    <h2>Rapor ve Analiz</h2>
-                    <div class="report-controls">
-                        <div class="report-date-controls">
-                            <label class="report-date-label-inline">
-                                <span>Başlangıç:</span>
-                                <input type="date" id="report-start-date" class="report-date-input">
-                            </label>
-                            <label class="report-date-label-inline">
-                                <span>Bitiş:</span>
-                                <input type="date" id="report-end-date" class="report-date-input">
-                            </label>
-                            <button class="btn btn-primary report-btn" id="report-apply-btn">Uygula</button>
-                            <button class="btn btn-secondary report-btn" id="report-today-btn">Bugün</button>
+                <div class="report-header-wrapper">
+                    <div class="report-header-row">
+                        <h2 class="report-title">Rapor ve Analiz</h2>
+                        <div class="report-action-buttons">
+                            <button class="btn btn-primary" id="report-apply-btn">Uygula</button>
+                            <button class="btn btn-secondary" id="report-today-btn">Bugün</button>
+                        </div>
+                    </div>
+                    <div class="report-date-row">
+                        <div class="report-date-field">
+                            <label for="report-start-date">Başlangıç:</label>
+                            <input type="date" id="report-start-date" class="report-date-input">
+                        </div>
+                        <div class="report-date-field">
+                            <label for="report-end-date">Bitiş:</label>
+                            <input type="date" id="report-end-date" class="report-date-input">
                         </div>
                     </div>
                 </div>

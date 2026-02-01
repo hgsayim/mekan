@@ -686,10 +686,6 @@ header h1 {
 }
 
 /* Report date label inline */
-[data-theme="dark"] .report-date-label-inline span {
-    color: var(--dark-text-primary) !important;
-}
-
 /* Table info item strong */
 [data-theme="dark"] .table-info-item strong {
     color: var(--dark-text-primary) !important;
@@ -740,85 +736,117 @@ header h1 {
     font-size: 1rem;
 }
 
-/* Report Controls Styles */
-.report-controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: nowrap;
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    max-height: none;
+/* Report Header - Clean New Design */
+.report-header-wrapper {
+    background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
+    border-radius: 12px;
+    border: 1px solid rgba(52, 152, 219, 0.1);
+    padding: 20px;
+    margin-bottom: 24px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 
-.report-date-controls {
+[data-theme="dark"] .report-header-wrapper {
+    background: var(--dark-surface);
+    border-color: var(--dark-border);
+}
+
+.report-header-row {
     display: flex;
-    gap: 8px;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 16px;
+    flex-wrap: nowrap;
+}
+
+.report-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0;
+    white-space: nowrap;
+    flex: 0 0 auto;
+}
+
+[data-theme="dark"] .report-title {
+    color: var(--dark-text-primary);
+}
+
+.report-action-buttons {
+    display: flex;
+    gap: 12px;
+    flex: 0 0 auto;
+    align-items: center;
+}
+
+.report-action-buttons .btn {
+    padding: 10px 24px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border-radius: 8px;
+    white-space: nowrap;
+    min-width: 100px;
+    transition: all 0.2s ease;
+}
+
+.report-date-row {
+    display: flex;
+    gap: 20px;
     align-items: center;
     flex-wrap: nowrap;
-    flex: 0 0 auto;
+    width: 100%;
+}
+
+.report-date-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
     min-width: 0;
 }
 
-.report-date-label-inline {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 3px;
-    font-size: 0.75rem;
-    white-space: nowrap;
-}
-
-.report-date-label-inline span {
+.report-date-field label {
+    font-size: 0.9rem;
     font-weight: 600;
     color: var(--dark-text);
-    font-size: 0.75rem;
     white-space: nowrap;
+    flex: 0 0 auto;
+    min-width: 80px;
+}
+
+[data-theme="dark"] .report-date-field label {
+    color: var(--dark-text-primary);
 }
 
 .report-date-input {
-    padding: 5px 6px;
+    flex: 1;
+    min-width: 0;
+    padding: 10px 14px;
     border: 1.5px solid rgba(52, 152, 219, 0.2);
-    border-radius: 5px;
-    font-size: 0.8rem;
+    border-radius: 8px;
+    font-size: 0.95rem;
     background: white;
     color: var(--dark-text);
-    width: 110px;
-    min-width: 100px;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .report-date-input {
+    background: var(--dark-surface-elevated);
+    color: var(--dark-text-primary);
+    border-color: var(--dark-border);
 }
 
 .report-date-input:hover {
     border-color: rgba(52, 152, 219, 0.4);
-    box-shadow: 0 3px 6px rgba(52, 152, 219, 0.1);
+    box-shadow: 0 2px 4px rgba(52, 152, 219, 0.1);
 }
 
 .report-date-input:focus {
     outline: none;
     border-color: var(--primary-color);
-    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.2), 0 2px 4px rgba(52, 152, 219, 0.1);
-}
-
-.report-btn {
-    padding: 5px 10px;
-    border-radius: 5px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    white-space: nowrap;
-    min-width: 65px;
-    height: fit-content;
-    transition: all 0.3s ease;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-
-.report-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.report-btn:active {
-    transform: translateY(0);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
 .btn {
@@ -4865,48 +4893,55 @@ form select:focus {
         margin-bottom: 0;
     }
 
-    /* Report controls - compact single row on mobile */
-    .report-controls {
-        gap: 8px;
-        flex-direction: row;
-        align-items: center;
-        flex-wrap: nowrap;
-        max-height: none;
+    /* Report header - mobile responsive */
+    .report-header-wrapper {
+        padding: 16px;
+    }
+
+    .report-header-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .report-title {
+        font-size: 1.2rem;
         width: 100%;
     }
 
-    .report-date-controls {
-        flex-direction: row;
-        gap: 8px;
+    .report-action-buttons {
         width: 100%;
-        flex: 1;
-        min-width: 0;
+        gap: 8px;
     }
 
-    .report-date-label-inline {
-        font-size: 0.75rem;
-        gap: 4px;
+    .report-action-buttons .btn {
         flex: 1;
         min-width: 0;
+        padding: 10px 16px;
+        font-size: 0.85rem;
     }
 
-    .report-date-label-inline span {
-        font-size: 0.75rem;
-        white-space: nowrap;
+    .report-date-row {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .report-date-field {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    .report-date-field label {
+        min-width: auto;
+        font-size: 0.85rem;
     }
 
     .report-date-input {
-        flex: 1;
-        min-width: 0;
-        padding: 6px 8px;
-        font-size: 0.8rem;
-    }
-
-    .report-btn {
-        padding: 6px 12px;
-        font-size: 0.8rem;
-        min-width: 70px;
-        flex-shrink: 0;
+        width: 100%;
+        padding: 10px 12px;
+        font-size: 0.9rem;
     }
 
     .customers-grid {
@@ -5069,10 +5104,6 @@ form select:focus {
         margin-bottom: 0;
     }
 
-    /* Report page mobile optimizations */
-    #daily-view .view-header {
-        padding: 16px;
-    }
 
     #daily-view .stats-grid {
         gap: 10px;
@@ -5141,35 +5172,27 @@ form select:focus {
         margin-bottom: 12px;
     }
 
-    /* Report page optimizations for very small screens (540px) */
-    .report-controls {
-        gap: 6px;
+    /* Report header - very small screens (540px) */
+    .report-header-wrapper {
+        padding: 14px;
     }
 
-    .report-date-controls {
-        gap: 6px;
+    .report-title {
+        font-size: 1.1rem;
     }
 
-    .report-date-label-inline {
-        font-size: 0.7rem;
-        gap: 3px;
+    .report-action-buttons .btn {
+        padding: 8px 12px;
+        font-size: 0.8rem;
     }
 
-    .report-date-label-inline span {
-        font-size: 0.7rem;
+    .report-date-field label {
+        font-size: 0.8rem;
     }
 
     .report-date-input {
-        flex: 1;
-        min-width: 0;
-        padding: 5px 6px;
-        font-size: 0.75rem;
-    }
-
-    .report-btn {
-        padding: 5px 10px;
-        font-size: 0.75rem;
-        min-width: 60px;
+        padding: 8px 10px;
+        font-size: 0.85rem;
     }
 
     #daily-view .stats-grid {
