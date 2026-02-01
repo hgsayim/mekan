@@ -4895,14 +4895,14 @@ form select:focus {
 
     /* Report header - mobile responsive */
     .report-header-wrapper {
-        padding: 16px;
+        padding: 12px;
     }
 
     .report-header-row {
         flex-direction: column;
         align-items: stretch;
-        gap: 12px;
-        margin-bottom: 16px;
+        gap: 10px;
+        margin-bottom: 12px;
     }
 
     .report-title {
@@ -4923,25 +4923,30 @@ form select:focus {
     }
 
     .report-date-row {
-        flex-direction: column;
+        flex-direction: row;
         gap: 12px;
+        flex-wrap: wrap;
     }
 
     .report-date-field {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        flex: 1 1 calc(50% - 6px);
+        min-width: 140px;
     }
 
     .report-date-field label {
-        min-width: auto;
-        font-size: 0.85rem;
+        min-width: 70px;
+        font-size: 0.8rem;
+        flex-shrink: 0;
     }
 
     .report-date-input {
-        width: 100%;
-        padding: 10px 12px;
-        font-size: 0.9rem;
+        flex: 1;
+        min-width: 0;
+        padding: 8px 10px;
+        font-size: 0.85rem;
     }
 
     .customers-grid {
@@ -5174,7 +5179,11 @@ form select:focus {
 
     /* Report header - very small screens (540px) */
     .report-header-wrapper {
-        padding: 14px;
+        padding: 10px;
+    }
+
+    .report-header-row {
+        margin-bottom: 10px;
     }
 
     .report-title {
@@ -5186,13 +5195,23 @@ form select:focus {
         font-size: 0.8rem;
     }
 
+    .report-date-row {
+        gap: 8px;
+    }
+
+    .report-date-field {
+        flex: 1 1 calc(50% - 4px);
+        gap: 6px;
+    }
+
     .report-date-field label {
-        font-size: 0.8rem;
+        min-width: 60px;
+        font-size: 0.75rem;
     }
 
     .report-date-input {
-        padding: 8px 10px;
-        font-size: 0.85rem;
+        padding: 6px 8px;
+        font-size: 0.8rem;
     }
 
     #daily-view .stats-grid {
