@@ -184,6 +184,8 @@ class MekanApp {
         this._dialogResolver = null;
         this._settlingTables = new Map(); // tableId -> expiry timestamp (ms)
         this._openingTables = new Map(); // tableId -> { until: ms, openTime: iso }
+        this._closingTablesCount = 0; // Count of tables currently being closed (for DB refresh management)
+        this._openingTablesCount = 0; // Count of tables currently being opened (for DB refresh management)
         // Prevent race conditions on fast-tap product adds (stock decrement must be accurate).
         // key: `${tableId}:${productId}` -> { pending: number, timer: any, chain: Promise }
         this._quickAddState = new Map();
@@ -1442,6 +1444,15 @@ class MekanApp {
 
         // Sync each table's status with unpaid sales - but hourly tables must be manually opened
         for (const table of tables) {
+            // CRITICAL: If table is settling (just closed), skip all updates to prevent race conditions
+            // This prevents DB refresh from overwriting closure state
+            const isSettling = this._isTableSettling(table.id);
+            if (isSettling) {
+                debugLog(`Table ${table.id} is settling, skipping loadTables update to prevent race condition`);
+                // Still render the card but don't update DB state
+                continue;
+            }
+            
             const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
             // Compute totals from sales to avoid cross-device race conditions on aggregated columns
             const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
@@ -1458,9 +1469,6 @@ class MekanApp {
                 table._computedCheckTotal = computedSalesTotal;
             }
             let tableUpdated = false;
-
-            // If a table was just settled (paid/credited), avoid "close -> reopen" flicker for a couple seconds
-            const isSettling = this._isTableSettling(table.id);
             
             if (unpaidSales.length > 0 && !table.isActive) {
                 // Table has products but is not active - activate it only for regular tables
@@ -2218,12 +2226,20 @@ class MekanApp {
                         forceClosed.hourlyTotal = 0;
                     }
                     await this.db.updateTable(forceClosed);
+                } else if (table.type === 'hourly' && table.openTime && table.closeTime) {
+                    // CRITICAL: If table has both openTime and closeTime, it's an old session - clean it up
+                    debugLog(`Table ${tableId} has old openTime with closeTime, cleaning up`);
+                    table.openTime = null;
+                    table.hourlyTotal = 0;
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                    await this.db.updateTable(table);
                 }
                 
                 this.setTableCardState(tableId, {
                     isActive: false,
                     type: table.type,
-                    openTime: table.type === 'hourly' ? null : table.openTime,
+                    openTime: null, // CRITICAL: Always null for closed tables
                     hourlyRate: table.hourlyRate || 0,
                     salesTotal: 0,
                     checkTotal: 0
@@ -2297,10 +2313,9 @@ class MekanApp {
         }
     }
 
-    _markTableSettling(tableId, ms = 20000) {
-        // Increased to 20 seconds to prevent realtime updates from reopening tables
-        // during the critical closure period
-        // Extended duration ensures closed tables stay closed even with delayed realtime updates
+    _markTableSettling(tableId, ms = 5000) {
+        // 5 seconds is sufficient now that DB refresh is stopped during closure
+        // This prevents realtime updates from interfering immediately after closure
         if (tableId == null) return;
         this._settlingTables.set(String(tableId), Date.now() + ms);
     }
@@ -2768,6 +2783,12 @@ class MekanApp {
 
                 // Fetch table data
                 table = await this.db.getTable(tableId);
+                
+                // If table is active but openTime is missing, wait a moment and retry (sync delay)
+                if (table && table.isActive && table.type === 'hourly' && !table.openTime) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    table = await this.db.getTable(tableId);
+                }
             }
             if (!table) {
                 unlockModal();
@@ -2887,6 +2908,12 @@ class MekanApp {
                 this.hourlyUpdateInterval = setInterval(async () => {
                     const updatedTable = await this.db.getTable(tableId);
                     if (updatedTable && updatedTable.isActive && updatedTable.openTime) {
+                        // Update open time immediately when it becomes available
+                        const openTimeEl = document.getElementById('modal-open-time');
+                        if (openTimeEl) {
+                            openTimeEl.textContent = formatTimeOnly(updatedTable.openTime);
+                        }
+                        
                         const unpaid = await this.db.getUnpaidSalesByTable(tableId);
                         const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
                         const hoursUsed = calculateHoursUsed(updatedTable.openTime);
@@ -2897,7 +2924,7 @@ class MekanApp {
                         document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
                         if (payBtnTxt) payBtnTxt.textContent = `${Math.round(updatedTable.checkTotal)} ₺`;
                     }
-                }, 60000); // Update every minute
+                }, 1000); // Update every second to catch openTime sync delay
                 
                 // Table is open - show products section
                 if (productsSection) {
@@ -2913,7 +2940,39 @@ class MekanApp {
                     cancelHourlyBtn.style.display = 'inline-flex';
                 }
             } else {
-                document.getElementById('modal-open-time').textContent = 'Açılmadı';
+                // If table is active but openTime is missing, start interval to check for it
+                const openTimeEl = document.getElementById('modal-open-time');
+                if (table.isActive && openTimeEl) {
+                    openTimeEl.textContent = 'Yükleniyor...';
+                    
+                    // Start interval to check for openTime (same as nakit button fix)
+                    if (this.hourlyUpdateInterval) {
+                        clearInterval(this.hourlyUpdateInterval);
+                    }
+                    this.hourlyUpdateInterval = setInterval(async () => {
+                        const updatedTable = await this.db.getTable(tableId);
+                        if (updatedTable && updatedTable.isActive && updatedTable.openTime) {
+                            // Update open time immediately when it becomes available
+                            if (openTimeEl) {
+                                openTimeEl.textContent = formatTimeOnly(updatedTable.openTime);
+                            }
+                            
+                            // Update other hourly info
+                            const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+                            const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                            const hoursUsed = calculateHoursUsed(updatedTable.openTime);
+                            const hourlyTotal = hoursUsed * updatedTable.hourlyRate;
+                            document.getElementById('modal-hourly-total').textContent = Math.round(hourlyTotal);
+                            document.getElementById('modal-sales-total').textContent = Math.round(salesTotal);
+                            updatedTable.checkTotal = hourlyTotal + salesTotal;
+                            document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
+                            const payBtnTxt = document.getElementById('pay-table-btn')?.querySelector?.('.btn-txt');
+                            if (payBtnTxt) payBtnTxt.textContent = `${Math.round(updatedTable.checkTotal)} ₺`;
+                        }
+                    }, 1000); // Check every second until openTime is available
+                } else if (openTimeEl) {
+                    openTimeEl.textContent = 'Açılmadı';
+                }
                 document.getElementById('modal-hourly-total').textContent = '0';
                 document.getElementById('modal-sales-total').textContent = Math.round(computedSalesTotal);
                 table.checkTotal = computedSalesTotal;
@@ -3106,23 +3165,42 @@ class MekanApp {
             if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(table.checkTotal)} ₺`;
         }
         
-        // CRITICAL: Re-fetch unpaid sales AFTER loadTableSales completes to ensure we have the latest data
+        // CRITICAL: Re-fetch unpaid sales AND table data AFTER loadTableSales completes to ensure we have the latest data
         // This fixes the issue where buttons disappear and reappear after 10 seconds
         const finalUnpaidSales = await this.db.getUnpaidSalesByTable(tableId);
         const finalComputedSalesTotal = (finalUnpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+        
+        // CRITICAL: Re-fetch table to get latest openTime (same fix as nakit button)
+        const finalTableForOpenTime = await this.db.getTable(tableId);
+        if (finalTableForOpenTime && finalTableForOpenTime.type === 'hourly' && finalTableForOpenTime.isActive && finalTableForOpenTime.openTime) {
+            // Update open time immediately if it's now available
+            const openTimeEl = document.getElementById('modal-open-time');
+            if (openTimeEl) {
+                openTimeEl.textContent = formatTimeOnly(finalTableForOpenTime.openTime);
+            }
+            // Update table reference to use latest data
+            table = finalTableForOpenTime;
+        }
+        
         let finalActualCheckTotal = finalComputedSalesTotal;
-        if (table.type === 'hourly' && table.isActive && table.openTime) {
-            const hoursUsed = calculateHoursUsed(table.openTime);
-            const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
+        // Use finalTableForOpenTime for calculations (has latest openTime)
+        const finalTableForCalc = finalTableForOpenTime || table;
+        if (finalTableForCalc.type === 'hourly' && finalTableForCalc.isActive && finalTableForCalc.openTime) {
+            const hoursUsed = calculateHoursUsed(finalTableForCalc.openTime);
+            const hourlyTotal = hoursUsed * (finalTableForCalc.hourlyRate || 0);
             finalActualCheckTotal = hourlyTotal + finalComputedSalesTotal;
         }
+        
+        // CRITICAL: Update modal totals (including pay button amount) with final table data
+        // This ensures the cash button shows the correct amount immediately
+        await this.updateModalTotals(finalTableForCalc);
         
         // Update button visibility based on final unpaid sales data
         // Re-use payBtn and creditBtn variables that were already declared above
         const finalPayBtn = document.getElementById('pay-table-btn');
         const finalCreditBtn = document.getElementById('credit-table-btn');
         if (finalPayBtn) {
-            if (finalUnpaidSales.length === 0 && finalActualCheckTotal === 0 && !(table.type === 'hourly' && table.isActive && table.openTime)) {
+            if (finalUnpaidSales.length === 0 && finalActualCheckTotal === 0 && !(finalTableForCalc.type === 'hourly' && finalTableForCalc.isActive && finalTableForCalc.openTime)) {
                 finalPayBtn.style.display = 'none';
             } else {
                 finalPayBtn.style.display = 'inline-block';
@@ -3131,16 +3209,26 @@ class MekanApp {
         
         if (finalCreditBtn) {
             const hasUnpaidSales = finalUnpaidSales.length > 0;
-            const hasCheckTotal = finalActualCheckTotal > 0 || (table.type === 'hourly' && table.isActive && table.openTime);
+            const hasCheckTotal = finalActualCheckTotal > 0 || (finalTableForCalc.type === 'hourly' && finalTableForCalc.isActive && finalTableForCalc.openTime);
             if (hasUnpaidSales || hasCheckTotal) {
                 finalCreditBtn.style.display = 'inline-block';
             } else {
                 finalCreditBtn.style.display = 'none';
             }
         }
+        
+        // CRITICAL: Update cancel button visibility based on final table data (same fix as other buttons)
+        const finalCancelBtn = document.getElementById('cancel-hourly-btn');
+        if (finalCancelBtn) {
+            if (finalTableForCalc.type === 'hourly' && finalTableForCalc.isActive && finalTableForCalc.openTime) {
+                finalCancelBtn.style.display = 'inline-flex';
+            } else {
+                finalCancelBtn.style.display = 'none';
+            }
+        }
 
         const productsSectionEl = document.getElementById('table-products-section');
-        if (productsSectionEl && (table.type !== 'hourly' || (table.isActive && table.openTime))) {
+        if (productsSectionEl && (finalTableForCalc.type !== 'hourly' || (finalTableForCalc.isActive && finalTableForCalc.openTime))) {
             productsSectionEl.style.display = 'block';
         }
         const salesListEl = document.getElementById('table-sales-list');
@@ -4083,29 +4171,60 @@ class MekanApp {
             return { success: false, error: 'Table is already being settled' };
         }
 
+        // Step 1.5: Stop DB refresh to prevent race conditions during closure
+        // Use counter to handle multiple concurrent closures
+        const wasPolling = this._pollSyncInterval !== null;
+        this._closingTablesCount++;
+        if (wasPolling && this._closingTablesCount === 1) {
+            // Only stop on first closure
+            this.stopPollSync();
+            debugLog(`Stopped DB refresh for table closures (count: ${this._closingTablesCount})`);
+        }
+
         // Step 2: Re-read table from DB to ensure we have the latest state
         let table = await this.db.getTable(tableId);
         if (!table) {
+            // Decrement closing counter on error
+            this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
+            // Restart polling if it was running and no other operations are in progress
+            if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                this.startPollSync();
+            }
             return { success: false, error: 'Table not found' };
         }
 
         // Step 3: Validate table can be closed
         if (table.type === 'hourly') {
             if (!table.isActive || !table.openTime) {
+                // Decrement closing counter on validation error
+                this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
+                if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                    this.startPollSync();
+                }
                 return { success: false, error: 'Hourly table is not open' };
             }
             if (table.closeTime) {
+                // Decrement closing counter on validation error
+                this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
+                if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                    this.startPollSync();
+                }
                 return { success: false, error: 'Table is already closed' };
             }
         } else {
             if (!table.isActive) {
+                // Decrement closing counter on validation error
+                this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
+                if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                    this.startPollSync();
+                }
                 return { success: false, error: 'Table is not active' };
             }
         }
 
         // Step 4: Mark as settling IMMEDIATELY to prevent race conditions
-        // Extended duration to prevent realtime updates from interfering during closure
-        this._markTableSettling(tableId, 25000); // 25 seconds for closure operations (extended for hourly tables)
+        // Note: DB refresh is stopped during closure, so shorter settling time is sufficient
+        this._markTableSettling(tableId, 5000); // 5 seconds is enough now that we stop refresh during closure
 
         try {
             // Step 5: Get unpaid sales BEFORE closing table
@@ -4134,7 +4253,8 @@ class MekanApp {
                     hoursUsed: sessionHoursUsed,
                     hourlyTotal: sessionHourlyTotal,
                     paymentTime: closeTimeISO,
-                    isCredit
+                    isCredit,
+                    isCancelled: isCancel // Mark cancelled sessions
                 };
                 if (customerId) session.customerId = customerId;
                 
@@ -4157,6 +4277,17 @@ class MekanApp {
             // Step 7: Write table closure to DB FIRST (atomic operation)
             // This ensures other devices see the table as closed immediately
             await this.db.updateTable(updatedTable);
+            
+            // CRITICAL: Update UI immediately after DB write (before sales processing)
+            // This ensures table card shows 0 immediately when reopened
+            this.setTableCardState(tableId, {
+                isActive: false,
+                type: table.type,
+                openTime: null,
+                hourlyRate: table.hourlyRate || 0,
+                salesTotal: 0,
+                checkTotal: 0
+            });
 
             // Step 8: Wait a moment for DB write to propagate
             await new Promise(resolve => setTimeout(resolve, 100));
@@ -4262,14 +4393,34 @@ class MekanApp {
             // Step 13: Return final verified table state
             const finalTableState = await this.db.getTable(tableId);
             
-            // Step 14: Keep table marked as settling for additional time after closure
+            // Step 14: Decrement closing counter
+            this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
+            
+            // Step 15: Wait a moment for DB write to fully propagate
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Step 16: Restart DB refresh only when ALL operations (opening + closing) are complete
+            if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                this.startPollSync();
+                debugLog(`Restarted DB refresh after all table operations completed`);
+            }
+            
+            // Step 17: Keep table marked as settling for a short time after closure
             // This prevents realtime updates from interfering immediately after closure
-            // The settling period will naturally expire after the extended duration
-            // No need to manually clear it - it will expire on its own
+            this._markTableSettling(tableId, 5000); // 5 seconds is enough now that we stopped refresh
             
             return { success: true, table: finalTableState || updatedTable };
         } catch (error) {
             console.error('Error closing table:', error);
+            
+            // Decrement closing counter on error
+            this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
+            
+            // Restart polling on error only if no other operations are in progress
+            if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                this.startPollSync();
+            }
+            
             // Rollback: try to reopen table
             try {
                 const rollbackTable = await this.db.getTable(tableId);
@@ -4948,19 +5099,40 @@ class MekanApp {
             return;
         }
 
+        // CRITICAL: Check if table is already being opened to prevent concurrent opens
+        const existingOpening = this._getTableOpening(targetTableId);
+        if (existingOpening) {
+            debugLog(`Table ${targetTableId} is already being opened, skipping`);
+            return;
+        }
+
+        // CRITICAL: Stop DB refresh during table opening to prevent race conditions
+        const wasPolling = this._pollSyncInterval !== null;
+        this._openingTablesCount++;
+        if (wasPolling && this._openingTablesCount === 1) {
+            this.stopPollSync();
+            debugLog(`Stopped DB refresh for table opening (count: ${this._openingTablesCount})`);
+        }
+
         // Optimistic UI: show as opening immediately (avoid perceived lag)
         const optimisticOpenTime = new Date().toISOString();
         this._markTableOpening(targetTableId, optimisticOpenTime);
         // Don't call setTableCardState here - it will interfere with loading state
         // Loading state is already set by the caller, and we'll update after DB write
 
-        const table = await this.db.getTable(targetTableId);
+        let table = await this.db.getTable(targetTableId);
         if (!table) {
+            // Clear opening state on error
+            this.setTableCardOpening(targetTableId, false);
+            this._openingTables.delete(String(targetTableId));
             await this.appAlert('Masa bulunamadı.', 'Hata');
             return;
         }
         
         if (table.type !== 'hourly') {
+            // Clear opening state on error
+            this.setTableCardOpening(targetTableId, false);
+            this._openingTables.delete(String(targetTableId));
             await this.appAlert('Bu masa saatlik ücretli masa değil.', 'Uyarı');
             return;
         }
@@ -4968,6 +5140,9 @@ class MekanApp {
         if (table.isActive && table.openTime) {
             // Table is already open, just update UI quickly
             this.setTableCardState(table.id, table);
+            // Clear opening state if it exists
+            this.setTableCardOpening(targetTableId, false);
+            this._openingTables.delete(String(targetTableId));
             return;
         }
 
@@ -4999,12 +5174,116 @@ class MekanApp {
             // Only allow manual reopening (user explicitly clicks open)
             // But if we're here, user did click open, so proceed
         }
+        
+        // CRITICAL: If table has old openTime but is closed (closeTime exists), clean it up before opening
+        // This fixes the issue where cancelled tables show old time when reopened
+        if (table.closeTime && table.openTime && !table.isActive) {
+            debugLog(`Table ${targetTableId} has old openTime but is closed, cleaning up before reopening`);
+            table.openTime = null;
+            table.hourlyTotal = 0;
+            table.salesTotal = 0;
+            table.checkTotal = 0;
+            await this.db.updateTable(table);
+        }
 
         try {
+            // CRITICAL: Re-read table from DB right before opening to ensure we have latest state
+            // This prevents old data from DB refresh from interfering
+            const freshTable = await this.db.getTable(targetTableId);
+            if (!freshTable) {
+                // Decrement opening counter and restart polling
+                this._openingTablesCount = Math.max(0, this._openingTablesCount - 1);
+                if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                    this.startPollSync();
+                }
+                this.setTableCardOpening(targetTableId, false);
+                this._openingTables.delete(String(targetTableId));
+                await this.appAlert('Masa bulunamadı.', 'Hata');
+                return;
+            }
+            
+            // CRITICAL: If table was recently closed (settling), wait longer and force aggressive cleanup
+            const isSettling = this._isTableSettling(targetTableId);
+            if (isSettling) {
+                debugLog(`Table ${targetTableId} is settling, waiting longer and forcing aggressive cleanup`);
+                // Wait longer for closure to fully complete
+                await new Promise(resolve => setTimeout(resolve, 800));
+                // Clear settling state to allow opening
+                this._settlingTables.delete(String(targetTableId));
+            }
+            
+            // CRITICAL: Always check for old data and clean up aggressively
+            // Re-read table after waiting (if settling) to get latest state
+            let tableToClean = isSettling ? await this.db.getTable(targetTableId) : freshTable;
+            if (!tableToClean) {
+                tableToClean = freshTable;
+            }
+            
+            const hasOldData = tableToClean.closeTime || !tableToClean.isActive || (tableToClean.openTime && !tableToClean.isActive);
+            
+            if (hasOldData || isSettling) {
+                debugLog(`Table ${targetTableId} has old data (closeTime: ${tableToClean.closeTime}, openTime: ${tableToClean.openTime}, isActive: ${tableToClean.isActive}, isSettling: ${isSettling}), cleaning ALL data before opening`);
+                
+                // AGGRESSIVE CLEANUP: Clear everything - multiple passes
+                for (let attempt = 0; attempt < 3; attempt++) {
+                    tableToClean.openTime = null;
+                    tableToClean.closeTime = null;
+                    tableToClean.hourlyTotal = 0;
+                    tableToClean.salesTotal = 0;
+                    tableToClean.checkTotal = 0;
+                    tableToClean.isActive = false;
+                    await this.db.updateTable(tableToClean);
+                    
+                    // Wait for each cleanup to propagate
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // Re-read to verify cleanup
+                    const verifyTable = await this.db.getTable(targetTableId);
+                    if (verifyTable) {
+                        // Check if cleanup was successful
+                        const stillHasOldData = verifyTable.closeTime || verifyTable.openTime || verifyTable.isActive;
+                        if (!stillHasOldData) {
+                            debugLog(`Table ${targetTableId} cleanup successful on attempt ${attempt + 1}`);
+                            table = verifyTable;
+                            break;
+                        } else {
+                            debugLog(`Table ${targetTableId} still has old data after attempt ${attempt + 1}, retrying...`);
+                            tableToClean = verifyTable;
+                        }
+                    } else {
+                        table = tableToClean;
+                        break;
+                    }
+                }
+                
+                // Final verification - if still has old data, force one more time
+                const finalTable = await this.db.getTable(targetTableId);
+                if (finalTable && (finalTable.closeTime || finalTable.openTime || finalTable.isActive)) {
+                    debugLog(`Table ${targetTableId} final cleanup attempt`);
+                    finalTable.openTime = null;
+                    finalTable.closeTime = null;
+                    finalTable.hourlyTotal = 0;
+                    finalTable.salesTotal = 0;
+                    finalTable.checkTotal = 0;
+                    finalTable.isActive = false;
+                    await this.db.updateTable(finalTable);
+                    table = finalTable;
+                } else if (finalTable) {
+                    table = finalTable;
+                } else {
+                    table = tableToClean;
+                }
+            } else {
+                // Use fresh table data
+                table = tableToClean;
+            }
+            
             // If table has legacy single-session hourly data, persist it into hourlySessions
             // so it won't be overwritten when we start a new session.
             table.hourlySessions = Array.isArray(table.hourlySessions) ? table.hourlySessions : [];
-            if (table.closeTime && table.openTime) {
+            // CRITICAL: Only process legacy data if table actually has both closeTime and openTime
+            // After aggressive cleanup, this should not happen, but check anyway
+            if (table.closeTime && table.openTime && table.isActive === false) {
                 const alreadyRecorded = table.hourlySessions.some(
                     (s) => s && s.openTime === table.openTime && s.closeTime === table.closeTime
                 );
@@ -5022,14 +5301,49 @@ class MekanApp {
                 }
             }
 
+            // CRITICAL: Ensure all old data is cleared before opening new session
+            // Force reset all values to ensure no old data remains
             table.isActive = true;
             table.openTime = new Date().toISOString();
             table.closeTime = null; // Critical: prevent report from reading previous closeTime with reset totals
             table.hourlyTotal = 0; // Reset hourly total when opening
-            table.checkTotal = table.salesTotal; // Update check total
+            table.salesTotal = 0; // CRITICAL: Reset sales total (old unpaid sales should be cleaned up)
+            table.checkTotal = 0; // CRITICAL: Reset check total to 0
 
             // Write to DB in foreground, but do NOT block UI with expensive reloads
             await this.db.updateTable(table);
+            
+            // Wait a moment for DB write to propagate
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            // CRITICAL: Verify the write was successful and table is correctly opened
+            const verifyTable = await this.db.getTable(targetTableId);
+            if (verifyTable) {
+                // If verification shows old data, force update again
+                if (verifyTable.closeTime || !verifyTable.isActive || (verifyTable.openTime && verifyTable.openTime !== table.openTime)) {
+                    debugLog(`Table ${targetTableId} verification failed, forcing update again`);
+                    verifyTable.isActive = true;
+                    verifyTable.openTime = new Date().toISOString();
+                    verifyTable.closeTime = null;
+                    verifyTable.hourlyTotal = 0;
+                    verifyTable.salesTotal = 0;
+                    verifyTable.checkTotal = 0;
+                    await this.db.updateTable(verifyTable);
+                    table = verifyTable;
+                } else {
+                    table = verifyTable;
+                }
+            }
+            
+            // Decrement opening counter
+            this._openingTablesCount = Math.max(0, this._openingTablesCount - 1);
+            
+            // Restart DB refresh only when ALL operations (opening + closing) are complete
+            if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                this.startPollSync();
+                debugLog(`Restarted DB refresh after table ${targetTableId} opening`);
+            }
+            
             // DB confirmed; opening flicker guard no longer needed
             this._openingTables.delete(String(table.id));
 
@@ -5045,6 +5359,10 @@ class MekanApp {
             }, 0);
         } catch (error) {
             console.error('Masayı açarken hata:', error, error?.message, error?.details, error?.hint, error?.code);
+            // Clear opening state immediately on error
+            this.setTableCardOpening(targetTableId, false);
+            this._openingTables.delete(String(targetTableId));
+            
             // Revert UI best-effort
             try {
                 const fresh = await this.db.getTable(targetTableId);
@@ -5054,8 +5372,9 @@ class MekanApp {
             }
             await this.appAlert('Masayı açarken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
         } finally {
-            // Always clear opening state when done
+            // Always clear opening state when done (even if no error)
             this.setTableCardOpening(targetTableId, false);
+            this._openingTables.delete(String(targetTableId));
         }
     }
 
@@ -5548,12 +5867,15 @@ class MekanApp {
             if (receiptModal) receiptModal.classList.remove('active');
             this.closeTableModal();
 
-            // Optimistic UI: mark table as closed immediately
-            const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
-            if (optimisticClosed.type === 'hourly') {
-                optimisticClosed.openTime = null;
-            }
-            this.setTableCardState(tableId, optimisticClosed);
+            // Optimistic UI: mark table as closed immediately with all data cleared
+            this.setTableCardState(tableId, {
+                isActive: false,
+                type: table.type,
+                openTime: null,
+                hourlyRate: table.hourlyRate || 0,
+                salesTotal: 0,
+                checkTotal: 0
+            });
             this.showTableSettlementEffect(tableId, 'Hesap Alındı');
 
             // Use centralized closure function
@@ -5868,12 +6190,15 @@ class MekanApp {
             // Close modal immediately
             this.closeTableModal();
             
-            // Optimistic UI: mark table as closed immediately
-            const optimisticClosed = { ...table, isActive: false, salesTotal: 0, checkTotal: 0 };
-            if (optimisticClosed.type === 'hourly') {
-                optimisticClosed.openTime = null;
-            }
-            this.setTableCardState(tableId, optimisticClosed);
+            // Optimistic UI: mark table as closed immediately with all data cleared
+            this.setTableCardState(tableId, {
+                isActive: false,
+                type: table.type,
+                openTime: null,
+                hourlyRate: table.hourlyRate || 0,
+                salesTotal: 0,
+                checkTotal: 0
+            });
             this.showTableSettlementEffect(tableId, 'Veresiye');
 
             // Use centralized closure function
@@ -7758,6 +8083,8 @@ class MekanApp {
 
             for (const session of sessions) {
                 if (!session || !session.closeTime) continue;
+                // Skip cancelled sessions - they should not count as income
+                if (session.isCancelled) continue;
                 const closeTime = new Date(session.closeTime);
                 if (closeTime < startDate || closeTime > endDate) continue;
 
