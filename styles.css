@@ -3358,7 +3358,7 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] .table-modal-header {
-    background: transparent !important;
+    background: var(--dark-bg) !important;
     border-radius: 12px 12px 0 0;
 }
 
@@ -3532,7 +3532,7 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] .table-modal-footer {
-    background: transparent !important;
+    background: var(--dark-bg) !important;
     border-top-color: var(--dark-border) !important;
     border-radius: 0 0 12px 12px;
 }
@@ -4762,16 +4762,18 @@ form select:focus {
 }
 
 [data-theme="dark"] .product-card-mini {
-    background: linear-gradient(135deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 100%) !important;
-    border-color: var(--dark-border) !important;
+    background: linear-gradient(135deg, #252525 0%, #2d2d2d 100%) !important;
+    border: 1px solid rgba(255,255,255,0.08) !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25) !important;
 }
 
 [data-theme="dark"] .product-card-mini:hover {
-    background: linear-gradient(135deg, var(--dark-surface-elevated) 0%, var(--dark-surface) 100%) !important;
+    background: linear-gradient(135deg, #2d2d2d 0%, #353535 100%) !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35) !important;
 }
 
 [data-theme="dark"] .product-card-mini.selected {
-    background: linear-gradient(135deg, rgba(46, 204, 113, 0.2) 0%, var(--dark-surface) 100%) !important;
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.22) 0%, #252525 100%) !important;
     border-color: var(--success-color) !important;
 }
 
@@ -5803,7 +5805,7 @@ form select:focus {
     }
 
     [data-theme="dark"] .table-modal-header {
-        background: var(--dark-surface) !important;
+        background: var(--dark-bg) !important;
     }
 
     .table-modal-header h2 {
@@ -5839,7 +5841,7 @@ form select:focus {
     }
 
     [data-theme="dark"] .table-modal-footer {
-        background: var(--dark-surface) !important;
+        background: var(--dark-bg) !important;
         border-top-color: var(--dark-border) !important;
     }
 

@@ -1911,11 +1911,13 @@ class MekanApp {
     }
 
     // Setup bottom sheet swipe down to close (closeCallback: optional, else closeTableModal)
-    // Scroll container: içeride kaydırılan eleman (table-modal-body, transfer-target-cards vb.)
-    // Sadece scroll en üstteyken (scrollTop === 0) aşağı kaydırma modalı kapatır; yoksa normal scroll.
+    // Scroll container: içeride kaydırılan eleman. Sadece en üstteyken + belirgin aşağı çekince kapat (kasılmayı önlemek için eşik).
     setupBottomSheetSwipe(modalEl, closeCallback) {
         const modalContent = modalEl.querySelector('.modal-content');
         if (!modalContent) return;
+
+        const DRAG_THRESHOLD_PX = 18;  // Bu kadar px aşağı çekmeden "kapat" başlamaz; yavaş scroll takılmaz
+        const CLOSE_THRESHOLD_PX = 100;
 
         const getScrollContainer = () => {
             if (modalEl.id === 'table-modal') {
@@ -1926,27 +1928,30 @@ class MekanApp {
             return cards || modalContent;
         };
 
-        let touchStartY = 0;
+        let touchStartY = null;
         let touchCurrentY = 0;
         let isDragging = false;
-        let startScrollTop = 0;
+        let scrollContainer = null;  // Gesture başına bir kez al, touchmove'da tekrar DOM sorgulama (jank azaltır)
 
         modalContent.addEventListener('touchstart', (e) => {
-            const scrollContainer = getScrollContainer();
+            scrollContainer = getScrollContainer();
             const isTouchInScrollArea = scrollContainer && scrollContainer.contains(e.target);
-            startScrollTop = isTouchInScrollArea ? scrollContainer.scrollTop : 0;
+            const atTop = isTouchInScrollArea ? scrollContainer.scrollTop <= 2 : true;
             touchStartY = e.touches[0].clientY;
+            touchCurrentY = touchStartY;
             isDragging = false;
+            if (!atTop) scrollContainer = null;  // En üstte değilse bu gesture'da kapatma yok
         }, { passive: true });
 
         modalContent.addEventListener('touchmove', (e) => {
-            if (!touchStartY) return;
+            if (touchStartY == null) return;
             touchCurrentY = e.touches[0].clientY;
             const deltaY = touchCurrentY - touchStartY;
-            const scrollContainer = getScrollContainer();
-            const atTop = scrollContainer.scrollTop <= 0;
-            // Sadece içerik en üstteyken ve kullanıcı aşağı kaydırıyorsa modalı sürükle
-            if (atTop && deltaY > 0) {
+            if (!scrollContainer) return;  // Zaten aşağıda scroll vardı, dokunmayı scroll'a bırak
+            const atTop = scrollContainer.scrollTop <= 2;
+            // Belirgin aşağı çekmeden kapatma başlatma; böylece yavaş scroll kasılmaz
+            if (atTop && deltaY > DRAG_THRESHOLD_PX) {
+                if (!isDragging) modalContent.style.willChange = 'transform';
                 isDragging = true;
                 e.preventDefault();
                 const translateY = Math.max(0, deltaY);
@@ -1956,21 +1961,25 @@ class MekanApp {
         }, { passive: false });
 
         modalContent.addEventListener('touchend', () => {
-            if (!isDragging || !touchStartY) {
-                touchStartY = 0;
+            if (!isDragging || touchStartY == null) {
+                touchStartY = null;
+                scrollContainer = null;
                 return;
             }
             const deltaY = touchCurrentY - touchStartY;
-            if (deltaY > 100) {
+            if (deltaY > CLOSE_THRESHOLD_PX) {
+                modalContent.style.willChange = '';
                 if (typeof closeCallback === 'function') closeCallback();
                 else this.closeTableModal();
             } else {
                 modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
                 modalContent.style.transform = 'translateY(0)';
             }
-            touchStartY = 0;
+            modalContent.style.willChange = '';
+            touchStartY = null;
             touchCurrentY = 0;
             isDragging = false;
+            scrollContainer = null;
         }, { passive: true });
     }
 
