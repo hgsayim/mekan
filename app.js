@@ -215,6 +215,9 @@ class MekanApp {
         // Prefetch cache for table modal data (table, products, sales)
         this._tableModalPrefetchCache = new Map(); // tableId -> { table, products, sales, timestamp }
         this._tableModalPrefetchTimeout = 10000; // Cache expires after 10 seconds
+        this._tableModalForceRefreshIds = new Set(); // after transfer, next open of target must skip cache
+        this._transferCardStateCache = new Map(); // tableId -> { until, state } – prevent realtime/interval from overwriting for a few sec
+        this._loadTablesInProgress = false; // Tek seferde bir loadTables; senkronizasyon için
         this.currentUser = null;
         this.userRole = null; // 'admin' or 'garson'
         this._hapticEnabled = 'vibrate' in navigator;
@@ -770,18 +773,18 @@ class MekanApp {
         });
         }
 
-        // Close modals
+        // Close modals (kayarak kapansın - closeFormModal/closeTableModal kullan)
+        const formModalIdsForClose = ['table-form-modal', 'product-modal', 'customer-modal', 'expense-form-modal', 'customer-detail-modal', 'customer-payment-modal', 'customer-credit-add-modal', 'add-product-table-modal', 'receipt-modal', 'customer-selection-modal', 'transfer-target-modal'];
         document.querySelectorAll('.close').forEach(closeBtn => {
             closeBtn.addEventListener('click', (e) => {
                 const modal = e.target.closest('.modal');
-                // App dialog has its own close logic (must resolve promise)
-                if (modal && modal.id === 'app-dialog') {
-                    return;
-                }
+                if (modal && modal.id === 'app-dialog') return;
                 if (modal && modal.id === 'table-modal') {
                     this.closeTableModal();
                 } else if (modal && modal.id === 'add-product-table-modal') {
                     this.closeAddProductModal();
+                } else if (modal && formModalIdsForClose.includes(modal.id)) {
+                    this.closeFormModal(modal.id);
                 } else if (modal) {
                     modal.classList.remove('active');
                 }
@@ -790,12 +793,7 @@ class MekanApp {
 
         // Cancel buttons
         const cancelProductBtn = document.getElementById('cancel-product-btn');
-        if (cancelProductBtn) {
-            cancelProductBtn.addEventListener('click', () => {
-                const productModal = document.getElementById('product-modal');
-                if (productModal) productModal.classList.remove('active');
-        });
-        }
+        if (cancelProductBtn) cancelProductBtn.addEventListener('click', () => this.closeFormModal('product-modal'));
 
         // Delayed start (hourly tables)
         const delayedStartConfirmBtn = document.getElementById('delayed-start-confirm-btn');
@@ -812,15 +810,9 @@ class MekanApp {
             });
         }
 
-        // Manual session (report backfill) UI removed
 
         const cancelTableFormBtn = document.getElementById('cancel-table-form-btn');
-        if (cancelTableFormBtn) {
-            cancelTableFormBtn.addEventListener('click', () => {
-                const tableFormModal = document.getElementById('table-form-modal');
-                if (tableFormModal) tableFormModal.classList.remove('active');
-        });
-        }
+        if (cancelTableFormBtn) cancelTableFormBtn.addEventListener('click', () => this.closeFormModal('table-form-modal'));
 
         const cancelAddProductTableBtn = document.getElementById('cancel-add-product-table-btn');
         if (cancelAddProductTableBtn) {
@@ -856,10 +848,7 @@ class MekanApp {
         // Receipt modal buttons
         const cancelReceiptBtn = document.getElementById('cancel-receipt-btn');
         if (cancelReceiptBtn) {
-            cancelReceiptBtn.addEventListener('click', () => {
-                const receiptModal = document.getElementById('receipt-modal');
-                if (receiptModal) receiptModal.classList.remove('active');
-        });
+            cancelReceiptBtn.addEventListener('click', () => this.closeFormModal('receipt-modal'));
         }
 
         const confirmPaymentBtn = document.getElementById('confirm-payment-btn');
@@ -876,15 +865,10 @@ class MekanApp {
             });
         }
 
-        // Close receipt modal on X click
         const receiptModal = document.getElementById('receipt-modal');
         if (receiptModal) {
             const receiptCloseBtn = receiptModal.querySelector('.close');
-            if (receiptCloseBtn) {
-                receiptCloseBtn.addEventListener('click', () => {
-                    receiptModal.classList.remove('active');
-                });
-            }
+            if (receiptCloseBtn) receiptCloseBtn.addEventListener('click', () => this.closeFormModal('receipt-modal'));
         }
 
         // Customer form
@@ -905,14 +889,8 @@ class MekanApp {
         });
         }
 
-        // Cancel customer button
         const cancelCustomerBtn = document.getElementById('cancel-customer-btn');
-        if (cancelCustomerBtn) {
-            cancelCustomerBtn.addEventListener('click', () => {
-                const customerModal = document.getElementById('customer-modal');
-                if (customerModal) customerModal.classList.remove('active');
-            });
-        }
+        if (cancelCustomerBtn) cancelCustomerBtn.addEventListener('click', () => this.closeFormModal('customer-modal'));
 
         // Pay full amount button
         const payFullAmountBtn = document.getElementById('pay-full-amount-btn');
@@ -922,14 +900,8 @@ class MekanApp {
         });
         }
 
-        // Cancel customer payment button
         const cancelCustomerPaymentBtn = document.getElementById('cancel-customer-payment-btn');
-        if (cancelCustomerPaymentBtn) {
-            cancelCustomerPaymentBtn.addEventListener('click', () => {
-                const customerPaymentModal = document.getElementById('customer-payment-modal');
-                if (customerPaymentModal) customerPaymentModal.classList.remove('active');
-        });
-        }
+        if (cancelCustomerPaymentBtn) cancelCustomerPaymentBtn.addEventListener('click', () => this.closeFormModal('customer-payment-modal'));
 
         // Manual credit add (customer)
         const creditAddForm = document.getElementById('customer-credit-add-form');
@@ -940,12 +912,7 @@ class MekanApp {
             });
         }
         const cancelCustomerCreditAddBtn = document.getElementById('cancel-customer-credit-add-btn');
-        if (cancelCustomerCreditAddBtn) {
-            cancelCustomerCreditAddBtn.addEventListener('click', () => {
-                const modal = document.getElementById('customer-credit-add-modal');
-                if (modal) modal.classList.remove('active');
-            });
-        }
+        if (cancelCustomerCreditAddBtn) cancelCustomerCreditAddBtn.addEventListener('click', () => this.closeFormModal('customer-credit-add-modal'));
 
         // Report date range controls
         const reportApplyBtn = document.getElementById('report-apply-btn');
@@ -978,25 +945,8 @@ class MekanApp {
 
         // Add expense button - now handled by add-card in loadExpenses()
 
-        // Cancel expense button
         const cancelExpenseBtn = document.getElementById('cancel-expense-btn');
-        if (cancelExpenseBtn) {
-            cancelExpenseBtn.addEventListener('click', () => {
-                const expenseModal = document.getElementById('expense-form-modal');
-                if (expenseModal) expenseModal.classList.remove('active');
-            });
-        }
-
-        // Expense form modal close button
-        const expenseModal = document.getElementById('expense-form-modal');
-        if (expenseModal) {
-            const closeBtn = expenseModal.querySelector('.close');
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    expenseModal.classList.remove('active');
-                });
-            }
-        }
+        if (cancelExpenseBtn) cancelExpenseBtn.addEventListener('click', () => this.closeFormModal('expense-form-modal'));
 
         // Product select change handler
         const productSelect = document.getElementById('product-select');
@@ -1042,6 +992,17 @@ class MekanApp {
             }, 300));
         }
 
+        const moveTableBtn = document.getElementById('move-table-btn');
+        if (moveTableBtn) {
+            moveTableBtn.addEventListener('click', () => {
+                if (this.currentTableId) this.openTransferTargetModal('table');
+            });
+        }
+        const transferTargetConfirm = document.getElementById('transfer-target-confirm-btn');
+        const transferTargetCancel = document.getElementById('transfer-target-cancel-btn');
+        if (transferTargetConfirm) transferTargetConfirm.addEventListener('click', () => this.doTransferToTarget());
+        if (transferTargetCancel) transferTargetCancel.addEventListener('click', () => this.closeFormModal('transfer-target-modal'));
+
         // Close modal on outside click
         window.addEventListener('click', (e) => {
             if (e.target.classList.contains('modal')) {
@@ -1071,7 +1032,7 @@ class MekanApp {
                     this.closeTableModal();
                 } else if (modal) {
                     // Use closeFormModal for form modals, direct remove for others
-                    const formModalIds = ['table-form-modal', 'product-modal', 'customer-modal', 'expense-form-modal', 'customer-detail-modal'];
+                    const formModalIds = ['table-form-modal', 'product-modal', 'customer-modal', 'expense-form-modal', 'customer-detail-modal', 'customer-payment-modal', 'customer-credit-add-modal', 'add-product-table-modal', 'receipt-modal', 'customer-selection-modal', 'transfer-target-modal'];
                     if (formModalIds.includes(modal.id)) {
                         this.closeFormModal(modal.id);
                     } else {
@@ -1251,24 +1212,32 @@ class MekanApp {
     }
 
     async ensureInstantSaleTable() {
-        // Check if "ANLIK SATIŞ" table exists
         const tables = await this.db.getAllTables();
-        const instantTable = tables.find(t => t.name === 'ANLIK SATIŞ');
-        
-        if (!instantTable) {
-            // Create instant sale table
-            const instantTableData = {
-                name: 'ANLIK SATIŞ',
-                type: 'instant',
-                icon: '⚡',
-                isActive: false,
-                salesTotal: 0,
-                checkTotal: 0,
-                hourlyRate: 0,
-                hourlyTotal: 0
-            };
-            await this.db.addTable(instantTableData);
+        const instantTables = (tables || []).filter(t => t.type === 'instant');
+        if (instantTables.length > 1) {
+            const keep = instantTables.find(t => t.name === 'ANLIK SATIŞ') || instantTables[0];
+            for (const t of instantTables) {
+                if (t.id === keep.id) continue;
+                try {
+                    await this.db.deleteTable(t.id);
+                } catch (_) {
+                    // Satışı olan masalar silinmeyebilir (foreign key); yoksay
+                }
+            }
+            return;
         }
+        if (instantTables.length === 1) return;
+        const instantTableData = {
+            name: 'ANLIK SATIŞ',
+            type: 'instant',
+            icon: '⚡',
+            isActive: false,
+            salesTotal: 0,
+            checkTotal: 0,
+            hourlyRate: 0,
+            hourlyTotal: 0
+        };
+        await this.db.addTable(instantTableData);
     }
 
     async switchView(viewName) {
@@ -1363,22 +1332,57 @@ class MekanApp {
         el.textContent = `- ${label}`;
     }
 
+    /** Header şimşek butonundaki açık masalar toplamını günceller (xxxx ₺). */
+    updateHeaderOpenTablesTotal(total) {
+        const el = document.getElementById('header-open-total');
+        if (!el) return;
+        const value = Number(total);
+        el.textContent = Number.isFinite(value) ? `${Math.round(value)} ₺` : '0 ₺';
+    }
+
+    /** Açık masaların (instant + açık süreli + satışı olan normal) check toplamını hesaplar. */
+    sumOpenTablesCheckTotal(tables) {
+        if (!Array.isArray(tables) || tables.length === 0) return 0;
+        let sum = 0;
+        for (const t of tables) {
+            const isClosed = t.type === 'hourly' && !!t.closeTime;
+            const isOpen = t.type === 'instant'
+                ? true
+                : (t.type === 'hourly'
+                    ? (t.isActive && t.openTime && !isClosed)
+                    : (t.isActive || (Number(t._computedSalesTotal) || 0) > 0));
+            if (!isOpen) continue;
+            const check = t._computedCheckTotal != null ? t._computedCheckTotal : (t.checkTotal || 0);
+            sum += Number(check) || 0;
+        }
+        return sum;
+    }
+
     setTablesLoading(isLoading) {
         const container = document.getElementById('tables-container');
         if (!container) return;
         if (isLoading) {
-            // Only show the big overlay spinner on cold start / empty state.
-            // During small refreshes (e.g. adding a product) we keep the grid interactive and use per-card loading.
             const hasAnyCard = container.querySelector('.table-card');
             if (!hasAnyCard) {
                 container.classList.add('is-loading');
-                if (container.children.length === 0) {
-                    container.innerHTML = this.createTableSkeletonCards(12);
-                }
+                container.innerHTML = this.createTablesLoadingScreen();
             }
         } else {
             container.classList.remove('is-loading');
         }
+    }
+
+    /** Tam sayfa: "Masalar & hesaplar yükleniyor..." + spinner + progress bar */
+    createTablesLoadingScreen() {
+        return `
+            <div class="tables-loading-screen" aria-live="polite" aria-busy="true">
+                <div class="tables-loading-spinner" aria-hidden="true"></div>
+                <p class="tables-loading-message">Masalar & hesaplar yükleniyor...</p>
+                <div class="tables-loading-progress" role="progressbar" aria-valuetext="Yükleniyor">
+                    <div class="tables-loading-progress-bar"></div>
+                </div>
+            </div>
+        `;
     }
 
     createTableSkeletonCards(count = 12) {
@@ -1399,19 +1403,28 @@ class MekanApp {
     // Tables Management
     async loadTables() {
         const container = document.getElementById('tables-container');
-        
         if (!container) {
             console.error('Tables container not found');
             return;
         }
-
+        if (this._loadTablesInProgress) return;
+        this._loadTablesInProgress = true;
         this.setTablesLoading(true);
 
-        let tables = [];
         try {
+            // Masaları göstermeden önce tek sefer sync: taşınan ürünler ve masa durumu güncel gelsin
+            if (typeof this.db?.syncNow === 'function') {
+                await Promise.race([
+                    this.db.syncNow({ force: true, forceFull: false }),
+                    new Promise((r) => setTimeout(r, 6000))
+                ]).catch(() => {});
+            }
+
+            let tables = [];
             tables = await this.db.getAllTables();
             
             if (tables.length === 0) {
+                this.updateHeaderOpenTablesTotal(0);
                 container.innerHTML = this.createEmptyState('tables') + this.createAddTableCard();
                 const addCard = document.getElementById('add-table-card');
                 if (addCard) addCard.onclick = () => this.openTableFormModal();
@@ -1419,31 +1432,29 @@ class MekanApp {
             }
 
         // Filter out instant sale table from tables list (it will be in header)
+        const instantTable = tables.find(t => t.type === 'instant');
         tables = tables.filter(t => t.type !== 'instant');
         
-        // Sort tables: 
-        // 1. Hourly tables first
-        // 2. Then group by icon (same icons together)
-        // 3. Within each group, sort alphabetically by name
+        // Sıralama: 1-süreli, 2-doluluk, 3-ikon, 4-alfabetik
         tables.sort((a, b) => {
-            // Priority 1: Hourly tables before regular tables
             if (a.type === 'hourly' && b.type !== 'hourly') return -1;
             if (a.type !== 'hourly' && b.type === 'hourly') return 1;
-            
-            // Priority 2: Group by icon (same icons together)
+            const fullA = Boolean(a.isActive);
+            const fullB = Boolean(b.isActive);
+            if (fullA !== fullB) return fullB - fullA;
             const iconA = a.icon || (a.type === 'hourly' ? '🎱' : '🪑');
             const iconB = b.icon || (b.type === 'hourly' ? '🎱' : '🪑');
-            
-            if (iconA !== iconB) {
-                return iconA.localeCompare(iconB);
-            }
-            
-            // Priority 3: Within same icon group, sort alphabetically by name
+            if (iconA !== iconB) return iconA.localeCompare(iconB);
             return a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' });
         });
 
         // Sync each table's status with unpaid sales - but hourly tables must be manually opened
         for (const table of tables) {
+            // Süreli masada closeTime varsa masa kesinlikle kapalı; senkron sonrası açık görünmesin.
+            if (table.type === 'hourly' && table.closeTime) {
+                table.isActive = false;
+                table.openTime = null;
+            }
             // CRITICAL: If table is settling (just closed), skip all updates to prevent race conditions
             // This prevents DB refresh from overwriting closure state
             const isSettling = this._isTableSettling(table.id);
@@ -1453,7 +1464,22 @@ class MekanApp {
                 continue;
             }
             
-            const unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
+            let unpaidSales = await this.db.getUnpaidSalesByTable(table.id);
+            let tableUpdatedFromRemote = false;
+            // When local has no sales for a regular table, always try remote (e.g. after transfer on another device or stale local)
+            if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant' && typeof this.db.getUnpaidSalesByTableFromRemote === 'function') {
+                try {
+                    const fromRemote = await this.db.getUnpaidSalesByTableFromRemote(table.id);
+                    if (fromRemote && fromRemote.length > 0) {
+                        unpaidSales = fromRemote;
+                        table.isActive = true;
+                        tableUpdatedFromRemote = true;
+                        if (typeof this.db.upsertSalesToLocal === 'function') {
+                            await this.db.upsertSalesToLocal(fromRemote).catch(() => {});
+                        }
+                    }
+                } catch (_) {}
+            }
             // Compute totals from sales to avoid cross-device race conditions on aggregated columns
             const computedSalesTotal = (unpaidSales || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
             table._computedSalesTotal = computedSalesTotal;
@@ -1468,7 +1494,7 @@ class MekanApp {
                 table._computedHourlyTotal = 0;
                 table._computedCheckTotal = computedSalesTotal;
             }
-            let tableUpdated = false;
+            let tableUpdated = tableUpdatedFromRemote;
             
             if (unpaidSales.length > 0 && !table.isActive) {
                 // Table has products but is not active - activate it only for regular tables
@@ -1480,9 +1506,8 @@ class MekanApp {
                 }
             } else if (unpaidSales.length === 0 && table.isActive) {
                 // Table has no unpaid sales.
-                // CRITICAL: If table is closed (has closeTime), don't keep it active
-                // This prevents closed tables from being reopened when loadTables is called
-                if (table.type === 'hourly' && table.closeTime && !table.openTime) {
+                // CRITICAL: Süreli masada closeTime varsa kesinlikle kapalı tutulur (senkron sonrası açılmaz).
+                if (table.type === 'hourly' && table.closeTime) {
                     // Table was closed - ensure it stays closed
                     table.isActive = false;
                     table.openTime = null;
@@ -1526,15 +1551,29 @@ class MekanApp {
             
             if (tableUpdated) {
                 await this.db.updateTable(table);
-                // Reload table to get updated data
                 const updatedTable = await this.db.getTable(table.id);
                 Object.assign(table, updatedTable);
                 // Re-attach computed fields after refresh
                 table._computedSalesTotal = computedSalesTotal;
                 table._computedHourlyTotal = table._computedHourlyTotal || 0;
                 table._computedCheckTotal = table._computedCheckTotal || computedSalesTotal;
+                // getTable bazen güncel isActive dönmeyebilir; satış varsa kartı açık göster
+                if (unpaidSales.length > 0 && table.type !== 'hourly' && table.type !== 'instant') {
+                    table.isActive = true;
+                }
             }
         }
+
+        // Tek kaynak: satış varsa masa açık (DB isActive bazen gecikmeli)
+        for (const t of tables) {
+            if (t.type !== 'hourly' && t.type !== 'instant' && (Number(t._computedSalesTotal) || 0) > 0) {
+                t.isActive = true;
+            }
+        }
+
+        let headerTotal = this.sumOpenTablesCheckTotal(tables);
+        if (instantTable) headerTotal += await this.getInstantTableDailyTotal(instantTable.id);
+        this.updateHeaderOpenTablesTotal(headerTotal);
 
         // Create table cards - need to await async createTableCard
         const tableCards = await Promise.all(tables.map(table => this.createTableCard(table)));
@@ -1576,6 +1615,7 @@ class MekanApp {
                 pressTimer = setTimeout(async () => {
                     hasLongPressed = true;
                     if (await this.appConfirm(`"${table.name}" masasını silmek istediğinize emin misiniz?`, { title: 'Masa Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' })) {
+                        this.showTableCardProcessing(table.id, 'Siliniyor...', 'cancel');
                         try {
                             await this.db.deleteTable(table.id);
                             await this.loadTables();
@@ -1584,7 +1624,10 @@ class MekanApp {
                             }
                         } catch (error) {
                             console.error('Masa silinirken hata:', error);
+                            this.hideTableCardProcessing(table.id);
                             await this.appAlert('Masa silinirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+                        } finally {
+                            this.hideTableCardProcessing(table.id);
                         }
                     }
                     // Reset flag after a short delay to allow cleanup
@@ -1744,9 +1787,15 @@ class MekanApp {
         // Update prices immediately (the interval will handle ongoing updates)
         if (this.currentView === 'tables') {
             this.updateTableCardPrices();
+            const now = Date.now();
+            for (const [tid, entry] of this._transferCardStateCache.entries()) {
+                if (entry.until > now) this.setTableCardState(tid, entry.state);
+                else this._transferCardStateCache.delete(tid);
+            }
         }
         } finally {
             this.setTablesLoading(false);
+            this._loadTablesInProgress = false;
         }
     }
 
@@ -1861,8 +1910,8 @@ class MekanApp {
         }, { passive: false });
     }
 
-    // Setup bottom sheet swipe down to close
-    setupBottomSheetSwipe(modalEl) {
+    // Setup bottom sheet swipe down to close (closeCallback: optional, else closeTableModal)
+    setupBottomSheetSwipe(modalEl, closeCallback) {
         const modalContent = modalEl.querySelector('.modal-content');
         if (!modalContent) return;
 
@@ -1879,16 +1928,11 @@ class MekanApp {
 
         modalContent.addEventListener('touchmove', (e) => {
             if (!touchStartY) return;
-            
             touchCurrentY = e.touches[0].clientY;
             const deltaY = touchCurrentY - touchStartY;
-            
-            // Only allow swipe down if at top of scroll
             if (startScrollTop === 0 && deltaY > 0) {
                 isDragging = true;
                 e.preventDefault();
-                
-                // Move modal down
                 const translateY = Math.max(0, deltaY);
                 modalContent.style.transform = `translateY(${translateY}px)`;
                 modalContent.style.transition = 'none';
@@ -1900,23 +1944,33 @@ class MekanApp {
                 touchStartY = 0;
                 return;
             }
-
             const deltaY = touchCurrentY - touchStartY;
-            const threshold = 100; // Minimum swipe distance to close
-
-            if (deltaY > threshold) {
-                // Close modal
-                this.closeTableModal();
+            if (deltaY > 100) {
+                if (typeof closeCallback === 'function') closeCallback();
+                else this.closeTableModal();
             } else {
-                // Snap back
-                modalContent.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+                modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
                 modalContent.style.transform = 'translateY(0)';
             }
-
             touchStartY = 0;
             touchCurrentY = 0;
             isDragging = false;
         }, { passive: true });
+    }
+
+    // Mobilde bottom-sheet modallarını alttan aç (ürün/müşteri/gider/detay vb.)
+    runBottomSheetOpen(modalEl) {
+        if (!modalEl || !modalEl.classList.contains('modal-bottom-sheet') || window.innerWidth > 768) return;
+        const modalContent = modalEl.querySelector('.modal-content');
+        if (!modalContent) return;
+        modalContent.style.transform = 'translateY(100%)';
+        modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                modalContent.style.transform = 'translateY(0)';
+            });
+        });
+        this.setupBottomSheetSwipe(modalEl, () => this.closeFormModal(modalEl.id));
     }
 
     createAddTableCard() {
@@ -1936,52 +1990,43 @@ class MekanApp {
         }
 
         const tables = await this.db.getAllTables();
-        
-        // Only update if there are active tables
-        const hasActiveTables = tables.some(table => table.isActive);
-        if (!hasActiveTables) {
-            return;
-        }
-        
-        // Update each table card's price
+        const now = Date.now();
+        let openTotalSum = 0;
         for (const table of tables) {
+            const cached = this._transferCardStateCache?.get(table.id) || this._transferCardStateCache?.get(String(table.id));
+            if (cached && cached.until > now) continue;
             const card = document.getElementById(`table-${table.id}`);
             if (!card) continue;
 
-            // Calculate current price from unpaid sales (avoid stale aggregated columns when 2 devices add simultaneously)
-            // CRITICAL: If table is closed, always show 0 total
-            // This ensures cancelled/closed tables show 0 immediately
-            const isClosed = table.type === 'hourly' && table.closeTime && !table.openTime;
-            const isActive = table.type === 'instant' 
+            const isClosed = table.type === 'hourly' && !!table.closeTime;
+            let isActive = table.type === 'instant' 
                 ? true 
                 : (table.type === 'hourly' 
                     ? (table.isActive && table.openTime && !isClosed)
                     : table.isActive);
-            
+
             let displayTotal = 0;
-            if (isActive) {
-                if (table.type === 'instant') {
-                // For instant sale table, show today's paid sales total
+            if (table.type === 'instant') {
                 displayTotal = await this.getInstantTableDailyTotal(table.id);
+            } else {
+                const unpaid = await this.db.getUnpaidSalesByTable(table.id);
+                const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                if (table.type === 'hourly' && table.isActive && table.openTime && !isClosed) {
+                    displayTotal = calculateHoursUsed(table.openTime) * (table.hourlyRate || 0) + salesTotal;
                 } else {
-                    const unpaid = await this.db.getUnpaidSalesByTable(table.id);
-                    const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-                    if (table.type === 'hourly' && table.isActive && table.openTime) {
-                        const hoursUsed = calculateHoursUsed(table.openTime);
-                        const hourlyTotal = hoursUsed * (table.hourlyRate || 0);
-                        displayTotal = hourlyTotal + salesTotal;
-                    } else {
-                        displayTotal = salesTotal;
-                    }
+                    displayTotal = salesTotal;
+                    if (table.type !== 'hourly' && salesTotal > 0) isActive = true;
                 }
             }
 
-            // Update the price element
+            if (isActive || table.type === 'instant') openTotalSum += displayTotal;
+
             const priceElement = card.querySelector('.table-price');
-            if (priceElement) {
-                priceElement.textContent = `${Math.round(displayTotal)} ₺`;
-            }
+            if (priceElement) priceElement.textContent = `${Math.round(displayTotal)} ₺`;
+            card.classList.toggle('active', Boolean(isActive) || table.type === 'instant');
+            card.classList.toggle('inactive', !Boolean(isActive) && table.type !== 'instant');
         }
+        this.updateHeaderOpenTablesTotal(openTotalSum);
     }
 
     startTableCardPriceUpdates() {
@@ -2008,21 +2053,20 @@ class MekanApp {
         // If user just opened an hourly table, keep it visually open for a couple seconds
         // to avoid "green -> red -> green" flicker while DB/realtime catches up.
         const opening = (table?.type === 'hourly') ? this._getTableOpening(table.id) : null;
-        // For hourly tables: if closeTime exists and openTime is null AND table is not active, table is closed
-        // BUT: if table is actively opening (isActive: true, openTime exists), ignore closeTime
-        // This prevents flicker when table is opened on another device
-        const isClosed = table?.type === 'hourly' && table.closeTime && !table.openTime && !table.isActive;
+        // Süreli masada closeTime varsa masa kesinlikle kapalıdır (senkron sonrası tekrar açılmaz).
+        const isClosed = table?.type === 'hourly' && !!table.closeTime;
         const effectiveTable = (opening && !isClosed)
             ? { ...table, isActive: true, openTime: opening.openTime || table.openTime }
             : table;
 
         // Instant sale table is always active
         // For hourly tables: respect closeTime to prevent showing as active when closed
+        // Normal masalar: satış varsa açık göster (DB isActive senkron gecikmesini aş)
         const isActive = effectiveTable.type === 'instant' 
             ? true 
             : (effectiveTable.type === 'hourly' 
                 ? (effectiveTable.isActive && effectiveTable.openTime && !isClosed)
-                : effectiveTable.isActive);
+                : (effectiveTable.isActive || (Number(effectiveTable._computedSalesTotal) || 0) > 0));
         const statusClass = (effectiveTable.type === 'instant' || isActive) ? 'active' : 'inactive';
         
         // Calculate check total for display (prefer computed totals from unpaid sales)
@@ -2179,6 +2223,9 @@ class MekanApp {
         if (this.currentView !== 'tables') return;
         const card = this.getTableCardEl(tableId);
         if (!card) return;
+        const key = String(tableId);
+        const cached = this._transferCardStateCache.get(tableId) || this._transferCardStateCache.get(key);
+        if (cached && cached.until > Date.now()) return;
 
         // If table is in opening state, don't update (keep "Süre başlatılıyor..." message)
         if (card.classList.contains('table-card-opening')) {
@@ -2201,10 +2248,21 @@ class MekanApp {
                 return;
             }
             
-            // For hourly tables: closeTime + no openTime + not active = closed
-            // For regular tables: closeTime or not active = closed
-            const isTableClosed = table.type === 'hourly' 
-                ? (table.closeTime && !table.openTime && !table.isActive)
+            // Taşınan masa: DB'de isActive false görünüyor olabilir; remote'ta satış varsa açık yap
+            if (table.type !== 'hourly' && table.type !== 'instant' && !table.isActive && !table.closeTime && typeof this.db.getUnpaidSalesByTableFromRemote === 'function') {
+                try {
+                    const fromRemote = await this.db.getUnpaidSalesByTableFromRemote(tableId);
+                    if (fromRemote?.length > 0) {
+                        if (typeof this.db.upsertSalesToLocal === 'function') await this.db.upsertSalesToLocal(fromRemote).catch(() => {});
+                        table.isActive = true;
+                        await this.db.updateTable(table);
+                    }
+                } catch (_) {}
+            }
+            
+            // Süreli masada closeTime varsa kesinlikle kapalı. Normal masada closeTime veya !isActive = kapalı.
+            const isTableClosed = table.type === 'hourly'
+                ? !!table.closeTime
                 : (table.closeTime || !table.isActive);
             
             if (isTableClosed) {
@@ -2247,7 +2305,18 @@ class MekanApp {
                 return;
             }
             
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            let unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant' && typeof this.db.getUnpaidSalesByTableFromRemote === 'function') {
+                try {
+                    const fromRemote = await this.db.getUnpaidSalesByTableFromRemote(tableId);
+                    if (fromRemote?.length > 0) {
+                        unpaidSales = fromRemote;
+                        if (typeof this.db.upsertSalesToLocal === 'function') await this.db.upsertSalesToLocal(fromRemote).catch(() => {});
+                        table.isActive = true;
+                        await this.db.updateTable(table);
+                    }
+                } catch (_) {}
+            }
             
             // Calculate isActive state (we already checked isClosed above, so table is open here)
             const isActive =
@@ -2277,6 +2346,7 @@ class MekanApp {
                         if (sale?.items?.length) {
                             for (const item of sale.items) {
                                 if (!item || item.isCancelled) continue;
+                                if (item.productId == null) continue;
                                 const product = await this.db.getProduct(item.productId);
                                 if (product && this.tracksStock(product)) {
                                     product.stock += item.amount;
@@ -2515,52 +2585,53 @@ class MekanApp {
             modal.classList.remove('closing');
         }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
     
     closeFormModal(modalId) {
         const modal = document.getElementById(modalId);
         if (!modal) return;
         
-        // Don't close if already closing
-        if (modal.classList.contains('closing')) {
-            return;
-        }
-        
+        if (modal.classList.contains('closing')) return;
         modal.classList.add('closing');
         
-        // iOS-like closing animation - both backdrop and content
         const modalContent = modal.querySelector('.modal-content');
-        if (modalContent) {
+        const isBottomSheet = modal.classList.contains('modal-bottom-sheet');
+        
+        if (modalContent && isBottomSheet) {
+            modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
+            modalContent.style.transform = 'translateY(100%)';
+            setTimeout(() => {
+                modal.classList.remove('active', 'closing');
+                modalContent.style.transform = '';
+                modalContent.style.transition = '';
+            }, 300);
+        } else if (modalContent) {
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     modalContent.style.transform = 'scale(0.85)';
                     modalContent.style.opacity = '0';
-                    
-                    // Remove active class after animation completes (backdrop fades out)
                     setTimeout(() => {
                         modal.classList.remove('active', 'closing');
-                        // Reset transform for next open
                         modalContent.style.transform = '';
                         modalContent.style.opacity = '';
-                    }, 350); // Match content animation duration (0.35s)
+                    }, 437);
                 });
             });
         } else {
-            // If no content, just remove after backdrop animation
-            setTimeout(() => {
-                modal.classList.remove('active', 'closing');
-            }, 250);
+            setTimeout(() => modal.classList.remove('active', 'closing'), 312);
         }
     }
 
@@ -2670,7 +2741,7 @@ class MekanApp {
                 if (isMobile) {
                     // Bottom sheet: start from bottom
                     modalContent.style.transform = 'translateY(100%)';
-                    modalContent.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+                    modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
                 } else {
                     // Desktop: scale animation from card
                     modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
@@ -2686,7 +2757,7 @@ class MekanApp {
                         if (isMobile) {
                             modalContent.style.transform = 'translateY(0)';
                         } else {
-                            modalContent.style.transition = 'transform 0.4s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.4s cubic-bezier(0.32, 0.72, 0, 1)';
+                            modalContent.style.transition = 'transform 0.5s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.5s cubic-bezier(0.32, 0.72, 0, 1)';
                             modalContent.style.transform = 'scale(1) translate(0, 0)';
                             modalContent.style.opacity = '1';
                         }
@@ -2754,25 +2825,36 @@ class MekanApp {
 
         let table = null;
         try {
-            // Check prefetch cache first
-            const cachedData = this._tableModalPrefetchCache.get(tableId);
+            // Check prefetch cache first (skip if this table was just a transfer target)
+            const forceRefresh = this._tableModalForceRefreshIds.has(tableId) || this._tableModalForceRefreshIds.has(String(tableId)) || this._tableModalForceRefreshIds.has(Number(tableId));
+            if (forceRefresh) {
+                this._tableModalForceRefreshIds.delete(tableId);
+                this._tableModalForceRefreshIds.delete(String(tableId));
+                this._tableModalForceRefreshIds.delete(Number(tableId));
+                this._tableModalPrefetchCache.delete(tableId);
+                this._tableModalPrefetchCache.delete(Number(tableId));
+                this._tableModalPrefetchCache.delete(String(tableId));
+            }
+            const cachedData = this._tableModalPrefetchCache.get(tableId) || this._tableModalPrefetchCache.get(Number(tableId)) || this._tableModalPrefetchCache.get(String(tableId));
             const now = Date.now();
             let useCache = false;
             
-            if (cachedData && (now - cachedData.timestamp) < this._tableModalPrefetchTimeout) {
+            if (!forceRefresh && cachedData && (now - cachedData.timestamp) < this._tableModalPrefetchTimeout) {
                 // Cache is valid - use it
                 useCache = true;
                 table = cachedData.table;
                 debugLog(`Using prefetched data for table ${tableId}`);
             } else {
-                // Cache expired or not available - fetch fresh data
+                // Cache expired or not available - fetch fresh data (or force refresh after transfer)
                 if (cachedData) {
                     this._tableModalPrefetchCache.delete(tableId);
+                    this._tableModalPrefetchCache.delete(Number(tableId));
+                    this._tableModalPrefetchCache.delete(String(tableId));
                 }
                 
-                // User request: when opening the table detail screen, refresh DB once beforehand.
-                // While modal is open we avoid background refreshes.
-                if (preSync && typeof this.db?.syncNow === 'function') {
+                // Sync first when force refresh (e.g. after transfer) or preSync requested, so target table has latest sales
+                const shouldSync = forceRefresh || preSync;
+                if (shouldSync && typeof this.db?.syncNow === 'function') {
                     try {
                         await this.db.syncNow();
                         if (typeof this.db?.syncTablesFull === 'function') {
@@ -2922,7 +3004,7 @@ class MekanApp {
                         document.getElementById('modal-sales-total').textContent = Math.round(salesTotal);
                         updatedTable.checkTotal = hourlyTotal + salesTotal;
                         document.getElementById('modal-check-total').textContent = Math.round(updatedTable.checkTotal);
-                        if (payBtnTxt) payBtnTxt.textContent = `${Math.round(updatedTable.checkTotal)} ₺`;
+                        if (payBtnTxtEl) payBtnTxtEl.textContent = `${Math.round(updatedTable.checkTotal)} ₺`;
                     }
                 }, 1000); // Update every second to catch openTime sync delay
                 
@@ -3109,13 +3191,8 @@ class MekanApp {
             return;
         }
 
-        // Check if table is closed (should not show modal for closed tables)
-        // For hourly tables: closed if has closeTime, no openTime, and not active
-        // For regular/instant tables: NEVER close modal - user can always add products
-        // Regular/instant tables don't use closeTime - they're always available for product addition
-        const isTableClosed = finalTableCheck.type === 'hourly'
-            ? (finalTableCheck.closeTime && !finalTableCheck.openTime && !finalTableCheck.isActive)
-            : false; // Regular/instant: never close modal - always allow product addition
+        // Süreli masada closeTime varsa masa kesinlikle kapalıdır; modal açılmaz.
+        const isTableClosed = finalTableCheck.type === 'hourly' && !!finalTableCheck.closeTime;
         
         if (isTableClosed) {
             // Table is already closed - keep buttons disabled and close modal
@@ -3215,6 +3292,14 @@ class MekanApp {
             } else {
                 finalCreditBtn.style.display = 'none';
             }
+        }
+        const moveTableBtn = document.getElementById('move-table-btn');
+        if (moveTableBtn) {
+            const hasUnpaid = finalUnpaidSales.length > 0;
+            const hourlyOpen = finalTableForCalc.type === 'hourly' && finalTableForCalc.isActive && finalTableForCalc.openTime;
+            const allTables = await this.db.getAllTables();
+            const otherTargetTables = (allTables || []).filter(t => String(t.id) !== String(tableId) && t.type !== 'instant');
+            moveTableBtn.style.display = ((hasUnpaid || hourlyOpen) && otherTargetTables.length > 0) ? 'inline-flex' : 'none';
         }
         
         // CRITICAL: Update cancel button visibility based on final table data (same fix as other buttons)
@@ -3335,75 +3420,62 @@ class MekanApp {
         
         const tableModalEl = document.getElementById('table-modal');
         if (!tableModalEl) {
-        document.body.classList.remove('table-modal-open');
+            document.body.classList.remove('table-modal-open');
             return;
         }
-        
-        // Don't close if already closing (prevent double close)
-        if (tableModalEl.classList.contains('closing')) {
-            return;
-        }
+        if (tableModalEl.classList.contains('closing')) return;
 
         tableModalEl.classList.add('closing');
-        
-        // Get table card position for closing animation
-        const tableCard = this.getTableCardEl(this.currentTableId);
-        let animationOrigin = { x: '50%', y: '50%' };
-        
-        if (tableCard) {
-            const cardRect = tableCard.getBoundingClientRect();
-            animationOrigin = {
-                x: `${cardRect.left + cardRect.width / 2}px`,
-                y: `${cardRect.top + cardRect.height / 2}px`
-            };
-        } else {
-            // For instant sale (no table card), use header button position
-            const instantSaleBtn = document.getElementById('instant-sale-btn');
-            if (instantSaleBtn) {
-                const btnRect = instantSaleBtn.getBoundingClientRect();
-                animationOrigin = {
-                    x: `${btnRect.left + btnRect.width / 2}px`,
-                    y: `${btnRect.top + btnRect.height / 2}px`
-                };
-            }
-        }
-        
-        // Animate closing - shrink back to origin position
         const modalContent = tableModalEl.querySelector('.modal-content');
-        if (modalContent) {
-            // Ensure we have the current transform origin
+        const isBottomSheet = tableModalEl.classList.contains('modal-bottom-sheet');
+
+        if (modalContent && isBottomSheet) {
+            modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
+            modalContent.style.transform = 'translateY(100%)';
+            setTimeout(() => {
+                tableModalEl.classList.remove('active', 'closing');
+                modalContent.style.transform = '';
+                modalContent.style.transition = '';
+                document.body.classList.remove('table-modal-open');
+                this.refreshProductsCache();
+            }, 375);
+        } else if (modalContent) {
+            const tableCard = this.getTableCardEl(this.currentTableId);
+            let animationOrigin = { x: '50%', y: '50%' };
+            if (tableCard) {
+                const cardRect = tableCard.getBoundingClientRect();
+                animationOrigin = { x: `${cardRect.left + cardRect.width / 2}px`, y: `${cardRect.top + cardRect.height / 2}px` };
+            } else {
+                const instantSaleBtn = document.getElementById('instant-sale-btn');
+                if (instantSaleBtn) {
+                    const btnRect = instantSaleBtn.getBoundingClientRect();
+                    animationOrigin = { x: `${btnRect.left + btnRect.width / 2}px`, y: `${btnRect.top + btnRect.height / 2}px` };
+                }
+            }
             modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
-            
-            // Start closing animation - use double requestAnimationFrame for smoother animation
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
-                    modalContent.style.transition = 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
-                    modalContent.style.transform = `scale(0.1) translate(0, 0)`;
+                    modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
+                    modalContent.style.transform = 'scale(0.1) translate(0, 0)';
                     modalContent.style.opacity = '0';
-                    
-                    // Remove active class after animation completes (backdrop fades out in sync)
                     setTimeout(() => {
                         tableModalEl.classList.remove('active', 'closing');
-                        // Reset transform for next open
                         modalContent.style.transition = '';
                         modalContent.style.transform = '';
                         modalContent.style.opacity = '';
                         modalContent.style.transformOrigin = '';
                         document.body.classList.remove('table-modal-open');
-                    }, 250); // Match backdrop animation duration
+                        this.refreshProductsCache();
+                    }, 375);
                 });
             });
-                        } else {
-            // If no content, just remove after backdrop animation
+        } else {
             setTimeout(() => {
                 tableModalEl.classList.remove('active', 'closing');
                 document.body.classList.remove('table-modal-open');
-            }, 250);
-            }
-            
-        // Refresh products cache in background after modal closes
-        // This ensures products are up-to-date for the next modal open
-        this.refreshProductsCache();
+                this.refreshProductsCache();
+            }, 312);
+        }
     }
 
     /**
@@ -3676,12 +3748,13 @@ class MekanApp {
                 const iconHtml = this.renderProductIcon(it.icon || '📦');
                 const itemTime = it.firstTs ? formatTimeOnly(new Date(it.firstTs).toISOString()) : row.timeOnly;
                 
-                // Hidden action buttons (shown on long press)
+                // Hidden action buttons (shown on tap)
                 const buttons = `
                     <div class="sale-item-actions" data-sale-id="${saleId}" data-item-index="${idx}">
                         <button class="btn btn-danger btn-icon sale-action-btn" id="delete-sale-item-${saleId}-${idx}" title="İptal">×</button>
                         <button class="btn btn-success btn-icon sale-action-btn" id="pay-sale-item-${saleId}-${idx}" title="Nakit Öde">₺</button>
                         <button class="btn btn-info btn-icon sale-action-btn" id="credit-sale-item-${saleId}-${idx}" title="Veresiye">💳</button>
+                        <button class="btn btn-icon sale-action-btn sale-action-transfer" id="transfer-sale-item-${saleId}-${idx}" title="Başka masaya taşı">➜</button>
                     </div>
                 `;
                 
@@ -3813,6 +3886,14 @@ class MekanApp {
                         this.creditItemFromSale(sale.id, index);
                     });
                 }
+                const transferBtn = lineEl.querySelector(`#transfer-sale-item-${sale.id}-${index}`);
+                if (transferBtn) {
+                    transferBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeAllMenus();
+                        this.openTransferTargetModal('sale', { saleId: sale.id });
+                    });
+                }
             });
         });
 
@@ -3840,13 +3921,14 @@ class MekanApp {
             const item = sale.items[itemIndex];
             if (!item) return;
 
-            // Restore product stock
+            if (item.productId != null) {
             const product = await this.db.getProduct(item.productId);
             if (product) {
                 if (this.tracksStock(product)) {
                     product.stock += item.amount;
                     await this.db.updateProduct(product);
                 }
+            }
             }
 
             // Mark item as cancelled instead of deleting
@@ -3984,6 +4066,263 @@ class MekanApp {
         await this.openCustomerSelectionModalForItem();
     }
 
+    async openTransferTargetModal(mode, opts = {}) {
+        const modal = document.getElementById('transfer-target-modal');
+        const titleEl = document.getElementById('transfer-target-modal-title');
+        const cardsEl = document.getElementById('transfer-target-cards');
+        if (!modal || !titleEl || !cardsEl) return;
+
+        const tableId = this.currentTableId;
+        if (!tableId) return;
+
+        const allTables = await this.db.getAllTables();
+        const targetTables = (allTables || []).filter(t => String(t.id) !== String(tableId) && t.type !== 'instant');
+
+        if (targetTables.length === 0) {
+            await this.appAlert('Hedef masa yok (anlık satış masası hedef olamaz).', 'Uyarı');
+            return;
+        }
+
+        this._transferMode = mode;
+        this._transferSaleId = opts.saleId || null;
+        this._transferTargetTableId = null;
+
+        titleEl.textContent = mode === 'table' ? 'Tüm masayı taşı – hedef masa seçin' : 'Satırı taşı – hedef masa seçin';
+
+        const getDisplayTotal = (t) => {
+            if (t.type === 'hourly' && t.isActive && t.openTime) {
+                const hoursUsed = (Date.now() - new Date(t.openTime).getTime()) / (1000 * 60 * 60);
+                return (hoursUsed * (t.hourlyRate || 0)) + (t.salesTotal || 0);
+            }
+            return t.checkTotal ?? t.salesTotal ?? 0;
+        };
+
+        cardsEl.innerHTML = targetTables.map(t => {
+            const name = t.name || `Masa ${t.id}`;
+            const icon = t.icon || (t.type === 'hourly' ? '🎱' : '🪑');
+            const total = Math.round(getDisplayTotal(t));
+            return `<div class="transfer-target-card" data-table-id="${t.id}" role="button" tabindex="0">
+                <div class="transfer-target-icon">${icon}</div>
+                <h4>${name}</h4>
+                <div class="transfer-target-price">${total} ₺</div>
+            </div>`;
+        }).join('');
+
+        cardsEl.querySelectorAll('.transfer-target-card').forEach(card => {
+            card.addEventListener('click', () => {
+                cardsEl.querySelectorAll('.transfer-target-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                this._transferTargetTableId = card.getAttribute('data-table-id');
+            });
+        });
+
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
+        modal.classList.add('active');
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
+            });
+        }
+    }
+
+    async doTransferToTarget() {
+        const targetId = this._transferTargetTableId;
+        if (!targetId) {
+            await this.appAlert('Lütfen hedef masa seçin.', 'Uyarı');
+            return;
+        }
+
+        const tableId = this.currentTableId;
+        if (!tableId || String(tableId) === String(targetId)) {
+            this.closeFormModal('transfer-target-modal');
+            return;
+        }
+
+        try {
+            if (this._transferMode === 'table') {
+                const sourceTable = await this.db.getTable(tableId);
+                const targetTable = await this.db.getTable(targetId);
+                if (!targetTable) {
+                    this.closeFormModal('transfer-target-modal');
+                    await this.appAlert('Hedef masa bulunamadı.', 'Hata');
+                    return;
+                }
+                const targetTableId = targetTable.id;
+
+                const unpaid = await this.db.getUnpaidSalesByTable(tableId);
+                for (const sale of unpaid) {
+                    sale.tableId = targetTableId;
+                    await this.db.updateSale(sale);
+                }
+
+                let oyunUcretiTotal = 0;
+                if (sourceTable && sourceTable.type === 'hourly' && sourceTable.isActive && sourceTable.openTime) {
+                    const hoursUsed = calculateHoursUsed(sourceTable.openTime);
+                    oyunUcretiTotal = hoursUsed * (sourceTable.hourlyRate || 0);
+                    if (oyunUcretiTotal > 0) {
+                        const oyunLabel = `${sourceTable?.name || 'Masa'} Oyun ücreti`;
+                        const oyunSale = {
+                            tableId: targetTableId,
+                            items: [{ productId: null, name: oyunLabel, amount: 1, price: oyunUcretiTotal, icon: '🎱', isCancelled: false }],
+                            sellDateTime: new Date().toISOString(),
+                            saleTotal: oyunUcretiTotal,
+                            isPaid: false,
+                            isCredit: false,
+                            customerId: null,
+                            createdBy: this.currentUser?.id || this.currentUser?.email,
+                            createdByName: this.currentUser?.email || 'Bilinmeyen',
+                            createdByRole: this.userRole === 'admin' ? 'Yönetici' : 'Garson'
+                        };
+                        await this.db.addSale(oyunSale);
+                    }
+                    if (targetTable.type === 'hourly' && !targetTable.openTime) {
+                        targetTable.openTime = new Date().toISOString();
+                        targetTable.isActive = true;
+                    }
+                }
+
+                if (sourceTable) {
+                    sourceTable.isActive = false;
+                    sourceTable.openTime = null;
+                    sourceTable.closeTime = new Date().toISOString();
+                    sourceTable.salesTotal = 0;
+                    sourceTable.checkTotal = 0;
+                    if (sourceTable.type === 'hourly') sourceTable.hourlyTotal = 0;
+                    await this.db.updateTable(sourceTable);
+                }
+
+                let unpaidTarget = await this.db.getUnpaidSalesByTable(targetTableId);
+                if (targetTable.type !== 'hourly' && targetTable.type !== 'instant' && unpaidTarget.length > 0) {
+                    targetTable.isActive = true;
+                }
+                await this._updateTableTotals(targetTable, unpaidTarget);
+                await this.db.updateTable(targetTable);
+
+                const targetSalesTotal = (unpaidTarget || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                let targetCheckTotal = targetSalesTotal;
+                if (targetTable.type === 'hourly' && targetTable.isActive && targetTable.openTime) {
+                    const th = calculateHoursUsed(targetTable.openTime) * (targetTable.hourlyRate || 0);
+                    targetCheckTotal = th + targetSalesTotal;
+                }
+                const sourceCardStateFull = { isActive: false, type: sourceTable?.type, openTime: null, hourlyRate: 0, salesTotal: 0, checkTotal: 0 };
+                const targetCardStateFull = { isActive: true, type: targetTable.type, openTime: targetTable.openTime, hourlyRate: targetTable.hourlyRate || 0, salesTotal: targetSalesTotal, checkTotal: targetCheckTotal };
+
+                this.closeFormModal('transfer-target-modal');
+                this.closeTableModal();
+                await this.loadTables();
+                if (this.refreshSingleTableCard) {
+                    await this.refreshSingleTableCard(tableId);
+                    await this.refreshSingleTableCard(targetTableId);
+                }
+                this.setTableCardState(tableId, sourceCardStateFull);
+                this.setTableCardState(targetTableId, targetCardStateFull);
+                const until = Date.now() + 6000;
+                const srcEntry = { until, state: sourceCardStateFull };
+                const tgtEntry = { until, state: targetCardStateFull };
+                this._transferCardStateCache.set(tableId, srcEntry);
+                this._transferCardStateCache.set(String(tableId), srcEntry);
+                this._transferCardStateCache.set(targetTableId, tgtEntry);
+                this._transferCardStateCache.set(String(targetTableId), tgtEntry);
+            } else {
+                const saleId = this._transferSaleId;
+                if (!saleId) {
+                    this.closeFormModal('transfer-target-modal');
+                    return;
+                }
+                const sale = await this.db.getSale(saleId);
+                if (!sale || sale.isPaid) {
+                    this.closeFormModal('transfer-target-modal');
+                    return;
+                }
+                const targetTable = await this.db.getTable(targetId);
+                if (!targetTable) {
+                    this.closeFormModal('transfer-target-modal');
+                    await this.appAlert('Hedef masa bulunamadı.', 'Hata');
+                    return;
+                }
+                const targetTableId = targetTable.id;
+                const saleToUpdate = { ...sale, tableId: targetTableId };
+                await this.db.updateSale(saleToUpdate);
+
+                const sourceTable = await this.db.getTable(tableId);
+                if (sourceTable) {
+                    const unpaidSource = await this.db.getUnpaidSalesByTable(tableId);
+                    await this._updateTableTotals(sourceTable, unpaidSource);
+                    if (unpaidSource.length === 0 && sourceTable.type !== 'hourly' && sourceTable.type !== 'instant') {
+                        sourceTable.isActive = false;
+                        sourceTable.openTime = null;
+                        sourceTable.closeTime = new Date().toISOString();
+                        sourceTable.salesTotal = 0;
+                        sourceTable.checkTotal = 0;
+                    }
+                    await this.db.updateTable(sourceTable);
+                }
+                const unpaidTarget = await this.db.getUnpaidSalesByTable(targetTableId);
+                if (targetTable.type !== 'hourly' && targetTable.type !== 'instant' && unpaidTarget.length > 0) {
+                    targetTable.isActive = true;
+                }
+                await this._updateTableTotals(targetTable, unpaidTarget);
+                await this.db.updateTable(targetTable);
+
+                const unpaidSourceAfter = await this.db.getUnpaidSalesByTable(tableId);
+                const sourceSalesTotal = (unpaidSourceAfter || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                let sourceCheckTotal = sourceSalesTotal;
+                if (sourceTable && sourceTable.type === 'hourly' && sourceTable.isActive && sourceTable.openTime) {
+                    sourceCheckTotal = calculateHoursUsed(sourceTable.openTime) * (sourceTable.hourlyRate || 0) + sourceSalesTotal;
+                }
+                const targetSalesTotal = (unpaidTarget || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                let targetCheckTotal = targetSalesTotal;
+                if (targetTable.type === 'hourly' && targetTable.isActive && targetTable.openTime) {
+                    targetCheckTotal = calculateHoursUsed(targetTable.openTime) * (targetTable.hourlyRate || 0) + targetSalesTotal;
+                }
+                const sourceCardState = { isActive: unpaidSourceAfter.length > 0 || (sourceTable?.type === 'hourly' && sourceTable?.openTime), type: sourceTable?.type, openTime: sourceTable?.openTime || null, hourlyRate: sourceTable?.hourlyRate || 0, salesTotal: sourceSalesTotal, checkTotal: sourceCheckTotal };
+                const targetCardState = { isActive: true, type: targetTable.type, openTime: targetTable.openTime, hourlyRate: targetTable.hourlyRate || 0, salesTotal: targetSalesTotal, checkTotal: targetCheckTotal };
+
+                this._tableModalPrefetchCache.delete(targetTableId);
+                this._tableModalPrefetchCache.delete(tableId);
+                this._tableModalForceRefreshIds.add(targetTableId);
+                this._tableModalForceRefreshIds.add(String(targetTableId));
+                this._tableModalForceRefreshIds.add(Number(targetTableId));
+                this.closeFormModal('transfer-target-modal');
+                if (unpaidSourceAfter.length > 0) {
+                    await this.loadTableProducts(tableId);
+                    await this.openTableModal(tableId);
+                } else {
+                    this.closeTableModal();
+                }
+                await this.loadTables();
+                if (this.refreshSingleTableCard) {
+                    await this.refreshSingleTableCard(tableId);
+                    await this.refreshSingleTableCard(targetTableId);
+                }
+                this.setTableCardState(tableId, sourceCardState);
+                this.setTableCardState(targetTableId, targetCardState);
+                const until = Date.now() + 6000;
+                const srcEntry = { until, state: sourceCardState };
+                const tgtEntry = { until, state: targetCardState };
+                this._transferCardStateCache.set(tableId, srcEntry);
+                this._transferCardStateCache.set(String(tableId), srcEntry);
+                this._transferCardStateCache.set(targetTableId, tgtEntry);
+                this._transferCardStateCache.set(String(targetTableId), tgtEntry);
+            }
+        } catch (err) {
+            console.error('Transfer error:', err);
+            await this.appAlert('Taşıma sırasında hata oluştu.', 'Hata');
+        } finally {
+            this._transferMode = null;
+            this._transferSaleId = null;
+            this._transferTargetTableId = null;
+        }
+    }
+
     async openCustomerSelectionModalForItem() {
         const customers = await this.db.getAllCustomers();
         const modal = document.getElementById('customer-selection-modal');
@@ -4023,22 +4362,21 @@ class MekanApp {
             });
         });
 
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async processCreditItemFromSale(selectedCustomerId) {
@@ -4164,7 +4502,9 @@ class MekanApp {
      */
     async _closeTableSafely(tableId, options = {}) {
         const { paymentTime, isCredit = false, customerId = null, isCancel = false } = options;
-        
+        if (tableId == null || String(tableId) === 'null' || String(tableId) === '') {
+            return { success: false, error: 'Geçersiz masa' };
+        }
         // Step 1: Validate table state and prevent concurrent closures
         if (this._isTableSettling(tableId)) {
             debugLog(`Table ${tableId} is already being settled, skipping`);
@@ -4294,11 +4634,12 @@ class MekanApp {
 
             // Step 9: Handle sales based on closure type
             if (isCancel) {
-                // Cancel: Delete all unpaid sales and restore stock
+                // Cancel: Delete all unpaid sales and restore stock (Oyun ücreti satırında productId null olabilir)
                 for (const sale of unpaidSales) {
                     if (sale?.items?.length) {
                         for (const item of sale.items) {
                             if (!item || item.isCancelled) continue;
+                            if (item.productId == null) continue;
                             const product = await this.db.getProduct(item.productId);
                             if (product && this.tracksStock(product)) {
                                 product.stock += item.amount;
@@ -4584,7 +4925,6 @@ class MekanApp {
         }
     }
 
-    // Manual session functions removed - not used
 
     // Helper: Calculate hourly total for a table
     calculateHourlyTotal(table) {
@@ -4712,7 +5052,6 @@ class MekanApp {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, (p) => onChange('sales', p))
             .on('postgres_changes', { event: '*', schema: 'public', table: 'customers' }, (p) => onChange('customers', p))
             .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, (p) => onChange('expenses', p))
-            // Manual sessions realtime subscription removed
             .subscribe((status) => {
                 // statuses: SUBSCRIBED, TIMED_OUT, CLOSED, CHANNEL_ERROR
                 if (status !== 'SUBSCRIBED') {
@@ -4767,7 +5106,6 @@ class MekanApp {
             if (current === 'expenses') views.add('expenses');
             if (current === 'daily') views.add('daily');
         }
-        // Manual sessions realtime subscription removed
 
         // Identify impacted tableId (sales payload id is sale id; we need table_id)
         const tableModal = document.getElementById('table-modal');
@@ -4802,10 +5140,10 @@ class MekanApp {
                             return;
                         }
                         
-                        // CRITICAL: If table was closed (has closeTime, no openTime, not active), keep it closed
-                        // For hourly tables: also check if openTime exists (should be null for closed tables)
-                        const isClosed = updatedTable && updatedTable.closeTime && !updatedTable.isActive && 
-                            (updatedTable.type !== 'hourly' || !updatedTable.openTime);
+                        // Süreli masada closeTime varsa kesinlikle kapalı. Normal masada closeTime veya !isActive = kapalı.
+                        const isClosed = updatedTable && (updatedTable.type === 'hourly'
+                            ? !!updatedTable.closeTime
+                            : (updatedTable.closeTime || !updatedTable.isActive));
                         
                         if (isClosed) {
                             // Table was cancelled/closed - don't refresh, keep it closed
@@ -4864,13 +5202,10 @@ class MekanApp {
                         // Check if table is currently being settled (prevent interference during closure)
                         const isSettling = this._isTableSettling(changedTableId);
                         
-                        // Only clean up if table is truly closed (not active, no openTime, has closeTime)
-                        // Don't clean if table is being opened (isActive: true, openTime exists)
-                        // CRITICAL: If table was closed (payment/credit/cancel), ensure it stays closed
-                        // and clean up any remaining unpaid sales on this device
-                        // CRITICAL: Check if table is closed (for hourly: closeTime + no openTime + not active)
-                        const isTableClosed = updatedTable && updatedTable.closeTime && !updatedTable.isActive && 
-                            (updatedTable.type !== 'hourly' || !updatedTable.openTime);
+                        // Süreli masada closeTime varsa kesinlikle kapalı. Normal masada closeTime veya !isActive = kapalı.
+                        const isTableClosed = updatedTable && (updatedTable.type === 'hourly'
+                            ? !!updatedTable.closeTime
+                            : (updatedTable.closeTime || !updatedTable.isActive));
                         
                         if (isTableClosed) {
                             // Table was closed - if realtime update tries to reopen it, force it closed again
@@ -4913,6 +5248,7 @@ class MekanApp {
                                     if (sale?.items?.length) {
                                         for (const item of sale.items) {
                                             if (!item || item.isCancelled) continue;
+                                            if (item.productId == null) continue;
                                             const product = await this.db.getProduct(item.productId);
                                             if (product && this.tracksStock(product)) {
                                                 product.stock += item.amount;
@@ -5146,44 +5482,16 @@ class MekanApp {
             return;
         }
 
-        // Prevent reopening if table was recently closed (realtime race condition protection)
-        // If closeTime exists and openTime is null, table is closed and should not be reopened automatically
-        if (table.closeTime && !table.openTime && !table.isActive) {
-            // Table is closed - this is expected state after payment/credit
-            // CRITICAL: Before reopening, clean up any leftover unpaid sales from cancellation
-            // This fixes the issue where cancelled tables still have sales on other devices
-            const unpaidSales = await this.db.getUnpaidSalesByTable(targetTableId);
-            if (unpaidSales.length > 0) {
-                debugLog(`Table ${targetTableId} was closed, cleaning up ${unpaidSales.length} leftover unpaid sales before reopening`);
-                for (const sale of unpaidSales) {
-                    if (sale?.items?.length) {
-                        for (const item of sale.items) {
-                            if (!item || item.isCancelled) continue;
-                            const product = await this.db.getProduct(item.productId);
-                            if (product && this.tracksStock(product)) {
-                                product.stock += item.amount;
-                                await this.db.updateProduct(product);
-                            }
-                        }
-                    }
-                    if (sale?.id) {
-                        await this.db.deleteSale(sale.id);
-                    }
-                }
+        // CRITICAL: Kapanan masa tekrar açılamaz. closeTime varsa kesinlikle açma.
+        if (table.closeTime) {
+            this._openingTablesCount = Math.max(0, this._openingTablesCount - 1);
+            if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
+                this.startPollSync();
             }
-            // Only allow manual reopening (user explicitly clicks open)
-            // But if we're here, user did click open, so proceed
-        }
-        
-        // CRITICAL: If table has old openTime but is closed (closeTime exists), clean it up before opening
-        // This fixes the issue where cancelled tables show old time when reopened
-        if (table.closeTime && table.openTime && !table.isActive) {
-            debugLog(`Table ${targetTableId} has old openTime but is closed, cleaning up before reopening`);
-            table.openTime = null;
-            table.hourlyTotal = 0;
-            table.salesTotal = 0;
-            table.checkTotal = 0;
-            await this.db.updateTable(table);
+            this.setTableCardOpening(targetTableId, false);
+            this._openingTables.delete(String(targetTableId));
+            await this.appAlert('Bu masa kapatıldı. Tekrar açılamaz.', 'Uyarı');
+            return;
         }
 
         try {
@@ -5379,19 +5687,8 @@ class MekanApp {
     }
 
 
-    // Helper function to close add product modal
     closeAddProductModal() {
-        const modal = document.getElementById('add-product-table-modal');
-        if (modal) {
-            modal.classList.remove('active');
-            modal.style.setProperty('display', 'none', 'important');
-            modal.style.setProperty('visibility', 'hidden', 'important');
-            modal.style.setProperty('opacity', '0', 'important');
-            const modalContent = modal.querySelector('.modal-content');
-            if (modalContent) {
-                modalContent.style.setProperty('display', 'none', 'important');
-            }
-        }
+        this.closeFormModal('add-product-table-modal');
     }
 
     async openAddProductToTableModal() {
@@ -5421,22 +5718,21 @@ class MekanApp {
         document.getElementById('product-stock-info').innerHTML = '';
         const modal = document.getElementById('add-product-table-modal');
         if (modal) {
-            // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+            if (modal.classList.contains('closing')) modal.classList.remove('closing');
             modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
+            if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+                this.runBottomSheetOpen(modal);
+            } else {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const modalContent = modal.querySelector('.modal-content');
+                        if (modalContent) {
+                            modalContent.style.transform = 'scale(1)';
+                            modalContent.style.opacity = '1';
+                        }
+                    });
+                });
+            }
             modal.style.removeProperty('display');
             modal.style.removeProperty('visibility');
             modal.style.removeProperty('opacity');
@@ -5616,8 +5912,9 @@ class MekanApp {
             const table = await this.db.getTable(sale.tableId);
             if (!table) return;
 
-            // Restore product stock
+            // Restore product stock (Oyun ücreti satırında productId null olabilir)
             for (const item of sale.items) {
+                if (item.productId == null) continue;
                 const product = await this.db.getProduct(item.productId);
                 if (product) {
                     product.stock += item.amount;
@@ -5819,22 +6116,21 @@ class MekanApp {
         receiptHTML += `</div>`;
 
         receiptBody.innerHTML = receiptHTML;
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async processPayment() {
@@ -6055,30 +6351,25 @@ class MekanApp {
             });
         });
 
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async openCustomerSelectionModalForReceipt() {
-        // Close receipt modal first
-        const receiptModal = document.getElementById('receipt-modal');
-        if (receiptModal) {
-            receiptModal.classList.remove('active');
-        }
+        this.closeFormModal('receipt-modal');
 
         const customers = await this.db.getAllCustomers();
         const modal = document.getElementById('customer-selection-modal');
@@ -6116,22 +6407,21 @@ class MekanApp {
             });
         });
 
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async processCreditTable(selectedCustomerId) {
@@ -6445,17 +6735,19 @@ class MekanApp {
             modal.classList.remove('closing');
         }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async saveExpense() {
@@ -6780,17 +7072,19 @@ class MekanApp {
             modal.classList.remove('closing');
         }
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async saveProduct() {
@@ -6973,14 +7267,8 @@ class MekanApp {
         const balance = customer.balance || 0;
         const balanceText = balance > 0 ? `${Math.round(balance)} ₺` : '0 ₺';
 
-        // Get last payment date for this customer
-        const lastPaymentDate = await this.getCustomerLastPaymentDate(customer.id);
-        
-        // Calculate background color based on last payment date
-        const bgColor = this.getCustomerCardBackgroundColor(lastPaymentDate);
-
         return `
-            <div class="customer-card" id="customer-${customer.id}" data-customer-id="${customer.id}" style="background: ${bgColor};">
+            <div class="customer-card" id="customer-${customer.id}" data-customer-id="${customer.id}">
                 <div class="customer-card-content">
                     <h3>${customer.name}</h3>
                     <div class="customer-card-balance">
@@ -6989,84 +7277,6 @@ class MekanApp {
                 </div>
             </div>
         `;
-    }
-
-    async getCustomerLastPaymentDate(customerId) {
-        try {
-            const allSales = await this.db.getAllSales();
-            // Filter sales for this customer that are paid and not cancelled
-            const customerSales = allSales.filter(sale => 
-                sale.customerId === customerId && 
-                sale.isPaid && 
-                !sale.isCancelled &&
-                sale.paymentTime // Must have payment time
-            );
-
-            if (customerSales.length === 0) {
-                return null; // No payments found
-            }
-
-            // Get the most recent payment date
-            const lastPayment = customerSales.reduce((latest, sale) => {
-                const paymentDate = new Date(sale.paymentTime || sale.sellDateTime);
-                const latestDate = latest ? new Date(latest.paymentTime || latest.sellDateTime) : null;
-                return (!latestDate || paymentDate > latestDate) ? sale : latest;
-            }, null);
-
-            return lastPayment ? new Date(lastPayment.paymentTime || lastPayment.sellDateTime) : null;
-        } catch (error) {
-            console.error('Error getting customer last payment date:', error);
-            return null;
-        }
-    }
-
-    getCustomerCardBackgroundColor(lastPaymentDate) {
-        // Check if dark mode is active
-        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
-
-        if (!lastPaymentDate) {
-            // No payment ever - darkest
-            if (isDarkMode) {
-                return 'linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)';
-            }
-            return 'linear-gradient(135deg, #2c3e50 0%, #34495e 100%)';
-        }
-
-        const now = new Date();
-        const daysSincePayment = Math.floor((now - lastPaymentDate) / (1000 * 60 * 60 * 24));
-
-        // Calculate opacity/brightness based on days since last payment
-        // More days = darker card
-        // 0-7 days: light (recent payment)
-        // 8-30 days: medium
-        // 31-90 days: dark
-        // 90+ days: darkest
-
-        if (daysSincePayment <= 7) {
-            // Recent payment - light background
-            if (isDarkMode) {
-                return 'linear-gradient(135deg, #2a2a2a 0%, #1f1f1f 100%)';
-            }
-            return 'linear-gradient(135deg, #ffffff 0%, #f0f4f8 100%)';
-        } else if (daysSincePayment <= 30) {
-            // Medium - slightly darker
-            if (isDarkMode) {
-                return 'linear-gradient(135deg, #1f1f1f 0%, #151515 100%)';
-            }
-            return 'linear-gradient(135deg, #e8f0f5 0%, #d5e3ea 100%)';
-        } else if (daysSincePayment <= 90) {
-            // Dark - more noticeable
-            if (isDarkMode) {
-                return 'linear-gradient(135deg, #151515 0%, #0f0f0f 100%)';
-            }
-            return 'linear-gradient(135deg, #d0d9de 0%, #b8c5cc 100%)';
-        } else {
-            // Darkest - longest time without payment
-            if (isDarkMode) {
-                return 'linear-gradient(135deg, #0a0a0a 0%, #000000 100%)';
-            }
-            return 'linear-gradient(135deg, #a8b5ba 0%, #8a9ba1 100%)';
-        }
     }
 
     openCustomerCreditAddModal(customer) {
@@ -7082,22 +7292,21 @@ class MekanApp {
         balEl.textContent = `${Math.round(customer.balance || 0)} ₺`;
         amountEl.value = '';
 
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     updateCustomerCardBalance(customerId, newBalance) {
@@ -7135,7 +7344,7 @@ class MekanApp {
             const newBalance = (customer.balance || 0) + amount;
             this.updateCustomerCardBalance(customerId, newBalance);
 
-            modal.classList.remove('active');
+            this.closeFormModal('customer-credit-add-modal');
 
             // Persist: update customer balance + record as credit sale so reports reflect it
             customer.balance = newBalance;
@@ -7152,6 +7361,24 @@ class MekanApp {
                 isCredit: true,
                 paymentTime: nowIso
             });
+
+            // Refresh customer detail modal if open for this customer (update balance and pay button only)
+            const customerDetailModal = document.getElementById('customer-detail-modal');
+            if (customerDetailModal && customerDetailModal.classList.contains('active') && this._customerDetailCustomer && String(this._customerDetailCustomer.id) === String(customerId)) {
+                this._customerDetailCustomer.balance = newBalance;
+                const balanceEl = document.getElementById('customer-detail-balance');
+                if (balanceEl) balanceEl.textContent = `${Math.round(newBalance)} ₺`;
+                const payBtn = document.getElementById('customer-detail-pay-btn');
+                if (payBtn) {
+                    payBtn.style.display = newBalance > 0 ? 'inline-flex' : 'none';
+                    if (newBalance > 0) {
+                        payBtn.onclick = () => {
+                            this.closeFormModal('customer-detail-modal');
+                            this.openCustomerPaymentModal(this._customerDetailCustomer);
+                        };
+                    }
+                }
+            }
 
             // Background refresh (keep UI consistent across views)
             setTimeout(() => {
@@ -7182,22 +7409,21 @@ class MekanApp {
             document.getElementById('customer-id').value = '';
         }
         
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async saveCustomer() {
@@ -7279,22 +7505,21 @@ class MekanApp {
         paymentAmount.min = 1;
         paymentAmount.step = '1';
         
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     async processCustomerPayment() {
@@ -7350,7 +7575,7 @@ class MekanApp {
 
             await this.appAlert(`Ödeme başarıyla alındı! Kalan bakiye: ${Math.round(customer.balance)} ₺`, 'Başarılı');
             
-            document.getElementById('customer-payment-modal').classList.remove('active');
+            this.closeFormModal('customer-payment-modal');
             
             // Reload customer detail modal if it's open
             const customerDetailModal = document.getElementById('customer-detail-modal');
@@ -7411,6 +7636,8 @@ class MekanApp {
         
         if (!modal || !title || !nameEl || !balanceEl || !hoursEl || !receiptsEl || !contentEl) return;
         
+        this._customerDetailCustomer = customer;
+        
         // Set customer info
         title.textContent = `${customer.name} - Detay`;
         nameEl.textContent = customer.name;
@@ -7423,7 +7650,6 @@ class MekanApp {
         // Get all tables to check hourly sessions
         const allTables = await this.db.getAllTables();
         
-        // Manual sessions removed - not used
         let totalHours = 0;
         
         // Also check hourly sessions from tables (table closures with customerId)
@@ -7462,7 +7688,6 @@ class MekanApp {
         // Build content HTML
         let contentHTML = '';
         
-        // Manual sessions section removed - not used
         
         // Add sales by date - Group sales from same table closure into single receipt
         // Filter out dates that have no valid sales (only credit sales, no items, no hourly)
@@ -7680,9 +7905,16 @@ class MekanApp {
         
         // Setup action buttons
         const payBtn = document.getElementById('customer-detail-pay-btn');
+        const addBalanceBtn = document.getElementById('customer-detail-add-balance-btn');
         const editBtn = document.getElementById('customer-detail-edit-btn');
         const deleteBtn = document.getElementById('customer-detail-delete-btn');
         const closeBtn = modal.querySelector('.close');
+        
+        if (addBalanceBtn) {
+            addBalanceBtn.onclick = () => {
+                if (this._customerDetailCustomer) this.openCustomerCreditAddModal(this._customerDetailCustomer);
+            };
+        }
         
         // Show/hide pay button based on balance
         if (payBtn) {
@@ -7715,27 +7947,24 @@ class MekanApp {
         }
         
         if (closeBtn) {
-            closeBtn.onclick = () => {
-                modal.classList.remove('active');
-            };
+            closeBtn.onclick = () => this.closeFormModal('customer-detail-modal');
         }
         
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
             requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
             });
-        });
+        }
     }
 
     // Sales History
@@ -8045,7 +8274,6 @@ class MekanApp {
             return paymentDate >= startDate && paymentDate <= endDate;
         });
 
-        // Manual sessions removed - not used
 
         // Get all tables to check hourly table sessions
         const allTables = await this.db.getAllTables();
@@ -8061,7 +8289,6 @@ class MekanApp {
             hourlyAggByTableId.set(tableId, existing);
         };
 
-        // Manual sessions aggregation removed
 
         for (const table of allTables) {
             if (table.type !== 'hourly') continue;
@@ -8385,7 +8612,6 @@ class MekanApp {
         this.updateTableUsageList(hourlyTablesToday);
     }
 
-    // updateManualSessionsList removed - not used
 
     // Chart functions removed - keeping only basic reporting
 
@@ -8446,7 +8672,7 @@ class MekanApp {
     updateThemeColor() {
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const lightColor = '#ecf0f1';
-        const darkColor = '#000000';
+        const darkColor = '#0E0E0E';
         const themeColor = isDark ? darkColor : lightColor;
         
         // Update all theme-color meta tags
@@ -8705,7 +8931,7 @@ function initDarkModeEarly() {
     
     // Update theme-color meta tags early
     const lightColor = '#ecf0f1';
-    const darkColor = '#1a1a1a';
+    const darkColor = '#0E0E0E';
     const themeColor = isDark ? darkColor : lightColor;
     const metaTags = document.querySelectorAll('meta[name="theme-color"]');
     metaTags.forEach(tag => {

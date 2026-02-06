@@ -8,13 +8,14 @@ export class SupabaseDatabase {
   constructor(supabase) {
     this.supabase = supabase;
 
-    // If your table names differ, change these.
+    // Supabase'daki tablo adları tam olarak bunlarla eşleşmeli.
+    // Konsolda 404 (Not Found) görüyorsanız: Supabase Dashboard > Table Editor'deki tablo adını kontrol edin.
+    // Örn. masalar tablosu "tables" değil "restaurant_tables" ise: tables: 'restaurant_tables' yapın.
     this.tables = {
       products: 'products',
       tables: 'tables',
       sales: 'sales',
       customers: 'customers',
-      manualSessions: 'manual_sessions',
       expenses: 'expenses',
     };
 
@@ -51,16 +52,6 @@ export class SupabaseDatabase {
         updatedAt: 'updated_at',
       },
       customers: {
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
-      },
-      manualSessions: {
-        tableId: 'table_id',
-        tableName: 'table_name',
-        openTime: 'open_time',
-        closeTime: 'close_time',
-        hoursUsed: 'hours_used',
-        hourlyRate: 'hourly_rate',
         createdAt: 'created_at',
         updatedAt: 'updated_at',
       },
@@ -105,19 +96,6 @@ export class SupabaseDatabase {
         'updated_at',
       ]),
       customers: new Set(['id', 'name', 'balance', 'created_at', 'updated_at']),
-      manualSessions: new Set([
-        'id',
-        'type',
-        'table_id',
-        'table_name',
-        'open_time',
-        'close_time',
-        'hours_used',
-        'hourly_rate',
-        'amount',
-        'created_at',
-        'updated_at',
-      ]),
       expenses: new Set([
         'id',
         'description',
@@ -135,7 +113,6 @@ export class SupabaseDatabase {
       tables: new Set(['hourlyRate', 'salesTotal', 'checkTotal', 'hourlyTotal']),
       sales: new Set(['saleTotal']),
       customers: new Set(['balance']),
-      manualSessions: new Set(['amount', 'hoursUsed', 'hourlyRate']),
       expenses: new Set(['amount']),
     };
 
@@ -323,30 +300,6 @@ export class SupabaseDatabase {
     this._throwIfError(res);
   }
 
-  // Manual sessions (report backfill)
-  async addManualSession(session) {
-    const insertRow = this._camelToSnake('manualSessions', session);
-    const res = await this.supabase
-      .from(this.tables.manualSessions)
-      .insert([insertRow])
-      .select('*')
-      .single();
-    this._throwIfError(res);
-    return res.data?.id;
-  }
-
-  async getAllManualSessions() {
-    // closeTime is used in DB schema; if your column differs, update here.
-    const res = await this.supabase.from(this.tables.manualSessions).select('*').order('close_time', { ascending: false });
-    this._throwIfError(res);
-    return (res.data || []).map((r) => this._snakeToCamel('manualSessions', r));
-  }
-
-  async deleteManualSession(id) {
-    const res = await this.supabase.from(this.tables.manualSessions).delete().eq('id', id);
-    this._throwIfError(res);
-  }
-
   // Sales
   async addSale(sale) {
     const insertRow = this._camelToSnake('sales', sale);
@@ -483,7 +436,6 @@ export class SupabaseDatabase {
     await deleteAll(this.tables.tables);
     await deleteAll(this.tables.products);
     await deleteAll(this.tables.customers);
-    await deleteAll(this.tables.manualSessions);
   }
 }
 

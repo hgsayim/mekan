@@ -6,7 +6,7 @@
     <!-- Keep browser UI (Android Chrome URL/status bar) aligned with the app theme, even in dark-mode -->
     <meta name="theme-color" content="#ecf0f1">
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ecf0f1">
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000">
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0E0E0E">
     <meta name="color-scheme" content="light">
     <meta name="supported-color-schemes" content="light">
     <meta name="mobile-web-app-capable" content="yes">
@@ -27,7 +27,10 @@
             <div class="header-content">
                 <h1>🍺 MekanApp <span id="header-view-title" class="header-view-title">- Masalar</span></h1>
                 <div class="header-actions">
-                    <button id="instant-sale-btn" class="instant-sale-btn" title="Peşin">⚡</button>
+                    <button id="instant-sale-btn" class="instant-sale-btn" title="Peşin">
+                    <span id="header-open-total" class="instant-sale-total">0 ₺</span>
+                    <span class="instant-sale-icon" aria-hidden="true">⚡</span>
+                </button>
                 <nav class="main-nav-compact">
                         <button class="menu-toggle" id="menu-toggle" title="Menü">☰</button>
                     <div class="menu-dropdown" id="menu-dropdown">
@@ -276,7 +279,7 @@
     </div>
 
     <!-- Table Detail Modal -->
-    <div id="table-modal" class="modal">
+    <div id="table-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <div class="table-modal-header">
                 <div class="table-modal-titlebar">
@@ -288,6 +291,7 @@
                         <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-plus" aria-label="Arttır">+</button>
                     </div>
                 </div>
+                <button type="button" class="close-header move-table-btn" id="move-table-btn" aria-label="Masaya Taşı" style="display: none;"><span class="close-txt">Taşı</span></button>
                 <button type="button" class="close close-header" aria-label="Geri">
                     <span class="close-ico" aria-hidden="true">❮</span>
                     <span class="close-txt">Geri</span>
@@ -352,10 +356,21 @@
         </div>
     </div>
 
-    <!-- Manual Session input removed (still displaying manual sessions list in reports) -->
+    <!-- Hedef masa seçimi (masa taşıma / ürün taşıma) -->
+    <div id="transfer-target-modal" class="modal modal-bottom-sheet">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="transfer-target-modal-title">Hedef masa seçin</h2>
+            <div id="transfer-target-cards" class="transfer-target-cards"></div>
+            <div class="form-actions">
+                <button type="button" class="btn btn-primary" id="transfer-target-confirm-btn">Tamam</button>
+                <button type="button" class="btn btn-secondary" id="transfer-target-cancel-btn">Vazgeç</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Add/Edit Product Modal -->
-    <div id="product-modal" class="modal">
+    <div id="product-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2 id="product-modal-title">Ürün Ekle</h2>
@@ -437,7 +452,7 @@
     </div>
 
     <!-- Add/Edit Table Modal -->
-    <div id="table-form-modal" class="modal">
+    <div id="table-form-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2 id="table-form-modal-title">Masa Ekle</h2>
@@ -547,7 +562,7 @@
     </div>
 
     <!-- Add Product to Table Modal -->
-    <div id="add-product-table-modal" class="modal">
+    <div id="add-product-table-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Masaya Ürün Ekle</h2>
@@ -571,7 +586,7 @@
     </div>
 
     <!-- Add/Edit Customer Modal -->
-    <div id="customer-modal" class="modal">
+    <div id="customer-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2 id="customer-modal-title">Müşteri Ekle</h2>
@@ -590,7 +605,7 @@
     </div>
 
     <!-- Customer Payment Modal -->
-    <div id="customer-payment-modal" class="modal">
+    <div id="customer-payment-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2 id="customer-payment-title">Müşteri Ödemesi</h2>
@@ -616,7 +631,7 @@
     </div>
 
     <!-- Customer Credit Add Modal (manual credit without products) -->
-    <div id="customer-credit-add-modal" class="modal">
+    <div id="customer-credit-add-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2 id="customer-credit-add-title">Veresiye Ekle</h2>
@@ -639,7 +654,7 @@
     </div>
 
     <!-- Customer Selection Modal for Credit -->
-    <div id="customer-selection-modal" class="modal">
+    <div id="customer-selection-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2>Müşteri Seçin</h2>
@@ -647,43 +662,47 @@
         </div>
     </div>
 
-    <!-- Customer Detail Modal -->
-    <div id="customer-detail-modal" class="modal">
-        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
-            <div class="customer-detail-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 2px solid var(--border-color);">
-                <h2 id="customer-detail-title" style="margin: 0;">Müşteri Detayı</h2>
+    <!-- Customer Detail Modal: adisyonlar üstte, bilgi ve butonlar altta -->
+    <div id="customer-detail-modal" class="modal modal-bottom-sheet">
+        <div class="modal-content customer-detail-modal-content">
+            <div class="customer-detail-header">
+                <h2 id="customer-detail-title">Müşteri Detayı</h2>
                 <span class="close">&times;</span>
             </div>
-            <div class="customer-detail-actions" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px;">
-                <button class="btn btn-success" id="customer-detail-pay-btn" style="display: none;">
-                    <span style="font-size: 1.2rem; margin-right: 5px;">₺</span>
-                    <span>Ödeme Al</span>
-                </button>
-                <button class="btn btn-primary" id="customer-detail-edit-btn">
-                    <span style="font-size: 1.2rem; margin-right: 5px;">✎</span>
-                    <span>Düzenle</span>
-                </button>
-                <button class="btn btn-danger" id="customer-detail-delete-btn">
-                    <span style="font-size: 1.2rem; margin-right: 5px;">×</span>
-                    <span>Sil</span>
-                </button>
-            </div>
             <div id="customer-detail-body">
-                <div id="customer-detail-summary" style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                <div id="customer-detail-content">
+                    <!-- Adisyonlar (en üstte) -->
+                </div>
+                <div id="customer-detail-summary">
                     <p><strong>Müşteri:</strong> <span id="customer-detail-name"></span></p>
-                    <p><strong>Toplam Veresiye:</strong> <span id="customer-detail-balance" style="font-size: 1.3rem; font-weight: bold; color: #e74c3c;"></span></p>
+                    <p><strong>Toplam Veresiye:</strong> <span id="customer-detail-balance" class="customer-detail-balance-val"></span></p>
                     <p><strong>Toplam Oyun Saati:</strong> <span id="customer-detail-hours"></span></p>
                     <p><strong>Toplam Adisyon:</strong> <span id="customer-detail-receipts"></span></p>
                 </div>
-                <div id="customer-detail-content">
-                    <!-- Sales and sessions will be inserted here -->
+                <div class="customer-detail-actions">
+                    <button class="btn btn-success" id="customer-detail-pay-btn" style="display: none;">
+                        <span style="font-size: 1.2rem; margin-right: 5px;">₺</span>
+                        <span>Ödeme Al</span>
+                    </button>
+                    <button class="btn btn-warning" id="customer-detail-add-balance-btn" title="Veresiye bakiyesine elle tutar ekle">
+                        <span style="font-size: 1.2rem; margin-right: 5px;">+</span>
+                        <span>Bakiye Ekle</span>
+                    </button>
+                    <button class="btn btn-primary" id="customer-detail-edit-btn">
+                        <span style="font-size: 1.2rem; margin-right: 5px;">✎</span>
+                        <span>Düzenle</span>
+                    </button>
+                    <button class="btn btn-danger" id="customer-detail-delete-btn">
+                        <span style="font-size: 1.2rem; margin-right: 5px;">×</span>
+                        <span>Sil</span>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Adisyon (Receipt) Modal -->
-    <div id="receipt-modal" class="modal">
+    <div id="receipt-modal" class="modal modal-bottom-sheet">
         <div class="modal-content receipt-modal-content">
             <div class="receipt-header">
                 <h2>ADİSYON</h2>
@@ -701,7 +720,7 @@
     </div>
 
     <!-- Expense Form Modal -->
-    <div id="expense-form-modal" class="modal">
+    <div id="expense-form-modal" class="modal modal-bottom-sheet">
         <div class="modal-content">
             <span class="close">&times;</span>
             <h2 id="expense-form-modal-title">Gider Ekle</h2>

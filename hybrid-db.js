@@ -13,7 +13,7 @@ import { SupabaseDatabase } from './supabase-db.js';
 export class HybridDatabase {
   /**
    * @param {import('https://esm.sh/@supabase/supabase-js@2').SupabaseClient} supabase
-   * @param {{ syncEntities?: Array<'products'|'tables'|'sales'|'customers'|'manualSessions'|'expenses'> }} [opts]
+   * @param {{ syncEntities?: Array<'products'|'tables'|'sales'|'customers'|'expenses'> }} [opts]
    */
   constructor(supabase, opts = {}) {
     this.remote = new SupabaseDatabase(supabase);
@@ -22,7 +22,7 @@ export class HybridDatabase {
     }
     this.local = new window.Database();
 
-    this.syncEntities = opts.syncEntities || ['products', 'tables', 'sales', 'customers', 'manualSessions', 'expenses'];
+    this.syncEntities = opts.syncEntities || ['products', 'tables', 'sales', 'customers', 'expenses'];
 
     this._syncInFlight = false;
     this._lastSyncAt = 0;
@@ -33,39 +33,28 @@ export class HybridDatabase {
     this._lastFullSyncAt = 0;
 
     // Which timestamp columns exist per table for delta sync.
-    // Some schemas may not have updated_at on every table (e.g. manual_sessions).
     this._deltaTsCols = {
-      // Your schema may NOT have updated_at on all tables.
-      // We default to created_at to avoid 400s; realtime + periodic full sync covers updates/deletes.
       products: ['created_at'],
-      tables: ['updated_at', 'created_at'], // tables usually has updated_at; if not, it will be caught by full sync/realtime
-      // IMPORTANT: sales "payment/credit" is an UPDATE (is_paid + payment_time),
-      // so created_at-only delta sync will miss it. Include payment_time to catch closures across devices.
+      tables: ['updated_at', 'created_at'],
       sales: ['created_at', 'payment_time'],
       customers: ['created_at'],
-      manualSessions: ['created_at'],
       expenses: ['created_at', 'expense_date'],
     };
+
+    /** One-time warn per table when delta sync gets 404 (avoids console spam every 3s) */
+    this._fetch404Warned = new Set();
   }
 
   async init() {
     try {
       await this.remote.init();
       await this.local.init();
-      // Initial sync so app starts with a warm local cache.
-      // Use timeout to prevent blocking app startup if network is slow/unavailable
-      // If sync fails or times out, app will still start (local cache may be stale)
-      const syncPromise = this.syncNow({ force: true, forceFull: true });
-      const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => {
-          console.warn('HybridDatabase: Initial sync timeout - app will start with local cache');
-          resolve(false);
-        }, 10000); // 10 second timeout
+      // Sync arka planda; "Database init timeout" ve sync timeout uyarısı oluşmasın
+      this.syncNow({ force: true, forceFull: true }).catch((err) => {
+        console.warn('HybridDatabase: Arka plan sync tamamlanamadı (yerel önbellek kullanılıyor):', err?.message || err);
       });
-      await Promise.race([syncPromise, timeoutPromise]);
     } catch (error) {
-      // Don't fail init if sync fails - app can work with local cache
-      console.error('HybridDatabase: Initial sync error (app will start with local cache):', error);
+      console.error('HybridDatabase: Init hatası:', error);
     }
     return true;
   }
@@ -149,7 +138,7 @@ export class HybridDatabase {
    * Apply Supabase realtime payload directly to local IndexedDB cache.
    * This makes multi-device updates appear instantly without waiting for polling/delta filters.
    *
-   * @param {'tables'|'products'|'sales'|'customers'|'manual_sessions'|'manualSessions'} tableName
+   * @param {'tables'|'products'|'sales'|'customers'|'expenses'} tableName
    * @param {any} payload
    */
   async applyRealtimeChange(tableName, payload) {
@@ -158,8 +147,6 @@ export class HybridDatabase {
       products: { key: 'products', store: 'products' },
       sales: { key: 'sales', store: 'sales' },
       customers: { key: 'customers', store: 'customers' },
-      manual_sessions: { key: 'manualSessions', store: 'manualSessions' },
-      manualSessions: { key: 'manualSessions', store: 'manualSessions' },
       expenses: { key: 'expenses', store: 'expenses' },
     };
     const entry = map[tableName];
@@ -204,7 +191,20 @@ export class HybridDatabase {
       query = query.or(cols.map((c) => `${c}.gte.${sinceISO}`).join(','));
     }
     const res = await query;
-    this.remote._throwIfError(res);
+    if (res.error) {
+      const code = String(res.error?.code || '');
+      const msg = String(res.error?.message || '');
+      const is404 = res.status === 404 || code === 'PGRST116' || code === '42P01' || /not found|404/i.test(msg);
+      if (is404 && !this._fetch404Warned.has(tableKey)) {
+        this._fetch404Warned.add(tableKey);
+        console.warn(
+          `[MekanApp] Sync: tablo "${tableName}" (${tableKey}) için 404 alındı. ` +
+          `Supabase'deki tablo adının supabase-db.js içindeki this.tables ile aynı olduğundan emin olun (örn. tables: 'tables' veya 'restaurant_tables').`
+        );
+      }
+      if (is404) return [];
+      this.remote._throwIfError(res);
+    }
     return (res.data || []).map((r) => this.remote._snakeToCamel(tableKey, r));
   }
 
@@ -242,9 +242,6 @@ export class HybridDatabase {
         if (this.syncEntities.includes('customers')) {
           tasks.push(this.remote.getAllCustomers().then((rows) => this._replaceStore('customers', rows)).catch(() => {}));
         }
-        if (this.syncEntities.includes('manualSessions')) {
-          tasks.push(this.remote.getAllManualSessions().then((rows) => this._replaceStore('manualSessions', rows)).catch(() => {}));
-        }
         if (this.syncEntities.includes('expenses')) {
           tasks.push(this.remote.getAllExpenses().then((rows) => this._replaceStore('expenses', rows)).catch(() => {}));
         }
@@ -279,7 +276,6 @@ export class HybridDatabase {
         if (this.syncEntities.includes('tables')) enqueue('tables', 'tables', 'tables');
         if (this.syncEntities.includes('sales')) enqueue('sales', 'sales', 'sales');
         if (this.syncEntities.includes('customers')) enqueue('customers', 'customers', 'customers');
-        if (this.syncEntities.includes('manualSessions')) enqueue('manualSessions', 'manualSessions', 'manualSessions');
         if (this.syncEntities.includes('expenses')) enqueue('expenses', 'expenses', 'expenses');
 
         const results = await Promise.all(deltaTasks);
@@ -424,6 +420,17 @@ export class HybridDatabase {
     }
   }
 
+  /** Only query remote (for loadTables recovery when local may be stale after transfer) */
+  async getUnpaidSalesByTableFromRemote(tableId) {
+    return await this.remote.getUnpaidSalesByTable(tableId);
+  }
+
+  /** Write sales to local store only (so next getUnpaidSalesByTable sees them after remote recovery) */
+  async upsertSalesToLocal(sales) {
+    if (!sales || sales.length === 0) return;
+    return await this._upsertStore('sales', sales);
+  }
+
   // ----- Customers -----
   async addCustomer(customer) {
     const id = await this.remote.addCustomer(customer);
@@ -458,20 +465,6 @@ export class HybridDatabase {
       const all = await this.getAllSales();
       return (all || []).filter((s) => String(s.customerId) === String(customerId));
     }
-  }
-
-  // ----- Manual Sessions -----
-  async addManualSession(session) {
-    const id = await this.remote.addManualSession(session);
-    try { await this.local.addManualSession({ ...session, id }); } catch (_) {}
-    return id;
-  }
-  async getAllManualSessions() {
-    try { return await this.local.getAllManualSessions(); } catch (_) { return await this.remote.getAllManualSessions(); }
-  }
-  async deleteManualSession(id) {
-    await this.remote.deleteManualSession(id);
-    try { await this.local.deleteManualSession(id); } catch (_) {}
   }
 
   // ----- Expenses -----

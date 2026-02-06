@@ -3,7 +3,7 @@ class Database {
     constructor() {
         this.db = null;
         this.dbName = 'MekanAppDB';
-        this.dbVersion = 4;
+        this.dbVersion = 5;
     }
 
     async init() {
@@ -98,11 +98,9 @@ class Database {
                     customerStore.createIndex('name', 'name', { unique: false });
                 }
 
-                // Manual hourly sessions store (for report backfill when device was off)
-                if (!db.objectStoreNames.contains('manualSessions')) {
-                    const manualStore = db.createObjectStore('manualSessions', { keyPath: 'id', autoIncrement: true });
-                    manualStore.createIndex('type', 'type', { unique: false });
-                    manualStore.createIndex('closeTime', 'closeTime', { unique: false });
+                // manualSessions store removed (no longer used)
+                if (oldVersion < 5 && db.objectStoreNames.contains('manualSessions')) {
+                    db.deleteObjectStore('manualSessions');
                 }
 
                 // Expenses store (giderler)
@@ -225,40 +223,6 @@ class Database {
         const store = transaction.objectStore('tables');
         const request = store.delete(id);
         
-        return new Promise((resolve, reject) => {
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    // Manual Sessions CRUD (for reporting)
-    async addManualSession(session) {
-        const transaction = this.db.transaction(['manualSessions'], 'readwrite');
-        const store = transaction.objectStore('manualSessions');
-        const request = store.add(session);
-
-        return new Promise((resolve, reject) => {
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async getAllManualSessions() {
-        const transaction = this.db.transaction(['manualSessions'], 'readonly');
-        const store = transaction.objectStore('manualSessions');
-        const request = store.getAll();
-
-        return new Promise((resolve, reject) => {
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    async deleteManualSession(id) {
-        const transaction = this.db.transaction(['manualSessions'], 'readwrite');
-        const store = transaction.objectStore('manualSessions');
-        const request = store.delete(id);
-
         return new Promise((resolve, reject) => {
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);

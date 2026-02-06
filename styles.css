@@ -5,37 +5,39 @@
 }
 
 :root {
-    --primary-color: #2c3e50;
-    --secondary-color: #3498db;
-    --success-color: #27ae60;
-    --danger-color: #e74c3c;
-    --warning-color: #f39c12;
-    --info-color: #16a085;
-    --light-bg: #ecf0f1;
-    --dark-text: #2c3e50;
+    /* Profesyonel tema - Kurumsal Mavi */
+    --primary-color: #1e3a5f;
+    --secondary-color: #2563eb;
+    --success-color: #059669;
+    --danger-color: #dc2626;
+    --warning-color: #d97706;
+    --info-color: #0891b2;
+    --light-bg: #f8fafc;
+    --dark-text: #1e293b;
     --light-text: #fff;
-    --border-color: #bdc3c7;
-    --shadow: 0 2px 10px rgba(0,0,0,0.1);
+    --border-color: #e2e8f0;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
     --header-gap: 6px;
+    --btn-radius: 28px;
     
-    /* Dark mode variables */
-    --dark-bg: #000000;
-    --dark-surface: #1a1a1a;
-    --dark-surface-elevated: #262626;
-    --dark-text-primary: #e0e0e0;
-    --dark-text-secondary: #b0b0b0;
-    --dark-border: #666666;
-    --dark-shadow: 0 2px 10px rgba(0,0,0,0.8);
+    /* Dark mode - nötr koyu arka plan (#0E0E0E), mavilik yok */
+    --dark-bg: #0E0E0E;
+    --dark-surface: #171717;
+    --dark-surface-elevated: #252525;
+    --dark-text-primary: #f5f5f5;
+    --dark-text-secondary: #a3a3a3;
+    --dark-border: #333333;
+    --dark-shadow: 0 1px 3px rgba(0,0,0,0.4);
 }
 
-/* Dark mode */
+/* Dark mode - arka plan #0E0E0E, renkler buna göre */
 [data-theme="dark"] {
-    --primary-color: #4a9eff;
-    --secondary-color: #5dade2;
-    --success-color: #2ecc71;
-    --danger-color: #e74c3c;
-    --warning-color: #f39c12;
-    --info-color: #1abc9c;
+    --primary-color: #d4d4d4;
+    --secondary-color: #737373;
+    --success-color: #4ade80;
+    --danger-color: #f87171;
+    --warning-color: #fbbf24;
+    --info-color: #94a3b8;
     --light-bg: var(--dark-bg);
     --dark-text: var(--dark-text-primary);
     --light-text: var(--dark-text-primary);
@@ -89,7 +91,6 @@ main {
 header {
     position: sticky;
     top: 0;
-    /* Full-bleed header to blend with browser bar color */
     width: 100vw;
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
@@ -98,11 +99,10 @@ header {
     color: var(--dark-text) !important;
     padding: 12px 25px;
     margin-bottom: 0;
-    box-shadow: 0 1px 0 rgba(0,0,0,0.10);
+    box-shadow: 0 1px 0 var(--border-color);
     border: none;
     border-bottom: 1px solid var(--border-color);
     z-index: 3000;
-    /* iOS safe-area */
     padding-top: calc(12px + env(safe-area-inset-top));
 }
 
@@ -150,11 +150,13 @@ header::before {
 }
 
 .instant-sale-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
+    gap: 8px;
+    min-width: 44px;
     height: 44px;
+    padding: 0 12px;
     border-radius: 12px;
     border: 2px solid #ff8c00;
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
@@ -164,7 +166,16 @@ header::before {
     cursor: pointer;
     transition: all 0.2s ease;
     box-shadow: 0 2px 6px rgba(255, 140, 0, 0.2);
-    padding: 0;
+    line-height: 1;
+}
+.instant-sale-total {
+    font-size: 1rem;
+    font-weight: 800;
+    color: #ff8c00;
+    white-space: nowrap;
+}
+.instant-sale-icon {
+    font-size: 1.35rem;
     line-height: 1;
 }
 
@@ -183,6 +194,9 @@ header::before {
     border-color: #ff8c00;
     color: #ff8c00;
     box-shadow: 0 2px 6px rgba(255, 140, 0, 0.3);
+}
+[data-theme="dark"] .instant-sale-total {
+    color: #ff8c00;
 }
 
 [data-theme="dark"] .instant-sale-btn:hover {
@@ -226,21 +240,21 @@ header h1 {
 
 /* Add cards (tables/products/customers) */
 .add-card {
-    border: 2px dashed rgba(52, 152, 219, 0.45) !important;
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.08) 0%, rgba(52, 152, 219, 0.03) 100%) !important;
+    border: 2px dashed var(--secondary-color) !important;
+    background: var(--light-bg) !important;
     box-shadow: none !important;
     cursor: pointer;
 }
 
 .add-card:hover {
     transform: translateY(-2px);
-    border-color: rgba(52, 152, 219, 0.75) !important;
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.12) 0%, rgba(52, 152, 219, 0.05) 100%) !important;
+    border-color: var(--primary-color) !important;
+    background: var(--light-bg) !important;
 }
 
 .add-card-icon {
     font-weight: 900;
-    color: rgba(52, 152, 219, 0.95);
+    color: var(--secondary-color);
 }
 
 .add-card-sub {
@@ -267,7 +281,7 @@ header h1 {
 
 /* Products add icon bubble */
 .product-card.add-card .product-card-icon {
-    background: rgba(52, 152, 219, 0.10);
+    background: rgba(37, 99, 235, 0.12);
 }
 
 /* Footer removed */
@@ -353,7 +367,7 @@ header h1 {
 }
 
 [data-theme="dark"] .nav-btn-compact {
-    background: #000000;
+    background: var(--dark-bg);
     color: var(--dark-text-primary);
     border-bottom: 1px solid var(--dark-border);
     border-bottom-color: var(--dark-border);
@@ -408,26 +422,21 @@ header h1 {
 }
 
 [data-theme="dark"] header {
-    background: #000000 !important;
+    background: var(--dark-bg) !important;
     border-bottom: 1px solid var(--dark-border) !important;
 }
 
 [data-theme="dark"] .menu-dropdown {
-    background: #000000 !important;
+    background: var(--dark-surface) !important;
     border: 1px solid var(--dark-border) !important;
 }
 
-/* Cards */
+/* Cards - table and stat keep explicit dark; product/customer/expense/sale use unified block above */
 [data-theme="dark"] .table-card,
-[data-theme="dark"] .product-card,
-[data-theme="dark"] .customer-card,
-[data-theme="dark"] .expense-card,
-[data-theme="dark"] .sale-card,
 [data-theme="dark"] .stat-card {
     background: var(--dark-surface);
     color: var(--dark-text-primary);
     border: 1px solid var(--dark-border) !important;
-    border-color: var(--dark-border) !important;
 }
 
 [data-theme="dark"] .table-card:hover,
@@ -708,10 +717,10 @@ header h1 {
     flex-wrap: nowrap;
     gap: 12px;
     padding: 10px 14px;
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
-    border-radius: 10px;
-    border: 1px solid rgba(52, 152, 219, 0.1);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+    background: var(--light-bg);
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow);
 }
 
 .view-header h2 {
@@ -738,12 +747,12 @@ header h1 {
 
 /* Report Header - Clean New Design */
 .report-header-wrapper {
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
-    border-radius: 12px;
-    border: 1px solid rgba(52, 152, 219, 0.1);
+    background: var(--light-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
     padding: 20px;
     margin-bottom: 24px;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: var(--shadow);
 }
 
 [data-theme="dark"] .report-header-wrapper {
@@ -852,7 +861,7 @@ header h1 {
 .btn {
     padding: 10px 16px;
     border: none;
-    border-radius: 5px;
+    border-radius: var(--btn-radius);
     cursor: pointer;
     font-size: 0.85rem;
     transition: all 0.3s;
@@ -933,10 +942,10 @@ header h1 {
     gap: 6px;
     line-height: 1;
     flex-shrink: 0;
-    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    background: var(--secondary-color);
     color: white;
-    border: 2px solid rgba(52, 152, 219, 0.3);
-    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.25), 0 2px 4px rgba(52, 152, 219, 0.15);
+    border: 1px solid var(--primary-color);
+    box-shadow: var(--shadow);
     transition: all 0.3s ease;
     cursor: pointer;
     position: relative;
@@ -963,10 +972,10 @@ header h1 {
 }
 
 .btn-add-icon:hover {
-    transform: translateY(-3px) scale(1.05);
-    box-shadow: 0 6px 12px rgba(52, 152, 219, 0.35), 0 3px 6px rgba(52, 152, 219, 0.2);
-    background: linear-gradient(135deg, #2980b9 0%, #3498db 100%);
-    border-color: rgba(52, 152, 219, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    background: var(--primary-color);
+    border-color: var(--primary-color);
 }
 
 .btn-add-icon:hover::before {
@@ -1005,6 +1014,12 @@ header h1 {
     pointer-events: none;
 }
 
+/* Tam sayfa yükleme ekranı varken eski overlay/spinner gösterme */
+.tables-grid.is-loading:has(.tables-loading-screen)::before,
+.tables-grid.is-loading:has(.tables-loading-screen)::after {
+    display: none;
+}
+
 .tables-grid.is-loading::before {
     content: '';
     position: absolute;
@@ -1029,6 +1044,157 @@ header h1 {
     border-top-color: var(--secondary-color);
     animation: spinCentered 0.8s linear infinite;
     z-index: 41;
+}
+
+/* Tam sayfa masalar yükleniyor ekranı (ilk açılış) */
+.tables-loading-screen {
+    grid-column: 1 / -1;
+    min-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.25rem;
+    padding: 2rem;
+    box-sizing: border-box;
+}
+.tables-loading-spinner {
+    width: 48px;
+    height: 48px;
+    border: 4px solid rgba(44, 62, 80, 0.15);
+    border-top-color: var(--secondary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+[data-theme="dark"] .tables-loading-spinner {
+    border-color: rgba(255,255,255,0.12);
+    border-top-color: var(--secondary-color);
+}
+.tables-loading-message {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--dark-text);
+    text-align: center;
+}
+.tables-loading-progress {
+    width: 100%;
+    max-width: 260px;
+    height: 6px;
+    background: rgba(44, 62, 80, 0.12);
+    border-radius: 6px;
+    overflow: hidden;
+}
+[data-theme="dark"] .tables-loading-progress {
+    background: rgba(255,255,255,0.1);
+}
+.tables-loading-progress-bar {
+    height: 100%;
+    width: 40%;
+    background: var(--secondary-color);
+    border-radius: 6px;
+    animation: tables-loading-progress 1.4s ease-in-out infinite;
+}
+@keyframes tables-loading-progress {
+    0% { transform: translateX(-100%); }
+    50% { transform: translateX(200%); }
+    100% { transform: translateX(-100%); }
+}
+
+/* Transfer target modal: same size/layout as table detail product cards, 4 per row */
+.transfer-target-cards {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    min-width: 0;
+    margin: 1rem 0;
+    max-height: 50vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.transfer-target-cards::-webkit-scrollbar {
+    display: none;
+}
+/* Same size and layout as .product-card-mini (table detail product cards) */
+.transfer-target-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    padding: 8px 6px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    box-sizing: border-box;
+    overflow: hidden;
+    min-width: 0;
+}
+.transfer-target-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(52, 152, 219, 0.4);
+    box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+}
+.transfer-target-card.selected {
+    border-color: var(--secondary-color);
+    background: rgba(52, 152, 219, 0.12);
+    box-shadow: 0 4px 14px rgba(52, 152, 219, 0.3);
+}
+.transfer-target-card .transfer-target-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+    margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.transfer-target-card h4 {
+    margin: 0 0 2px 0;
+    font-size: 0.75rem;
+    font-weight: 800;
+    line-height: 1.15;
+    color: var(--text-color);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.transfer-target-card .transfer-target-price {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: var(--secondary-color);
+    padding: 2px 6px;
+    background: rgba(52, 152, 219, 0.1);
+    border-radius: 6px;
+}
+[data-theme="dark"] .transfer-target-card {
+    background: linear-gradient(135deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 100%);
+    border-color: var(--dark-border);
+}
+[data-theme="dark"] .transfer-target-card.selected {
+    background: rgba(52, 152, 219, 0.2);
+    border-color: var(--secondary-color);
+}
+[data-theme="dark"] .transfer-target-card h4 {
+    color: var(--dark-text);
+}
+
+/* Transfer modal: compact padding so 4 cards fit per row */
+#transfer-target-modal .modal-content {
+    padding-left: 12px;
+    padding-right: 12px;
+    max-width: 100%;
+    min-width: 0;
+}
+#transfer-target-modal .transfer-target-cards {
+    width: 100%;
 }
 
 @keyframes spin {
@@ -1135,10 +1301,10 @@ header h1 {
 }
 
 .table-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    background: #ffffff;
     padding: 12px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
     border: 1px solid var(--border-color);
     cursor: pointer;
     transition: all 0.3s ease;
@@ -1154,9 +1320,8 @@ header h1 {
 }
 
 [data-theme="dark"] .table-card {
-    background: linear-gradient(135deg, var(--dark-surface) 0%, var(--dark-surface-elevated) 100%) !important;
+    background: var(--dark-surface) !important;
     border: 1px solid var(--dark-border) !important;
-    border-color: var(--dark-border) !important;
 }
 
 .table-card-loading {
@@ -1371,12 +1536,6 @@ header h1 {
     border-color: rgba(52, 152, 219, 0.55);
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.18);
 }
-
-#manual-sessions-list .usage-item {
-    align-items: flex-start;
-}
-
-/* Manual session input UI removed */
 
 .manual-delete-btn {
     background: var(--danger-color);
@@ -1608,28 +1767,48 @@ header h1 {
     gap: 12px;
 }
 
-.product-card {
-    background: white;
-    padding: 8px 16px;
-    border-radius: 8px;
+/* Tek tip içerik kartları: ürün, müşteri, gider, satış (masa kartları ayrı kalır) */
+.product-card,
+.customer-card,
+.expense-card,
+.sale-card {
+    background: #ffffff;
+    padding: 12px 16px;
+    border-radius: 10px;
     box-shadow: var(--shadow);
     border: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    transition: transform 0.3s, box-shadow 0.3s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
     min-height: 50px;
 }
 
-[data-theme="dark"] .product-card {
+[data-theme="dark"] .product-card,
+[data-theme="dark"] .customer-card,
+[data-theme="dark"] .expense-card,
+[data-theme="dark"] .sale-card {
     background: var(--dark-surface) !important;
-    border: 1px solid var(--dark-border) !important;
     border-color: var(--dark-border) !important;
 }
 
-.product-card:hover {
+.product-card:hover,
+.customer-card:hover,
+.expense-card:hover,
+.sale-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+[data-theme="dark"] .product-card:hover,
+[data-theme="dark"] .customer-card:hover,
+[data-theme="dark"] .expense-card:hover,
+[data-theme="dark"] .sale-card:hover {
+    box-shadow: 0 2px 12px rgba(0,0,0,0.25);
+}
+
+.product-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
 }
 
 .product-card-icon {
@@ -1663,14 +1842,17 @@ header h1 {
     font-size: 1.15em;
     line-height: 1;
 }
+/* Tuborg Gold: 500ml kutu bira – altın-bronz kutu, gümüş üst/alt kenar, oval etiket bandı */
 .app-ico[data-ico="tuborg"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M18 14c0-3 2-6 5-6h18c3 0 5 3 5 6l-2 36c0 3-3 6-6 6H26c-3 0-6-3-6-6l-2-36z' fill='%23f6d400'/%3E%3Cpath d='M22 18h20l-2 30c0 2-2 4-4 4H28c-2 0-4-2-4-4l-2-30z' fill='%23fff4b2' opacity='.85'/%3E%3Cpath d='M20 14h24' stroke='%23c79d00' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M24 10h16' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' opacity='.7'/%3E%3Cpath d='M20 22c4-3 8-3 12 0s8 3 12 0' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' opacity='.55'/%3E%3Cpath d='M24 6h16' stroke='%23c79d00' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M22 28h20' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' opacity='.35'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='tbrim' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23e8e8e8'/%3E%3Cstop offset='50%25' stop-color='%23fff'/%3E%3Cstop offset='100%25' stop-color='%23c4c4c4'/%3E%3C/linearGradient%3E%3ClinearGradient id='tbody' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23d4a84a'/%3E%3Cstop offset='35%25' stop-color='%23ecc55a'/%3E%3Cstop offset='70%25' stop-color='%23c99b2e'/%3E%3Cstop offset='100%25' stop-color='%23b8861e'/%3E%3C/linearGradient%3E%3ClinearGradient id='tlabel' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%238b6918'/%3E%3Cstop offset='50%25' stop-color='%236b4e0f'/%3E%3Cstop offset='100%25' stop-color='%238b6918'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cellipse cx='32' cy='12' rx='10' ry='4' fill='url(%23tbrim)'/%3E%3Crect x='22' y='14' width='20' height='32' rx='3' ry='2' fill='url(%23tbody)'/%3E%3Crect x='24' y='24' width='16' height='12' rx='2' fill='url(%23tlabel)' opacity='.92'/%3E%3Cellipse cx='32' cy='48' rx='10' ry='4' fill='url(%23tbrim)'/%3E%3Cpath d='M28 28h8v8h-8z' fill='%23fff' opacity='.2'/%3E%3C/svg%3E");
 }
+/* Carlsberg: 500ml kutu bira – yeşil kutu, gümüş üst/alt kenar, hafif parlaklık */
 .app-ico[data-ico="carlsberg"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M18 14c0-3 2-6 5-6h18c3 0 5 3 5 6l-2 36c0 3-3 6-6 6H26c-3 0-6-3-6-6l-2-36z' fill='%230b7a3b'/%3E%3Cpath d='M22 18h20l-2 30c0 2-2 4-4 4H28c-2 0-4-2-4-4l-2-30z' fill='%23ccffe4' opacity='.75'/%3E%3Cpath d='M20 14h24' stroke='%23065a2c' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M24 10h16' stroke='%23ffffff' stroke-width='4' stroke-linecap='round' opacity='.7'/%3E%3Cpath d='M20 22c4-3 8-3 12 0s8 3 12 0' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' opacity='.55'/%3E%3Cpath d='M24 6h16' stroke='%23065a2c' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M22 28h20' stroke='%23ffffff' stroke-width='6' stroke-linecap='round' opacity='.3'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='cbrim' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23e0e0e0'/%3E%3Cstop offset='50%25' stop-color='%23fff'/%3E%3Cstop offset='100%25' stop-color='%23b8b8b8'/%3E%3C/linearGradient%3E%3ClinearGradient id='cbody' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%231a6b3a'/%3E%3Cstop offset='30%25' stop-color='%230b8c45'/%3E%3Cstop offset='60%25' stop-color='%23096530'/%3E%3Cstop offset='100%25' stop-color='%23054a24'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cellipse cx='32' cy='12' rx='10' ry='4' fill='url(%23cbrim)'/%3E%3Crect x='22' y='14' width='20' height='32' rx='3' ry='2' fill='url(%23cbody)'/%3E%3Cellipse cx='32' cy='48' rx='10' ry='4' fill='url(%23cbrim)'/%3E%3Cpath d='M26 20h4v24h-4z' fill='%234db86b' opacity='.35'/%3E%3C/svg%3E");
 }
+/* Kaşar peyniri: kalıp blok – ön yüz, üst yüz, yan yüz, hafif delikler */
 .app-ico[data-ico="kasar"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 40l36-20 8 6-36 20-8-6z' fill='%23f3c24f'/%3E%3Cpath d='M10 40v10l36-20V20L10 40z' fill='%23e8b23c'/%3E%3Ccircle cx='28' cy='34' r='3' fill='%23d59a25'/%3E%3Ccircle cx='36' cy='30' r='2.5' fill='%23d59a25'/%3E%3Ccircle cx='22' cy='40' r='2.5' fill='%23d59a25'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 22h22v22H20z' rx='2' fill='%23e8b84a'/%3E%3Cpath d='M20 22l6-5h22l-6 5H20z' fill='%23f5dc7a'/%3E%3Cpath d='M42 22v22l6-5V27l-6-5z' fill='%23c99228'/%3E%3Cellipse cx='28' cy='32' rx='2.5' ry='2' fill='%23d4a030' opacity='.55'/%3E%3Cellipse cx='36' cy='38' rx='2' ry='1.5' fill='%23d4a030' opacity='.5'/%3E%3C/svg%3E");
 }
 .app-ico[data-ico="ayran"] {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M24 10h16l-2 44H26L24 10z' fill='%23e9f2ff'/%3E%3Cpath d='M26 14h12l-2 36H28l-2-36z' fill='%23ffffff'/%3E%3Cpath d='M24 10h16' stroke='%23b9c7dd' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M30 6h4' stroke='%238aa3c7' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E");
@@ -1685,8 +1867,9 @@ header h1 {
 .app-ico[data-ico="sigara"] {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M10 36h36v8H10z' fill='%23f2f2f2'/%3E%3Cpath d='M46 36h8v8h-8z' fill='%23f7b500'/%3E%3Cpath d='M54 36h2v8h-2z' fill='%23e26b00'/%3E%3Cpath d='M22 36v8' stroke='%23c9c9c9' stroke-width='2'/%3E%3Cpath d='M6 30c6 0 6-6 12-6' fill='none' stroke='%23b9b9b9' stroke-width='3' stroke-linecap='round'/%3E%3Cpath d='M10 28c5 0 5-5 10-5' fill='none' stroke='%23cfcfcf' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E");
 }
+/* Çay: ince belli bardak + tavşan kanı çay, dudak payı */
 .app-ico[data-ico="cay"] {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M18 20h24v20c0 8-6 14-12 14s-12-6-12-14V20z' fill='%232d2d2d'/%3E%3Cpath d='M22 24h16v16c0 6-4 10-8 10s-8-4-8-10V24z' fill='%234a4a4a'/%3E%3Cpath d='M42 24h6c4 0 7 3 7 7s-3 7-7 7h-6' fill='none' stroke='%232d2d2d' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M20 18h20' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' opacity='.25'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 12h24v4H20z' fill='%23fff' opacity='.9'/%3E%3Cpath d='M20 12l6 22-2 18h16l-2-18 6-22H20z' fill='none' stroke='%23333' stroke-width='2.5' stroke-linejoin='round'/%3E%3Cpath d='M22 18l5 20-1.5 16h13l-1.5-16 5-20H22z' fill='%23b84a1a' fill-opacity='.95'/%3E%3Cpath d='M26 54h12' stroke='%23333' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
 }
 
 .product-card-name {
@@ -1861,13 +2044,7 @@ header h1 {
 }
 
 .customer-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    padding: 12px;
-    border-radius: 12px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
-    border: 2px solid rgba(52, 152, 219, 0.15);
     cursor: pointer;
-    transition: all 0.3s ease;
     aspect-ratio: 1;
     display: flex;
     flex-direction: column;
@@ -1879,36 +2056,32 @@ header h1 {
     overflow: hidden;
 }
 
-/* Light mode: ensure text is readable on dynamic backgrounds */
 .customer-card[style*="background"] {
-    border: 2px solid rgba(52, 152, 219, 0.25) !important;
+    border-color: var(--border-color) !important;
 }
 
 .customer-card[style*="background"] h3 {
-    color: #2c3e50 !important;
-    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
+    color: var(--dark-text) !important;
+}
+
+[data-theme="dark"] .customer-card[style*="background"] h3 {
+    color: var(--dark-text-primary) !important;
 }
 
 .customer-card[style*="background"] .customer-card-balance {
-    background: rgba(231, 76, 60, 0.15) !important;
-    color: #c0392b !important;
-    border: 1px solid rgba(231, 76, 60, 0.3) !important;
-}
-
-.customer-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.1);
-    border-color: rgba(52, 152, 219, 0.3);
+    background: rgba(220, 38, 38, 0.15) !important;
+    color: var(--danger-color) !important;
+    border: 1px solid rgba(220, 38, 38, 0.3) !important;
 }
 
 .customer-card.add-card {
-    border: 2px dashed rgba(52, 152, 219, 0.45);
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.05) 0%, rgba(52, 152, 219, 0.02) 100%);
+    border: 2px dashed var(--secondary-color) !important;
+    background: var(--light-bg) !important;
 }
 
 .customer-card.add-card:hover {
-    border-color: rgba(52, 152, 219, 0.7);
-    background: linear-gradient(135deg, rgba(52, 152, 219, 0.1) 0%, rgba(52, 152, 219, 0.05) 100%);
+    border-color: var(--primary-color) !important;
+    background: var(--light-bg) !important;
 }
 
 /* Customer card icon removed - no longer used */
@@ -1925,7 +2098,7 @@ header h1 {
 }
 
 .customer-card h3 {
-    color: var(--primary-color);
+    color: var(--dark-text);
     margin: 0;
     font-size: 0.95rem;
     font-weight: 700;
@@ -1936,21 +2109,24 @@ header h1 {
     position: relative;
 }
 
+[data-theme="dark"] .customer-card h3 {
+    color: var(--dark-text-primary) !important;
+}
+
 .customer-card-balance {
     font-size: 1rem;
-    font-weight: 800;
-    color: #c0392b;
+    font-weight: 700;
+    color: var(--danger-color);
     padding: 4px 8px;
-    background: #f8d7da;
+    background: rgba(220, 38, 38, 0.1);
     border-radius: 6px;
     display: inline-block;
     width: fit-content;
     line-height: 1;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     margin-top: 4px;
     z-index: 1;
     position: relative;
-    border: 1px solid rgba(231, 76, 60, 0.2);
+    border: 1px solid rgba(220, 38, 38, 0.2);
 }
 
 .customer-actions {
@@ -1958,39 +2134,67 @@ header h1 {
 }
 
 .customer-card-balance.add-card-sub {
-    background: rgba(52, 152, 219, 0.1);
-    color: rgba(52, 152, 219, 0.95);
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--secondary-color);
     font-weight: 700;
     font-size: 0.85rem;
 }
 
-[data-theme="dark"] .customer-card {
-    /* Background will be set dynamically based on payment date */
-    border-color: var(--dark-border) !important;
-}
-
-/* Dark mode: override inline styles for payment-based backgrounds */
-[data-theme="dark"] .customer-card[style*="background"] {
-    /* Keep the dynamic background but ensure text is readable */
-    color: var(--dark-text-primary) !important;
-}
-
-[data-theme="dark"] .customer-card:hover {
-    border-color: var(--secondary-color) !important;
-}
-
 [data-theme="dark"] .customer-card.add-card {
-    border-color: rgba(74, 158, 255, 0.4) !important;
-    background: linear-gradient(135deg, rgba(74, 158, 255, 0.1) 0%, rgba(74, 158, 255, 0.05) 100%) !important;
+    border-color: var(--dark-border) !important;
+    background: var(--dark-surface) !important;
 }
 
-[data-theme="dark"] .customer-card h3 {
-    color: var(--dark-text-primary) !important;
+/* Customer Detail Modal: adisyonlar üstte, bilgi ve butonlar altta */
+.customer-detail-modal-content {
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
-/* Customer Detail Modal */
+#customer-detail-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+#customer-detail-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-bottom: 20px;
+}
+
 #customer-detail-summary {
-    background: #f8f9fa;
+    flex: 0 0 auto;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 8px;
+    background: var(--light-bg);
+}
+
+.customer-detail-actions {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+
+#customer-detail-summary .customer-detail-balance-val {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: var(--danger-color);
+}
+
+[data-theme="dark"] #customer-detail-summary .customer-detail-balance-val {
+    color: var(--danger-color);
+}
+
+#customer-detail-summary p {
+    margin: 0 0 0.5em 0;
+}
+#customer-detail-summary p:last-child {
+    margin-bottom: 0;
 }
 
 [data-theme="dark"] #customer-detail-summary {
@@ -2042,18 +2246,18 @@ header h1 {
 
 .customer-detail-actions {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin-bottom: 20px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
 }
 
 .customer-detail-actions .btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px 16px;
-    font-size: 0.95rem;
+    padding: 10px 8px;
+    font-size: 0.85rem;
     white-space: nowrap;
+    min-width: 0;
 }
 
 .customer-detail-actions .btn span:first-child {
@@ -2063,12 +2267,18 @@ header h1 {
 
 @media (max-width: 540px) {
     .customer-detail-actions {
-        grid-template-columns: 1fr;
-        gap: 8px;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
     }
     
     .customer-detail-actions .btn {
-        width: 100%;
+        padding: 8px 4px;
+        font-size: 0.75rem;
+    }
+    
+    .customer-detail-actions .btn span:first-child {
+        font-size: 1rem;
+        margin-right: 2px;
     }
 }
 
@@ -2085,22 +2295,12 @@ header h1 {
 }
 
 .expense-card {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    padding: 12px 16px;
-    border-radius: 10px;
-    box-shadow: var(--shadow);
     display: flex;
     align-items: center;
     gap: 12px;
-    transition: transform 0.3s, box-shadow 0.3s;
     min-height: 60px;
     min-width: 0;
     overflow: hidden;
-}
-
-.expense-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.12);
 }
 
 .expense-icon {
@@ -2116,7 +2316,7 @@ header h1 {
 }
 
 .expense-card.add-card .expense-icon {
-    background: rgba(52, 152, 219, 0.10);
+    background: rgba(37, 99, 235, 0.12);
 }
 
 .expense-content {
@@ -2366,20 +2566,11 @@ header h1 {
 }
 
 .sale-card {
-    background: white;
-    padding: 12px 20px;
-    border-radius: 8px;
-    box-shadow: var(--shadow);
     display: flex;
     align-items: center;
     gap: 15px;
-    transition: transform 0.3s, box-shadow 0.3s;
+    padding: 12px 20px;
     min-height: 60px;
-}
-
-.sale-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
 }
 
 .sale-card-icon {
@@ -2468,7 +2659,7 @@ header h1 {
     overflow-y: auto;
     /* Backdrop animation */
     opacity: 0;
-    transition: opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+    transition: opacity 0.375s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 .modal.active {
@@ -2481,7 +2672,12 @@ header h1 {
 
 .modal.closing {
     opacity: 0;
-    transition: opacity 0.35s ease-out;
+    transition: opacity 0.44s ease-out;
+}
+
+/* Bakiye ekleme / veresiye modali müşteri detay üstünde açılsın */
+#customer-credit-add-modal.modal.active {
+    z-index: 3600;
 }
 
 /* App dialog (must be above every panel/modal) */
@@ -2618,7 +2814,7 @@ header h1 {
     position: relative;
     /* iOS-like animation properties */
     transform-origin: center center;
-    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    transition: transform 0.44s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.44s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Modal opening animation - start from small scale */
@@ -2637,7 +2833,35 @@ header h1 {
 .modal.closing .modal-content {
     transform: scale(0.85);
     opacity: 0;
-    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+    transition: transform 0.44s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.44s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Bottom-sheet modals: alttan açılır (ürün/müşteri/gider/detay/adisyon vb.) */
+@media (max-width: 768px) {
+    .modal.modal-bottom-sheet {
+        align-items: flex-end;
+        padding: 0;
+    }
+    .modal.modal-bottom-sheet .modal-content {
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        border-radius: 14px 14px 0 0;
+        max-height: 90vh;
+        transform: translateY(100%);
+        transition: transform 0.375s cubic-bezier(0.32, 0.72, 0, 1);
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    }
+    .modal.modal-bottom-sheet.active .modal-content {
+        transform: translateY(0);
+    }
+    .modal.modal-bottom-sheet.closing .modal-content {
+        transform: translateY(100%);
+        transition: transform 0.375s cubic-bezier(0.32, 0.72, 0, 1);
+    }
+    .modal.modal-bottom-sheet:not(.active) .modal-content {
+        transform: translateY(100%);
+    }
 }
 
 /* Auth modal */
@@ -3036,8 +3260,8 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] #table-modal .modal-content {
-    background: #000000 !important;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    background: var(--dark-surface) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
 }
 
 #table-modal-body {
@@ -3045,13 +3269,18 @@ body:has(#auth-modal.modal.active) header {
     overflow-y: auto;
     min-height: 0;
     margin-bottom: 10px;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
     /* Hide scrollbar but keep scrolling functionality */
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE and Edge */
 }
 
 [data-theme="dark"] #table-modal-body {
-    background: #000000 !important;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+}
+
+[data-theme="dark"] #table-modal-body {
+    background: var(--dark-surface) !important;
 }
 
 #table-modal-body::-webkit-scrollbar {
@@ -3101,7 +3330,7 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] #table-modal-body.is-loading::before {
-    background: rgba(0, 0, 0, 0.98) !important;
+    background: var(--dark-surface) !important;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
 }
@@ -3131,7 +3360,7 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] .table-modal-header {
-    background: #000000 !important;
+    background: var(--dark-surface) !important;
 }
 
 .table-modal-titlebar {
@@ -3142,31 +3371,38 @@ body:has(#auth-modal.modal.active) header {
     flex: 1 1 auto;
 }
 
-/* Instant sale quantity controls (header) */
+/* Instant sale quantity controls (header) – aynı yükseklik, dikey hizalı */
 .instant-qty-controls {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 48px;
-    padding: 0 10px;
+    height: 40px;
+    padding: 0 8px;
     border-radius: 10px;
     background: rgba(44, 62, 80, 0.06);
     border: 1px solid rgba(44, 62, 80, 0.10);
     flex-shrink: 0;
+    box-sizing: border-box;
 }
 .instant-qty-btn {
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
     border-radius: 10px;
     padding: 0;
     font-weight: 900;
     line-height: 1;
     box-shadow: none;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 .instant-qty-input {
-    width: 56px;
-    height: 38px;
+    width: 52px;
+    height: 40px;
+    min-height: 40px;
     border-radius: 10px;
     border: 1px solid rgba(0,0,0,0.12);
     background: #fff;
@@ -3175,51 +3411,66 @@ body:has(#auth-modal.modal.active) header {
     text-align: center;
     padding: 0 6px;
     outline: none;
+    box-sizing: border-box;
+    font-size: 1rem;
 }
 .instant-qty-input:focus {
     border-color: rgba(52, 152, 219, 0.55);
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
 }
 
-/* Mobile: keep "Anlık Satış" fully readable + make qty controls narrower */
+/* Anlık satış modunda başlık + kontrol aynı yükseklik ve dikey ortalı */
+.table-modal-titlebar.instant-mode {
+    align-items: center;
+}
+.table-modal-titlebar.instant-mode h2 {
+    height: 40px;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-size: 1.05rem;
+}
+
+/* Mobile: keep "Anlık Satış" fully readable + qty controls aynı yükseklik */
 @media (max-width: 540px) {
     .table-modal-titlebar.instant-mode {
         gap: 6px;
     }
     .table-modal-titlebar.instant-mode h2 {
-        /* Center the title text inside the pill (multi-line clamp removed flex centering) */
-        padding: 7px 10px;
-        font-size: 1.02rem;
+        padding: 0 10px;
+        font-size: 1rem;
+        height: 36px;
+        min-height: 36px;
         max-width: none;
-        height: auto;
-        min-height: 44px;
-        /* allow wrapping instead of truncating to "Anlık S" */
         white-space: normal;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         line-clamp: 2;
         -webkit-box-orient: vertical;
-        line-height: 1.15;
+        line-height: 1.2;
     }
     .table-modal-titlebar.instant-mode .instant-qty-controls {
         padding: 0 6px;
         gap: 4px;
-        height: 44px;
+        height: 36px;
         border-radius: 10px;
     }
     .table-modal-titlebar.instant-mode .instant-qty-btn {
-        width: 28px;
-        height: 28px;
-        min-width: 28px;
-        border-radius: 10px;
-        font-size: 1.02rem;
+        width: 36px;
+        height: 36px;
+        min-width: 36px;
+        min-height: 36px;
+        border-radius: 8px;
+        font-size: 1rem;
     }
     .table-modal-titlebar.instant-mode .instant-qty-input {
-        width: 40px;
-        height: 28px;
-        border-radius: 10px;
-        font-size: 0.92rem;
+        width: 44px;
+        height: 36px;
+        min-height: 36px;
+        border-radius: 8px;
+        font-size: 0.9rem;
         padding: 0 4px;
     }
 }
@@ -3275,14 +3526,14 @@ body:has(#auth-modal.modal.active) header {
     align-items: flex-start;
     justify-content: space-between;
     gap: 15px;
-    margin-top: 15px;
+    margin-top: 0;
     padding: 15px 0 0 0;
     border-top: 1px solid rgba(0, 0, 0, 0.1);
     flex-wrap: nowrap;
 }
 
 [data-theme="dark"] .table-modal-footer {
-    background: #000000 !important;
+    background: var(--dark-surface) !important;
     border-top-color: var(--dark-border) !important;
 }
 
@@ -3343,7 +3594,7 @@ body:has(#auth-modal.modal.active) header {
     font-size: 1.2rem;
     font-weight: 700;
     padding: 14px 28px;
-    border-radius: 28px;
+    border-radius: var(--btn-radius);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
     transition: all 0.3s ease;
     display: flex;
@@ -3431,6 +3682,19 @@ body:has(#auth-modal.modal.active) header {
     font-weight: 900;
     line-height: 1;
     color: rgba(255, 255, 255, 0.98);
+}
+
+/* Taşı button: same shape as Geri (close-header), different color */
+.close-header.move-table-btn {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    border-color: rgba(52, 152, 219, 0.35);
+    box-shadow: 0 6px 14px rgba(52, 152, 219, 0.25), 0 2px 6px rgba(0,0,0,0.08);
+}
+.close-header.move-table-btn:hover {
+    background: linear-gradient(135deg, #2980b9 0%, #3498db 100%);
+    border-color: rgba(52, 152, 219, 0.45);
+    transform: scale(1.1);
+    box-shadow: 0 8px 18px rgba(52, 152, 219, 0.32), 0 3px 8px rgba(0,0,0,0.10);
 }
 
 .btn-header {
@@ -3973,7 +4237,7 @@ form select:focus {
     padding: 0 !important;
     font-size: 1.4rem !important;
     font-weight: 700 !important;
-    border-radius: 50% !important;
+    border-radius: var(--btn-radius) !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -3983,6 +4247,18 @@ form select:focus {
     position: relative;
     overflow: hidden;
     animation: buttonSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.sale-action-btn.sale-action-transfer {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%) !important;
+    border-color: rgba(52, 152, 219, 0.35) !important;
+    color: rgba(255, 255, 255, 0.98) !important;
+    box-shadow: 0 6px 14px rgba(52, 152, 219, 0.25), 0 2px 6px rgba(0,0,0,0.08) !important;
+}
+.sale-action-btn.sale-action-transfer:hover {
+    background: linear-gradient(135deg, #2980b9 0%, #3498db 100%) !important;
+    border-color: rgba(52, 152, 219, 0.45) !important;
+    box-shadow: 0 8px 18px rgba(52, 152, 219, 0.32), 0 3px 8px rgba(0,0,0,0.10) !important;
 }
 
 .sale-action-btn:nth-child(1) {
@@ -4015,7 +4291,7 @@ form select:focus {
     left: 50%;
     width: 0;
     height: 0;
-    border-radius: 50%;
+    border-radius: inherit;
     background: rgba(255, 255, 255, 0.4);
     transform: translate(-50%, -50%);
     transition: width 0.3s, height 0.3s;
@@ -5483,21 +5759,20 @@ form select:focus {
         font-size: 1.5rem;
     }
 
-    /* Table modal: rounded like cards on mobile */
+    /* Table modal: diğer bottom-sheet'ler gibi kenar/altta boşluksuz */
     #table-modal.modal.active {
-        padding: calc(8px + env(safe-area-inset-top)) 8px calc(8px + env(safe-area-inset-bottom)) 8px;
-        align-items: center;
-        justify-content: center;
+        padding: 0;
+        align-items: flex-end;
+        justify-content: flex-end;
     }
 
     #table-modal .modal-content {
-        width: calc(100vw - 16px);
-        max-width: calc(100vw - 16px);
-        /* Use dynamic viewport height to avoid iOS top/bottom bar clipping */
-        height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-        max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-        border-radius: 14px;
-        padding: 14px 14px 12px 14px;
+        width: 100%;
+        max-width: 100%;
+        height: calc(95vh - env(safe-area-inset-bottom));
+        max-height: calc(95vh - env(safe-area-inset-bottom));
+        border-radius: 14px 14px 0 0;
+        padding: 14px 14px calc(12px + env(safe-area-inset-bottom)) 14px;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -5528,7 +5803,7 @@ form select:focus {
     }
 
     [data-theme="dark"] .table-modal-header {
-        background: #000000 !important;
+        background: var(--dark-surface) !important;
     }
 
     .table-modal-header h2 {
@@ -5556,19 +5831,16 @@ form select:focus {
         flex: 0 0 auto;
         position: sticky;
         bottom: 0;
-        /* Match modal theme (same as modal-content) */
         background: #fff;
         padding-top: 10px;
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
-        box-shadow: 0 -1px 0 rgba(0,0,0,0.08);
         display: flex;
         flex-direction: column;
     }
 
     [data-theme="dark"] .table-modal-footer {
-        background: #000000 !important;
+        background: var(--dark-surface) !important;
         border-top-color: var(--dark-border) !important;
-        box-shadow: 0 -1px 0 var(--dark-border) !important;
     }
 
     .table-info-footer {

@@ -1,11 +1,12 @@
 // Service Worker for MekanApp
-const CACHE_NAME = 'mekanapp-v39';
-const STATIC_CACHE = 'mekanapp-static-v39';
-const API_CACHE = 'mekanapp-api-v39';
+const CACHE_NAME = 'mekanapp-v40';
+const STATIC_CACHE = 'mekanapp-static-v40';
+const API_CACHE = 'mekanapp-api-v40';
 
 // Get base URL from service worker location
 const BASE_URL = self.location.href.replace(/\/service-worker\.js$/, '/');
 
+// Tek bir URL hata verse bile diğerleri cache'lensin (addAll yerine teker teker)
 const staticUrlsToCache = [
   BASE_URL,
   BASE_URL + 'index.html',
@@ -29,10 +30,9 @@ self.addEventListener('install', (event) => {
     Promise.all([
       caches.open(STATIC_CACHE).then((cache) => {
         console.log('Caching static files');
-        return cache.addAll(staticUrlsToCache).catch((error) => {
-          console.log('Static cache installation failed:', error);
-          return Promise.resolve();
-        });
+        return Promise.all(
+          staticUrlsToCache.map((url) => cache.add(url).catch(() => {}))
+        );
       }),
       caches.open(API_CACHE).then((cache) => {
         console.log('API cache ready');
