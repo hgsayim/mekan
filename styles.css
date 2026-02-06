@@ -3260,7 +3260,7 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] #table-modal .modal-content {
-    background: var(--dark-surface) !important;
+    background: var(--dark-bg) !important;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
 }
 
@@ -3276,11 +3276,9 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] #table-modal-body {
-    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
-}
-
-[data-theme="dark"] #table-modal-body {
-    background: var(--dark-surface) !important;
+    box-shadow: none;
+    background: var(--dark-bg) !important;
+    border-radius: 12px;
 }
 
 #table-modal-body::-webkit-scrollbar {
@@ -3360,7 +3358,8 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] .table-modal-header {
-    background: var(--dark-surface) !important;
+    background: transparent !important;
+    border-radius: 12px 12px 0 0;
 }
 
 .table-modal-titlebar {
@@ -3533,8 +3532,9 @@ body:has(#auth-modal.modal.active) header {
 }
 
 [data-theme="dark"] .table-modal-footer {
-    background: var(--dark-surface) !important;
+    background: transparent !important;
     border-top-color: var(--dark-border) !important;
+    border-radius: 0 0 12px 12px;
 }
 
 .table-info-footer {

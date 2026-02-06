@@ -1329,7 +1329,7 @@ class MekanApp {
             daily: 'Rapor'
         };
         const label = map[viewName] || 'Masalar';
-        el.textContent = `- ${label}`;
+        el.textContent = label;
     }
 
     /** Header şimşek butonundaki açık masalar toplamını günceller (xxxx ₺). */
@@ -1911,9 +1911,20 @@ class MekanApp {
     }
 
     // Setup bottom sheet swipe down to close (closeCallback: optional, else closeTableModal)
+    // Scroll container: içeride kaydırılan eleman (table-modal-body, transfer-target-cards vb.)
+    // Sadece scroll en üstteyken (scrollTop === 0) aşağı kaydırma modalı kapatır; yoksa normal scroll.
     setupBottomSheetSwipe(modalEl, closeCallback) {
         const modalContent = modalEl.querySelector('.modal-content');
         if (!modalContent) return;
+
+        const getScrollContainer = () => {
+            if (modalEl.id === 'table-modal') {
+                const body = document.getElementById('table-modal-body');
+                return body || modalContent;
+            }
+            const cards = modalEl.querySelector('.transfer-target-cards');
+            return cards || modalContent;
+        };
 
         let touchStartY = 0;
         let touchCurrentY = 0;
@@ -1921,7 +1932,9 @@ class MekanApp {
         let startScrollTop = 0;
 
         modalContent.addEventListener('touchstart', (e) => {
-            startScrollTop = modalContent.scrollTop;
+            const scrollContainer = getScrollContainer();
+            const isTouchInScrollArea = scrollContainer && scrollContainer.contains(e.target);
+            startScrollTop = isTouchInScrollArea ? scrollContainer.scrollTop : 0;
             touchStartY = e.touches[0].clientY;
             isDragging = false;
         }, { passive: true });
@@ -1930,7 +1943,10 @@ class MekanApp {
             if (!touchStartY) return;
             touchCurrentY = e.touches[0].clientY;
             const deltaY = touchCurrentY - touchStartY;
-            if (startScrollTop === 0 && deltaY > 0) {
+            const scrollContainer = getScrollContainer();
+            const atTop = scrollContainer.scrollTop <= 0;
+            // Sadece içerik en üstteyken ve kullanıcı aşağı kaydırıyorsa modalı sürükle
+            if (atTop && deltaY > 0) {
                 isDragging = true;
                 e.preventDefault();
                 const translateY = Math.max(0, deltaY);
