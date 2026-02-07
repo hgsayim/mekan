@@ -2064,10 +2064,13 @@ class MekanApp {
     }
 
     async createTableCard(table) {
+        // Süreli masada openTime bazen getAllTables ile gecikmeli gelir; ikon yanlış çıkmasın diye tekrar oku
+        if (table?.type === 'hourly' && !table.openTime) {
+            const fresh = await this.db.getTable(table.id);
+            if (fresh && fresh.openTime) table = { ...table, openTime: fresh.openTime };
+        }
         // If user just opened an hourly table, keep it visually open for a couple seconds
-        // to avoid "green -> red -> green" flicker while DB/realtime catches up.
         const opening = (table?.type === 'hourly') ? this._getTableOpening(table.id) : null;
-        // Süreli masada kapalı = openTime yok (closeTime sadece son kapanış zamanı).
         const isClosed = table?.type === 'hourly' && !table.openTime;
         const effectiveTable = (opening && !isClosed)
             ? { ...table, isActive: true, openTime: opening.openTime || table.openTime }
@@ -2188,7 +2191,7 @@ class MekanApp {
         card.classList.toggle('active', Boolean(isActive) || type === 'instant');
         card.classList.toggle('inactive', !Boolean(isActive) && type !== 'instant');
 
-        // Gecikmeli başlat ikonu: sadece openTime yoksa (openTime varsa ikon yok, detay açılır)
+        // Gecikmeli başlat ikonu: sadece openTime yoksa. openTime varsa hiçbir yoldan ikon gelmemeli.
         const existingDelayBtn = card.querySelector('.table-delay-btn');
         const shouldShowDelay = type === 'hourly' && !openTime;
         if (shouldShowDelay && !existingDelayBtn) {
@@ -2203,6 +2206,13 @@ class MekanApp {
                 await this.openDelayedStartModal(tableId);
             });
             card.prepend(btn);
+            // Stale openTime ile ikon eklendiyse DB’yi kontrol et; openTime varsa ikonu kaldır
+            this.db.getTable(tableId).then((fresh) => {
+                if (fresh && fresh.openTime && card.parentNode) {
+                    const added = card.querySelector('.table-delay-btn');
+                    if (added) added.remove();
+                }
+            }).catch(() => {});
         } else if (!shouldShowDelay && existingDelayBtn) {
             existingDelayBtn.remove();
         }
@@ -2279,6 +2289,10 @@ class MekanApp {
                 : (table.closeTime || !table.isActive);
             
             if (isTableClosed) {
+                // openTime varsa gecikmeli başlat hiç gelmemeli: Kart zaten açık görünüyorsa (ikona yok) stale read ile üzerine yazma
+                if (table.type === 'hourly' && !table.openTime && card && !card.querySelector('.table-delay-btn')) {
+                    return;
+                }
                 // Table was cancelled/closed - keep it closed, show 0 total
                 if (table.isActive || (table.type === 'hourly' && table.openTime)) {
                     // Table state in DB doesn't match closed state - force close
@@ -5408,7 +5422,7 @@ class MekanApp {
     renderProductIcon(iconValue) {
         const v = (iconValue == null) ? '' : String(iconValue);
         const key = v.startsWith('ico:') ? v.slice(4) : v;
-        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay', 'nescafe']);
+        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay', 'nescafe', 'soda', 'meyveli-soda', 'su']);
         if (supported.has(key)) {
             return `<span class="app-ico" data-ico="${key}" aria-hidden="true"></span>`;
         }
