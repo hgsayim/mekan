@@ -78,6 +78,20 @@ html {
     background: var(--light-bg);
 }
 
+/* Herhangi bir kayan (bottom-sheet) modal açıkken aşağı kaydırma Chrome pull-to-refresh tetiklemesin */
+body:has(.modal.modal-bottom-sheet.active) {
+    overscroll-behavior-y: contain;
+}
+.modal.modal-bottom-sheet.active .modal-content {
+    overscroll-behavior-y: contain;
+}
+/* İçeride kaydırılan alanlar (masa detay body, taşıma kartları vb.) */
+.modal.modal-bottom-sheet.active #table-modal-body,
+.modal.modal-bottom-sheet.active .transfer-target-cards,
+.modal.modal-bottom-sheet.active .receipt-body {
+    overscroll-behavior-y: contain;
+}
+
 .app-container {
     max-width: 1400px;
     margin: 0 auto;
