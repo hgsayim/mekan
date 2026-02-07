@@ -1345,11 +1345,11 @@ class MekanApp {
         if (!Array.isArray(tables) || tables.length === 0) return 0;
         let sum = 0;
         for (const t of tables) {
-            const isClosed = t.type === 'hourly' && !!t.closeTime;
+            const isClosed = t.type === 'hourly' && !t.openTime;
             const isOpen = t.type === 'instant'
                 ? true
                 : (t.type === 'hourly'
-                    ? (t.isActive && t.openTime && !isClosed)
+                    ? (t.isActive && t.openTime)
                     : (t.isActive || (Number(t._computedSalesTotal) || 0) > 0));
             if (!isOpen) continue;
             const check = t._computedCheckTotal != null ? t._computedCheckTotal : (t.checkTotal || 0);
@@ -1378,9 +1378,6 @@ class MekanApp {
             <div class="tables-loading-screen" aria-live="polite" aria-busy="true">
                 <div class="tables-loading-spinner" aria-hidden="true"></div>
                 <p class="tables-loading-message">Masalar & hesaplar yükleniyor...</p>
-                <div class="tables-loading-progress" role="progressbar" aria-valuetext="Yükleniyor">
-                    <div class="tables-loading-progress-bar"></div>
-                </div>
             </div>
         `;
     }
@@ -1435,13 +1432,10 @@ class MekanApp {
         const instantTable = tables.find(t => t.type === 'instant');
         tables = tables.filter(t => t.type !== 'instant');
         
-        // Sıralama: 1-süreli, 2-doluluk, 3-ikon, 4-alfabetik
+        // Sıralama: 1-süreli, 2-aynı ikondan fazla olanlar (ikon gruplu), 3-alfabetik (açıklık yok)
         tables.sort((a, b) => {
             if (a.type === 'hourly' && b.type !== 'hourly') return -1;
             if (a.type !== 'hourly' && b.type === 'hourly') return 1;
-            const fullA = Boolean(a.isActive);
-            const fullB = Boolean(b.isActive);
-            if (fullA !== fullB) return fullB - fullA;
             const iconA = a.icon || (a.type === 'hourly' ? '🎱' : '🪑');
             const iconB = b.icon || (b.type === 'hourly' ? '🎱' : '🪑');
             if (iconA !== iconB) return iconA.localeCompare(iconB);
@@ -1450,11 +1444,7 @@ class MekanApp {
 
         // Sync each table's status with unpaid sales - but hourly tables must be manually opened
         for (const table of tables) {
-            // Süreli masada closeTime varsa masa kesinlikle kapalı; senkron sonrası açık görünmesin.
-            if (table.type === 'hourly' && table.closeTime) {
-                table.isActive = false;
-                table.openTime = null;
-            }
+            // Süreli masada kapalı = openTime yok (closeTime sadece son kapanış zamanı, tekrar açılabilir).
             // CRITICAL: If table is settling (just closed), skip all updates to prevent race conditions
             // This prevents DB refresh from overwriting closure state
             const isSettling = this._isTableSettling(table.id);
@@ -1485,8 +1475,8 @@ class MekanApp {
             table._computedSalesTotal = computedSalesTotal;
 
             // Compute check total (hourly tables include time when open)
-            // CRITICAL: Don't calculate hourly total if table is closed (has closeTime, no openTime)
-            if (table.type === 'hourly' && table.isActive && table.openTime && !table.closeTime) {
+            // Süreli masada kapalı = openTime yok; açıkken süre toplamı hesaplanır.
+            if (table.type === 'hourly' && table.isActive && table.openTime) {
                 const hoursUsed = calculateHoursUsed(table.openTime);
                 table._computedHourlyTotal = hoursUsed * (table.hourlyRate || 0);
                 table._computedCheckTotal = table._computedHourlyTotal + computedSalesTotal;
@@ -1499,18 +1489,15 @@ class MekanApp {
             if (unpaidSales.length > 0 && !table.isActive) {
                 // Table has products but is not active - activate it only for regular tables
                 // Hourly tables must be manually opened via "Open Table" button
-                // CRITICAL: Don't activate if table is closed (has closeTime)
-                if (!isSettling && table.type !== 'hourly' && !table.closeTime) {
+                if (!isSettling && table.type !== 'hourly') {
                     table.isActive = true;
                     tableUpdated = true;
                 }
             } else if (unpaidSales.length === 0 && table.isActive) {
                 // Table has no unpaid sales.
-                // CRITICAL: Süreli masada closeTime varsa kesinlikle kapalı tutulur (senkron sonrası açılmaz).
-                if (table.type === 'hourly' && table.closeTime) {
-                    // Table was closed - ensure it stays closed
+                // Süreli masada openTime yoksa kapalı tutulur.
+                if (table.type === 'hourly' && !table.openTime) {
                     table.isActive = false;
-                    table.openTime = null;
                     table.hourlyTotal = 0;
                     table.salesTotal = 0;
                     table.checkTotal = 0;
@@ -1531,13 +1518,11 @@ class MekanApp {
                 }
             } else if (unpaidSales.length === 0 && !table.isActive && (table.salesTotal > 0 || table.hourlyTotal > 0 || table.checkTotal > 0)) {
                 // Table is inactive but has totals - reset them
-                // For hourly tables: if closed (has closeTime), reset hourlyTotal too (it's stored in hourlySessions)
-                if (table.type === 'hourly' && table.closeTime) {
-                    // Closed hourly table: reset all totals (history is in hourlySessions)
+                // Süreli masada kapalı (openTime yok) ise toplamları sıfırla (geçmiş hourlySessions'ta).
+                if (table.type === 'hourly' && !table.openTime) {
                     table.salesTotal = 0;
-                        table.hourlyTotal = 0;
+                    table.hourlyTotal = 0;
                     table.checkTotal = 0;
-                    table.openTime = null;
                     tableUpdated = true;
                 } else if (table.type !== 'hourly' || !table.openTime) {
                     // Regular table or hourly table without openTime
@@ -1703,15 +1688,16 @@ class MekanApp {
                     
                     e.preventDefault();
                     
-                    // If table is already open, open modal immediately on single tap (no DB wait)
-                    if (table && table.isActive && table.openTime) {
+                    // openTime varsa masa açık: gecikmeli başlat ikonu olmaz, tek tıklamayla detay açılır
+                    const current = await this.db.getTable(table.id);
+                    if (current && current.openTime) {
                         clearTimeout(tapTimer);
                         tapCount = 0;
-                    this.openTableModal(table.id, { preSync: true });
+                        this.openTableModal(table.id, { preSync: true });
                         return;
                     }
                     
-                    // Table is closed - use double-tap detection
+                    // openTime yok - çift tıklama ile süre başlat
                     tapCount++;
                     
                     if (tapCount === 1) {
@@ -1748,7 +1734,7 @@ class MekanApp {
                             // Clear loading state FIRST, then update state
                             this.setTableCardOpening(table.id, false);
                             
-                            // NOW update the card state after message is cleared
+                            // NOW update the card state after message is cleared; sonra kartı DB'den yenile (gecikmeli başlat ikonu kalksın, tıklama detay açsın)
                             try {
                                 const updatedTable = await this.db.getTable(table.id);
                                 if (updatedTable) {
@@ -1760,6 +1746,9 @@ class MekanApp {
                                         salesTotal: updatedTable.salesTotal || 0,
                                         checkTotal: updatedTable.checkTotal || 0
                                     });
+                                    if (this.refreshSingleTableCard) {
+                                        await this.refreshSingleTableCard(table.id);
+                                    }
                                 }
                             } catch (e) {
                                 console.error('Error updating table state after clearing loading:', e);
@@ -2023,11 +2012,11 @@ class MekanApp {
             const card = document.getElementById(`table-${table.id}`);
             if (!card) continue;
 
-            const isClosed = table.type === 'hourly' && !!table.closeTime;
+            const isClosed = table.type === 'hourly' && !table.openTime;
             let isActive = table.type === 'instant' 
                 ? true 
                 : (table.type === 'hourly' 
-                    ? (table.isActive && table.openTime && !isClosed)
+                    ? (table.isActive && table.openTime)
                     : table.isActive);
 
             let displayTotal = 0;
@@ -2036,7 +2025,7 @@ class MekanApp {
             } else {
                 const unpaid = await this.db.getUnpaidSalesByTable(table.id);
                 const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
-                if (table.type === 'hourly' && table.isActive && table.openTime && !isClosed) {
+                if (table.type === 'hourly' && table.isActive && table.openTime) {
                     displayTotal = calculateHoursUsed(table.openTime) * (table.hourlyRate || 0) + salesTotal;
                 } else {
                     displayTotal = salesTotal;
@@ -2078,19 +2067,18 @@ class MekanApp {
         // If user just opened an hourly table, keep it visually open for a couple seconds
         // to avoid "green -> red -> green" flicker while DB/realtime catches up.
         const opening = (table?.type === 'hourly') ? this._getTableOpening(table.id) : null;
-        // Süreli masada closeTime varsa masa kesinlikle kapalıdır (senkron sonrası tekrar açılmaz).
-        const isClosed = table?.type === 'hourly' && !!table.closeTime;
+        // Süreli masada kapalı = openTime yok (closeTime sadece son kapanış zamanı).
+        const isClosed = table?.type === 'hourly' && !table.openTime;
         const effectiveTable = (opening && !isClosed)
             ? { ...table, isActive: true, openTime: opening.openTime || table.openTime }
             : table;
 
         // Instant sale table is always active
-        // For hourly tables: respect closeTime to prevent showing as active when closed
-        // Normal masalar: satış varsa açık göster (DB isActive senkron gecikmesini aş)
+        // Süreli masada açık = openTime var; normal masalar: satış varsa açık göster.
         const isActive = effectiveTable.type === 'instant' 
             ? true 
             : (effectiveTable.type === 'hourly' 
-                ? (effectiveTable.isActive && effectiveTable.openTime && !isClosed)
+                ? (effectiveTable.isActive && effectiveTable.openTime)
                 : (effectiveTable.isActive || (Number(effectiveTable._computedSalesTotal) || 0) > 0));
         const statusClass = (effectiveTable.type === 'instant' || isActive) ? 'active' : 'inactive';
         
@@ -2123,8 +2111,8 @@ class MekanApp {
         // Add instant class for instant sale table
         const instantClass = effectiveTable.type === 'instant' ? 'instant-table' : '';
 
-        // Show delayed-start button only when hourly table is CLOSED (not active/open)
-        const delayedStartBtn = (effectiveTable.type === 'hourly' && !(effectiveTable.isActive && effectiveTable.openTime))
+        // Gecikmeli başlat ikonu: sadece openTime yoksa
+        const delayedStartBtn = (effectiveTable.type === 'hourly' && !effectiveTable.openTime)
             ? `<button class="table-delay-btn" data-table-id="${effectiveTable.id}" title="Gecikmeli Başlat">⏱</button>`
             : '';
 
@@ -2200,9 +2188,9 @@ class MekanApp {
         card.classList.toggle('active', Boolean(isActive) || type === 'instant');
         card.classList.toggle('inactive', !Boolean(isActive) && type !== 'instant');
 
-        // Delayed start button: only when hourly table is CLOSED
+        // Gecikmeli başlat ikonu: sadece openTime yoksa (openTime varsa ikon yok, detay açılır)
         const existingDelayBtn = card.querySelector('.table-delay-btn');
-        const shouldShowDelay = type === 'hourly' && !(isActive && openTime);
+        const shouldShowDelay = type === 'hourly' && !openTime;
         if (shouldShowDelay && !existingDelayBtn) {
             const btn = document.createElement('button');
             btn.className = 'table-delay-btn';
@@ -2285,16 +2273,14 @@ class MekanApp {
                 } catch (_) {}
             }
             
-            // Süreli masada closeTime varsa kesinlikle kapalı. Normal masada closeTime veya !isActive = kapalı.
+            // Süreli masada kapalı = openTime yok. Normal masada closeTime veya !isActive = kapalı.
             const isTableClosed = table.type === 'hourly'
-                ? !!table.closeTime
+                ? !table.openTime
                 : (table.closeTime || !table.isActive);
             
             if (isTableClosed) {
                 // Table was cancelled/closed - keep it closed, show 0 total
-                // Don't allow realtime updates to reopen it
-                // Also ensure DB state matches closed state (defensive programming)
-                if (table.isActive || (table.type === 'hourly' && table.openTime && !table.closeTime)) {
+                if (table.isActive || (table.type === 'hourly' && table.openTime)) {
                     // Table state in DB doesn't match closed state - force close
                     debugLog(`Table ${tableId} state mismatch: DB shows open but should be closed, forcing close`);
                     const forceClosed = {
@@ -2310,7 +2296,7 @@ class MekanApp {
                     }
                     await this.db.updateTable(forceClosed);
                 } else if (table.type === 'hourly' && table.openTime && table.closeTime) {
-                    // CRITICAL: If table has both openTime and closeTime, it's an old session - clean it up
+                    // Eski oturum: hem openTime hem closeTime var; openTime null yap (session hourlySessions'ta).
                     debugLog(`Table ${tableId} has old openTime with closeTime, cleaning up`);
                     table.openTime = null;
                     table.hourlyTotal = 0;
@@ -2364,8 +2350,8 @@ class MekanApp {
             } else {
                 // CRITICAL: If table is closed (cancelled) and has unpaid sales, clean them up on this device
                 // This fixes the issue where cancelled tables still have sales on other devices
-                if (unpaidSales.length > 0 && table.closeTime) {
-                    // Table was cancelled - clean up unpaid sales on this device
+                if (unpaidSales.length > 0 && (table.type === 'hourly' ? !table.openTime : table.closeTime)) {
+                    // Table was cancelled/closed - clean up unpaid sales on this device
                     debugLog(`Table ${tableId} was cancelled, cleaning up ${unpaidSales.length} unpaid sales on this device`);
                     for (const sale of unpaidSales) {
                         if (sale?.items?.length) {
@@ -3216,8 +3202,8 @@ class MekanApp {
             return;
         }
 
-        // Süreli masada closeTime varsa masa kesinlikle kapalıdır; modal açılmaz.
-        const isTableClosed = finalTableCheck.type === 'hourly' && !!finalTableCheck.closeTime;
+        // Süreli masada kapalı = openTime yok; modal kapalı masada tam açılmaz.
+        const isTableClosed = finalTableCheck.type === 'hourly' && !finalTableCheck.openTime;
         
         if (isTableClosed) {
             // Table is already closed - keep buttons disabled and close modal
@@ -4114,18 +4100,21 @@ class MekanApp {
 
         titleEl.textContent = mode === 'table' ? 'Tüm masayı taşı – hedef masa seçin' : 'Satırı taşı – hedef masa seçin';
 
-        const getDisplayTotal = (t) => {
-            if (t.type === 'hourly' && t.isActive && t.openTime) {
+        // Taşımayla açılan masalar da doğru toplam göstersin: unpaid sales + süreli süre üzerinden hesapla (checkTotal/salesTotal bazen güncel olmuyor)
+        const displayTotals = await Promise.all(targetTables.map(async (t) => {
+            const unpaid = await this.db.getUnpaidSalesByTable(t.id);
+            const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            if (t.type === 'hourly' && t.openTime) {
                 const hoursUsed = (Date.now() - new Date(t.openTime).getTime()) / (1000 * 60 * 60);
-                return (hoursUsed * (t.hourlyRate || 0)) + (t.salesTotal || 0);
+                return Math.round((hoursUsed * (t.hourlyRate || 0)) + salesTotal);
             }
-            return t.checkTotal ?? t.salesTotal ?? 0;
-        };
+            return Math.round(salesTotal);
+        }));
 
-        cardsEl.innerHTML = targetTables.map(t => {
+        cardsEl.innerHTML = targetTables.map((t, i) => {
             const name = t.name || `Masa ${t.id}`;
             const icon = t.icon || (t.type === 'hourly' ? '🎱' : '🪑');
-            const total = Math.round(getDisplayTotal(t));
+            const total = displayTotals[i] ?? 0;
             return `<div class="transfer-target-card" data-table-id="${t.id}" role="button" tabindex="0">
                 <div class="transfer-target-icon">${icon}</div>
                 <h4>${name}</h4>
@@ -4171,6 +4160,28 @@ class MekanApp {
             return;
         }
 
+        const modal = document.getElementById('transfer-target-modal');
+        const modalContent = modal?.querySelector('.modal-content');
+        const confirmBtn = document.getElementById('transfer-target-confirm-btn');
+        const cancelBtn = document.getElementById('transfer-target-cancel-btn');
+        let overlayEl = null;
+        if (modalContent) {
+            const message = this._transferMode === 'table' ? 'Masa taşınıyor...' : 'Taşınıyor...';
+            overlayEl = document.createElement('div');
+            overlayEl.className = 'transfer-progress-overlay';
+            overlayEl.setAttribute('aria-live', 'polite');
+            overlayEl.innerHTML = `
+                <div class="transfer-progress-spinner"></div>
+                <p class="transfer-progress-message">${message}</p>
+            `;
+            modalContent.style.position = 'relative';
+            modalContent.appendChild(overlayEl);
+            if (confirmBtn) confirmBtn.disabled = true;
+            if (cancelBtn) cancelBtn.disabled = true;
+        }
+        const transferStartTime = Date.now();
+        const TRANSFER_OVERLAY_MIN_MS = 3000;
+
         try {
             if (this._transferMode === 'table') {
                 const sourceTable = await this.db.getTable(tableId);
@@ -4211,6 +4222,7 @@ class MekanApp {
                     if (targetTable.type === 'hourly' && !targetTable.openTime) {
                         targetTable.openTime = new Date().toISOString();
                         targetTable.isActive = true;
+                        targetTable.closeTime = null;
                     }
                 }
 
@@ -4225,7 +4237,11 @@ class MekanApp {
                 }
 
                 let unpaidTarget = await this.db.getUnpaidSalesByTable(targetTableId);
-                if (targetTable.type !== 'hourly' && targetTable.type !== 'instant' && unpaidTarget.length > 0) {
+                if (targetTable.type === 'hourly' && unpaidTarget.length > 0) {
+                    targetTable.closeTime = null;
+                    targetTable.openTime = targetTable.openTime || new Date().toISOString();
+                    targetTable.isActive = true;
+                } else if (targetTable.type !== 'hourly' && targetTable.type !== 'instant' && unpaidTarget.length > 0) {
                     targetTable.isActive = true;
                 }
                 await this._updateTableTotals(targetTable, unpaidTarget);
@@ -4240,8 +4256,7 @@ class MekanApp {
                 const sourceCardStateFull = { isActive: false, type: sourceTable?.type, openTime: null, hourlyRate: 0, salesTotal: 0, checkTotal: 0 };
                 const targetCardStateFull = { isActive: true, type: targetTable.type, openTime: targetTable.openTime, hourlyRate: targetTable.hourlyRate || 0, salesTotal: targetSalesTotal, checkTotal: targetCheckTotal };
 
-                this.closeFormModal('transfer-target-modal');
-                this.closeTableModal();
+                // Overlay kapanana kadar tüm işler bitsin: önce refresh sonra modal kapat
                 await this.loadTables();
                 if (this.refreshSingleTableCard) {
                     await this.refreshSingleTableCard(tableId);
@@ -4256,6 +4271,12 @@ class MekanApp {
                 this._transferCardStateCache.set(String(tableId), srcEntry);
                 this._transferCardStateCache.set(targetTableId, tgtEntry);
                 this._transferCardStateCache.set(String(targetTableId), tgtEntry);
+                const elapsed = Date.now() - transferStartTime;
+                if (elapsed < TRANSFER_OVERLAY_MIN_MS) {
+                    await new Promise(r => setTimeout(r, TRANSFER_OVERLAY_MIN_MS - elapsed));
+                }
+                this.closeFormModal('transfer-target-modal');
+                this.closeTableModal();
             } else {
                 const saleId = this._transferSaleId;
                 if (!saleId) {
@@ -4291,7 +4312,11 @@ class MekanApp {
                     await this.db.updateTable(sourceTable);
                 }
                 const unpaidTarget = await this.db.getUnpaidSalesByTable(targetTableId);
-                if (targetTable.type !== 'hourly' && targetTable.type !== 'instant' && unpaidTarget.length > 0) {
+                if (targetTable.type === 'hourly' && unpaidTarget.length > 0) {
+                    targetTable.closeTime = null;
+                    targetTable.openTime = targetTable.openTime || new Date().toISOString();
+                    targetTable.isActive = true;
+                } else if (targetTable.type !== 'hourly' && targetTable.type !== 'instant' && unpaidTarget.length > 0) {
                     targetTable.isActive = true;
                 }
                 await this._updateTableTotals(targetTable, unpaidTarget);
@@ -4316,12 +4341,9 @@ class MekanApp {
                 this._tableModalForceRefreshIds.add(targetTableId);
                 this._tableModalForceRefreshIds.add(String(targetTableId));
                 this._tableModalForceRefreshIds.add(Number(targetTableId));
-                this.closeFormModal('transfer-target-modal');
+                // Overlay kapanana kadar tüm işler bitsin: önce refresh sonra modal kapat
                 if (unpaidSourceAfter.length > 0) {
                     await this.loadTableProducts(tableId);
-                    await this.openTableModal(tableId);
-                } else {
-                    this.closeTableModal();
                 }
                 await this.loadTables();
                 if (this.refreshSingleTableCard) {
@@ -4337,11 +4359,24 @@ class MekanApp {
                 this._transferCardStateCache.set(String(tableId), srcEntry);
                 this._transferCardStateCache.set(targetTableId, tgtEntry);
                 this._transferCardStateCache.set(String(targetTableId), tgtEntry);
+                const elapsedItem = Date.now() - transferStartTime;
+                if (elapsedItem < TRANSFER_OVERLAY_MIN_MS) {
+                    await new Promise(r => setTimeout(r, TRANSFER_OVERLAY_MIN_MS - elapsedItem));
+                }
+                this.closeFormModal('transfer-target-modal');
+                if (unpaidSourceAfter.length > 0) {
+                    await this.openTableModal(tableId);
+                } else {
+                    this.closeTableModal();
+                }
             }
         } catch (err) {
             console.error('Transfer error:', err);
             await this.appAlert('Taşıma sırasında hata oluştu.', 'Hata');
         } finally {
+            if (overlayEl && overlayEl.parentNode) overlayEl.remove();
+            if (confirmBtn) confirmBtn.disabled = false;
+            if (cancelBtn) cancelBtn.disabled = false;
             this._transferMode = null;
             this._transferSaleId = null;
             this._transferTargetTableId = null;
@@ -4568,8 +4603,8 @@ class MekanApp {
                 }
                 return { success: false, error: 'Hourly table is not open' };
             }
-            if (table.closeTime) {
-                // Decrement closing counter on validation error
+            // Süreli masada closeTime tekrar kapanmayı engellemez (önceki oturum). Sadece openTime yoksa kapalıyız (yukarıda return edildi).
+            if (table.type !== 'hourly' && table.closeTime) {
                 this._closingTablesCount = Math.max(0, this._closingTablesCount - 1);
                 if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
                     this.startPollSync();
@@ -4625,10 +4660,10 @@ class MekanApp {
                 
                 updatedTable.hourlySessions.push(session);
 
-                // Close hourly table
+                // Close hourly table: önce openTime null (oturum bitti), sonra closeTime kaydı
                 updatedTable.isActive = false;
-                updatedTable.closeTime = closeTimeISO;
                 updatedTable.openTime = null;
+                updatedTable.closeTime = closeTimeISO;
                 updatedTable.hourlyTotal = 0;
             } else {
                 // Close regular/instant table
@@ -4703,7 +4738,7 @@ class MekanApp {
                 await new Promise(resolve => setTimeout(resolve, 300)); // Wait between attempts
                 
                 const verifyTable = await this.db.getTable(tableId);
-                if (verifyTable && (verifyTable.isActive || (verifyTable.type === 'hourly' && verifyTable.openTime && !verifyTable.closeTime))) {
+                if (verifyTable && (verifyTable.isActive || (verifyTable.type === 'hourly' && verifyTable.openTime))) {
                     // Force close if verification fails
                     debugLog(`Verification attempt ${verifyAttempt + 1}: Table ${tableId} was reopened, forcing close again`);
                     verifyTable.isActive = false;
@@ -4726,7 +4761,7 @@ class MekanApp {
 
             // Step 11: Final verification - ensure table is closed
             const finalVerifyTable = await this.db.getTable(tableId);
-            if (finalVerifyTable && (finalVerifyTable.isActive || (finalVerifyTable.type === 'hourly' && finalVerifyTable.openTime && !finalVerifyTable.closeTime))) {
+            if (finalVerifyTable && (finalVerifyTable.isActive || (finalVerifyTable.type === 'hourly' && finalVerifyTable.openTime))) {
                 // Last attempt: force close
                 debugLog(`Final verification: Table ${tableId} still open, forcing close`);
                 finalVerifyTable.isActive = false;
@@ -5165,9 +5200,9 @@ class MekanApp {
                             return;
                         }
                         
-                        // Süreli masada closeTime varsa kesinlikle kapalı. Normal masada closeTime veya !isActive = kapalı.
+                        // Süreli masada kapalı = openTime yok. Normal masada closeTime veya !isActive = kapalı.
                         const isClosed = updatedTable && (updatedTable.type === 'hourly'
-                            ? !!updatedTable.closeTime
+                            ? !updatedTable.openTime
                             : (updatedTable.closeTime || !updatedTable.isActive));
                         
                         if (isClosed) {
@@ -5227,9 +5262,9 @@ class MekanApp {
                         // Check if table is currently being settled (prevent interference during closure)
                         const isSettling = this._isTableSettling(changedTableId);
                         
-                        // Süreli masada closeTime varsa kesinlikle kapalı. Normal masada closeTime veya !isActive = kapalı.
+                        // Süreli masada kapalı = openTime yok. Normal masada closeTime veya !isActive = kapalı.
                         const isTableClosed = updatedTable && (updatedTable.type === 'hourly'
-                            ? !!updatedTable.closeTime
+                            ? !updatedTable.openTime
                             : (updatedTable.closeTime || !updatedTable.isActive));
                         
                         if (isTableClosed) {
@@ -5507,15 +5542,15 @@ class MekanApp {
             return;
         }
 
-        // CRITICAL: Kapanan masa tekrar açılamaz. closeTime varsa kesinlikle açma.
-        if (table.closeTime) {
+        // Süreli masada açık oturum varsa (openTime) zaten açık; yoksa açacağız. closeTime tekrar açmayı engellemez.
+        if (table.type === 'hourly' && table.openTime) {
             this._openingTablesCount = Math.max(0, this._openingTablesCount - 1);
             if (wasPolling && this._openingTablesCount === 0 && this._closingTablesCount === 0) {
                 this.startPollSync();
             }
             this.setTableCardOpening(targetTableId, false);
             this._openingTables.delete(String(targetTableId));
-            await this.appAlert('Bu masa kapatıldı. Tekrar açılamaz.', 'Uyarı');
+            await this.appAlert('Bu masa zaten açık.', 'Uyarı');
             return;
         }
 
@@ -5684,11 +5719,11 @@ class MekanApp {
             // The opening state will be cleared in the finally block of the caller, and state will be updated there
             // This prevents the table from appearing closed during the loading animation
 
-            // Background refresh (keep other screens eventually consistent)
+            // Süreli masa açıldıktan sonra tables view tam yeniden yüklenmesin: tek kart zaten setTableCardState + refreshSingleTableCard ile güncellendi; full loadTables bazen DB gecikmesiyle kartı "kapalı" okuyup gecikmeli başlat ikonunu geri getiriyor. Sadece daily güncellensin.
             setTimeout(() => {
-                const views = ['tables'];
+                const views = [];
                 if (this.currentView === 'daily') views.push('daily');
-                this.reloadViews(views);
+                if (views.length) this.reloadViews(views);
             }, 0);
         } catch (error) {
             console.error('Masayı açarken hata:', error, error?.message, error?.details, error?.hint, error?.code);
@@ -6166,8 +6201,8 @@ class MekanApp {
         if (!table) return;
 
         // Validate table can be closed
-        if (table.type === 'hourly' && (!table.isActive || !table.openTime || table.closeTime)) {
-            debugLog(`Table ${tableId} is already closed, skipping`);
+        if (table.type === 'hourly' && (!table.isActive || !table.openTime)) {
+            debugLog(`Table ${tableId} is already closed (no open session), skipping`);
             return;
         }
         if (table.type !== 'hourly' && !table.isActive) {
@@ -6213,7 +6248,7 @@ class MekanApp {
             // Re-read table and force close if it was reopened by realtime updates
             await new Promise(resolve => setTimeout(resolve, 500));
             const postClosureCheck = await this.db.getTable(tableId);
-            if (postClosureCheck && (postClosureCheck.isActive || (postClosureCheck.type === 'hourly' && postClosureCheck.openTime && !postClosureCheck.closeTime))) {
+            if (postClosureCheck && (postClosureCheck.isActive || (postClosureCheck.type === 'hourly' && postClosureCheck.openTime))) {
                 debugLog(`Post-closure check: Table ${tableId} was reopened, forcing close again`);
                 postClosureCheck.isActive = false;
                 postClosureCheck.openTime = null;
@@ -6458,8 +6493,8 @@ class MekanApp {
         if (!table) return;
 
         // Validate table can be closed
-        if (table.type === 'hourly' && (!table.isActive || !table.openTime || table.closeTime)) {
-            debugLog(`Table ${tableId} is already closed, skipping`);
+        if (table.type === 'hourly' && (!table.isActive || !table.openTime)) {
+            debugLog(`Table ${tableId} is already closed (no open session), skipping`);
             return;
         }
         if (table.type !== 'hourly' && !table.isActive) {

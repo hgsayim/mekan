@@ -1091,29 +1091,6 @@ header h1 {
     color: var(--dark-text);
     text-align: center;
 }
-.tables-loading-progress {
-    width: 100%;
-    max-width: 260px;
-    height: 6px;
-    background: rgba(44, 62, 80, 0.12);
-    border-radius: 6px;
-    overflow: hidden;
-}
-[data-theme="dark"] .tables-loading-progress {
-    background: rgba(255,255,255,0.1);
-}
-.tables-loading-progress-bar {
-    height: 100%;
-    width: 40%;
-    background: var(--secondary-color);
-    border-radius: 6px;
-    animation: tables-loading-progress 1.4s ease-in-out infinite;
-}
-@keyframes tables-loading-progress {
-    0% { transform: translateX(-100%); }
-    50% { transform: translateX(200%); }
-    100% { transform: translateX(-100%); }
-}
 
 /* Transfer target modal: same size/layout as table detail product cards, 4 per row */
 .transfer-target-cards {
@@ -1209,6 +1186,34 @@ header h1 {
 }
 #transfer-target-modal .transfer-target-cards {
     width: 100%;
+}
+
+/* Masa taşınırken modal içi bilgi (Tamam sonrası) */
+.transfer-progress-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    z-index: 100;
+    border-radius: inherit;
+}
+.transfer-progress-spinner {
+    width: 44px;
+    height: 44px;
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+}
+.transfer-progress-message {
+    margin: 0;
+    color: #fff;
+    font-size: 1.1rem;
+    font-weight: 700;
 }
 
 @keyframes spin {
