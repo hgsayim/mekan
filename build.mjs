@@ -46,6 +46,13 @@ for (const f of utilsFiles) {
   await copyFile(join('src', 'utils', f), join(srcUtilsDir, f));
 }
 
+// Copy src/auth.js, src/constants.js, src/modules/dialogs.js (required by app.js imports)
+await copyFile(join('src', 'auth.js'), join(DIST_DIR, 'src', 'auth.js'));
+await copyFile(join('src', 'constants.js'), join(DIST_DIR, 'src', 'constants.js'));
+const srcModulesDir = join(DIST_DIR, 'src', 'modules');
+await mkdir(srcModulesDir, { recursive: true });
+await copyFile(join('src', 'modules', 'dialogs.js'), join(srcModulesDir, 'dialogs.js'));
+
 // Generate env.js (loaded before app.js). Safe: anon key is public; still nicer not to commit.
 const envJs = `// Generated at build time by build.mjs (Cloudflare Pages env vars)
 window.__MEKANAPP_ENV__ = {
