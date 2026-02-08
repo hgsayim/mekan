@@ -551,14 +551,22 @@ class MekanApp {
             }
         };
 
-        // Run once immediately, then every 3s
+        // Masalar görünümündeyken daha sık sync (süreli masa kapanışı diğer cihaza hızlı yansısın)
+        const pollMs = this.currentView === 'tables' ? 1500 : 3000;
         tick();
-        this._pollSyncInterval = setInterval(tick, 3000);
+        const runTick = () => {
+            tick().then(() => {
+                this._pollSyncInterval = setTimeout(runTick, this.currentView === 'tables' ? 1500 : 3000);
+            }).catch(() => {
+                this._pollSyncInterval = setTimeout(runTick, 3000);
+            });
+        };
+        this._pollSyncInterval = setTimeout(runTick, pollMs);
     }
 
     stopPollSync() {
         if (this._pollSyncInterval) {
-            clearInterval(this._pollSyncInterval);
+            clearTimeout(this._pollSyncInterval);
             this._pollSyncInterval = null;
         }
     }
@@ -1264,7 +1272,12 @@ class MekanApp {
 
         // Load data for the view
         if (viewName === 'tables') {
-            this.loadTables();
+            // Diğer cihazda kapanan süreli masaların bu cihazda da kapalı görünmesi için girişte sync
+            if (typeof this.db?.syncTablesFull === 'function') {
+                this.db.syncTablesFull().then(() => this.loadTables()).catch(() => this.loadTables());
+            } else {
+                this.loadTables();
+            }
             // Start auto-update for table cards when on tables view
             this.startTableCardPriceUpdates();
         } else if (viewName === 'products') {
@@ -1409,10 +1422,16 @@ class MekanApp {
         this.setTablesLoading(true);
 
         try {
-            // Masaları göstermeden önce tek sefer sync: taşınan ürünler ve masa durumu güncel gelsin
-            if (typeof this.db?.syncNow === 'function') {
+            // Masaları göstermeden önce mutlaka remote'dan tam liste çek: diğer cihazda kapanan masa
+            // bu cihazda açık görünmesin ve updateTable ile tekrar açılmasın.
+            if (typeof this.db?.syncTablesFull === 'function') {
                 await Promise.race([
-                    this.db.syncNow({ force: true, forceFull: false }),
+                    this.db.syncTablesFull(),
+                    new Promise((r) => setTimeout(r, 8000))
+                ]).catch(() => {});
+            } else if (typeof this.db?.syncNow === 'function') {
+                await Promise.race([
+                    this.db.syncNow({ force: true, forceFull: true }),
                     new Promise((r) => setTimeout(r, 6000))
                 ]).catch(() => {});
             }
@@ -5266,8 +5285,12 @@ class MekanApp {
             // This ensures IndexedDB is updated before we read from it
             const changeApplied = await this.db?.applyRealtimeChange?.(tableName, payload);
             if (changeApplied) {
-                // Small delay to ensure IndexedDB transaction is fully committed
-                await new Promise(resolve => setTimeout(resolve, 100));
+                // Tables: remote'tan tüm masaları çekip local'i güncelle (süreli kapanış diğer cihazda kesin yansısın)
+                if (tableName === 'tables' && typeof this.db?.syncTablesFull === 'function') {
+                    await this.db.syncTablesFull().catch((e) => console.warn('Realtime tables syncTablesFull:', e));
+                }
+                // Small delay so IndexedDB commit is visible before we read
+                await new Promise(resolve => setTimeout(resolve, 150));
                 
                 // Additional cleanup for cancelled tables (before scheduling UI refresh)
                 if (tableName === 'tables' && changedTableId) {
