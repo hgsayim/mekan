@@ -1,5 +1,5 @@
-// Main Application Logic
-// Loaded as a module (see index.html) for Supabase ESM import.
+// Main Application Logic — MekanApp
+// Modüller: src/constants.js, src/auth.js, src/modules/*.js
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
@@ -7,169 +7,28 @@ import { HybridDatabase } from './hybrid-db.js';
 import { debounce, throttle } from './src/utils/performance.js';
 import { formatDateTimeWithoutSeconds, formatTimeOnly, formatHoursToReadable } from './src/utils/formatters.js';
 import { calculateHoursUsed, calculateHoursBetween } from './src/utils/calculators.js';
+import { debugLog, debugWarn } from './src/constants.js';
+import { ensureSignedIn } from './src/auth.js';
+import * as dialogsModule from './src/modules/dialogs.js';
 
-// Debug mode: set to false in production
-const DEBUG_MODE = false;
-
-// Helper function for debug logging
-const debugLog = (...args) => {
-    if (DEBUG_MODE) {
-        console.log(...args);
-    }
-};
-
-// Helper function for debug warnings
-const debugWarn = (...args) => {
-    if (DEBUG_MODE) {
-        console.warn(...args);
-    }
-};
-
-function setAuthError(message) {
-    const el = document.getElementById('auth-error');
-    if (!el) return;
-    if (!message) {
-        el.style.display = 'none';
-        el.textContent = '';
-        return;
-    }
-    el.style.display = 'block';
-    el.textContent = message;
-}
-
-function showAuthModal(show) {
-    const modal = document.getElementById('auth-modal');
-    const header = document.getElementById('main-header');
-    if (!modal) return;
-    // Use flex so modal content is truly centered (block breaks .modal.active layout)
-    modal.style.display = show ? 'flex' : 'none';
-    if (show) {
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
-        modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
-        document.body.classList.add('auth-open');
-        // Hide header when auth modal is shown
-        if (header) header.style.display = 'none';
-    } else {
-        modal.classList.remove('active');
-        document.body.classList.remove('auth-open');
-        setAuthError('');
-        // Show header when auth modal is closed
-        if (header) header.style.display = '';
-    }
-}
-
-async function ensureSignedIn(supabase) {
-    // Add timeout to getSession to prevent hanging
-    let session = null;
-    try {
-        const sessionPromise = supabase.auth.getSession();
-        const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Session check timeout')), 10000)
-        );
-        const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
-    if (error) {
-        console.error('Auth session error:', error);
-    }
-        session = data?.session || null;
-    } catch (err) {
-        console.error('Error checking session:', err);
-        // Continue - will show login modal
-        session = null;
-    }
-    if (session) {
-        // Session exists, ensure auth modal is closed and header is shown
-        const authModal = document.getElementById('auth-modal');
-        if (authModal) {
-            authModal.classList.remove('active');
-            authModal.style.display = 'none';
-        }
-        document.body.classList.remove('auth-open');
-        const header = document.getElementById('main-header');
-        if (header) header.style.display = '';
-        return session;
-    }
-
-    showAuthModal(true);
-
-    const loginBtn = document.getElementById('auth-login-btn');
-    const loginText = document.getElementById('auth-login-text');
-    const loginSpinner = document.getElementById('auth-login-spinner');
-    const emailEl = document.getElementById('auth-email');
-    const passEl = document.getElementById('auth-password');
-    const formEl = document.getElementById('auth-form');
-    const toggleBtn = document.getElementById('auth-toggle-password');
-
-    return await new Promise((resolve) => {
-        const handler = async () => {
-            const email = (emailEl?.value || '').trim();
-            const password = passEl?.value || '';
-            if (!email || !password) {
-                setAuthError('Email ve şifre girin.');
-                return;
-            }
-            setAuthError('');
-            loginBtn.disabled = true;
-            if (loginSpinner) loginSpinner.style.display = 'inline-block';
-            if (loginText) loginText.textContent = 'Giriş yapılıyor...';
-            try {
-                const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
-                if (signInError) {
-                    setAuthError(signInError.message || 'Giriş başarısız.');
-                    loginBtn.disabled = false;
-                    if (loginSpinner) loginSpinner.style.display = 'none';
-                    if (loginText) loginText.textContent = 'Giriş Yap';
-                    return;
-                }
-                showAuthModal(false);
-                resolve(signInData.session);
-            } catch (e) {
-                setAuthError(e?.message || 'Giriş başarısız.');
-                loginBtn.disabled = false;
-                if (loginSpinner) loginSpinner.style.display = 'none';
-                if (loginText) loginText.textContent = 'Giriş Yap';
-            }
-        };
-
-        if (toggleBtn && passEl) {
-            toggleBtn.addEventListener('click', () => {
-                const isHidden = passEl.type === 'password';
-                passEl.type = isHidden ? 'text' : 'password';
-                toggleBtn.textContent = isHidden ? 'Gizle' : 'Göster';
-            });
-        }
-
-        if (formEl) {
-            formEl.addEventListener('submit', (e) => {
-                e.preventDefault();
-                handler();
-            });
-        }
-        // Keep click too (in case form is not found)
-        if (loginBtn) loginBtn.addEventListener('click', handler);
-
-        // Also allow Enter key
-        const keyHandler = (e) => {
-            if (e.key === 'Enter') handler();
-        };
-        if (emailEl) emailEl.addEventListener('keydown', keyHandler);
-        if (passEl) passEl.addEventListener('keydown', keyHandler);
-    });
-}
-
+/**
+ * MekanApp — Ana uygulama sınıfı.
+ * Modüller: src/constants.js (debug), src/auth.js (giriş), src/modules/dialogs.js (alert/confirm/loading).
+ * Bu dosyada kategoriler:
+ * - Auth & kullanıcı (getUserRole, isAdmin, updateMenuVisibility)
+ * - Init & event dinleyiciler (init, setupEventListeners)
+ * - Sync & realtime (startPollSync, handleRealtimeChange, reloadViews)
+ * - Görünüm & navigasyon (switchView, loadInitialData, header/loading)
+ * - Masalar liste & kartlar (loadTables, createTableCard, setTableCardState, ...)
+ * - Masa modalı (openTableModal, loadTableProducts, payTable, ...)
+ * - Masa formu & aç/kapa (openTable, _closeTableSafely, saveTable, delayed start)
+ * - Ürünler (loadProducts, openProductFormModal, ...)
+ * - Müşteriler (loadCustomers, openCustomerFormModal, ...)
+ * - Satış geçmişi (loadSales, filterSales, ...)
+ * - Giderler (loadExpenses, ...)
+ * - Günlük rapor (loadDailyDashboard, charts)
+ * - Tema & footer (initDarkMode, updateFooter)
+ */
 class MekanApp {
     constructor() {
         this.supabase = window.supabase;
@@ -245,7 +104,7 @@ class MekanApp {
         }
     }
 
-    // Get current user and role from Supabase
+    // ---------- Auth & kullanıcı ----------
     async getUserRole() {
         try {
             const { data: { user }, error } = await this.supabase.auth.getUser();
@@ -325,6 +184,7 @@ class MekanApp {
     // Utility functions are now imported from src/utils/
 
     // Batch + serialize product additions per table/product to avoid stock races on rapid taps.
+    // ---------- Init & başlatma ----------
     queueQuickAddToTable(tableId, productId, deltaAmount = 1) {
         if (!tableId || !productId) return;
         const key = `${String(tableId)}:${String(productId)}`;
@@ -588,7 +448,7 @@ class MekanApp {
         }
     }
 
-    // Update sync indicator
+    // ---------- Sync & realtime ----------
     updateSyncIndicator(state = null) {
         const indicator = document.getElementById('sync-indicator');
         if (!indicator) return;
@@ -1051,128 +911,7 @@ class MekanApp {
         });
     }
 
-    initAppDialog() {
-        if (this._dialog) return;
-        const modal = document.getElementById('app-dialog');
-        const titleEl = document.getElementById('app-dialog-title');
-        const messageEl = document.getElementById('app-dialog-message');
-        const confirmBtn = document.getElementById('app-dialog-confirm-btn');
-        const cancelBtn = document.getElementById('app-dialog-cancel-btn');
-        const closeBtn = document.getElementById('app-dialog-close');
-        if (!modal || !titleEl || !messageEl || !confirmBtn || !cancelBtn || !closeBtn) return;
-
-        this._dialog = { modal, titleEl, messageEl, confirmBtn, cancelBtn, closeBtn };
-
-        const closeWith = (value) => {
-            if (!this._dialogResolver) return;
-            const resolver = this._dialogResolver;
-            this._dialogResolver = null;
-            // Avoid aria-hidden warning: blur focus inside modal before hiding it
-            try {
-                const activeEl = document.activeElement;
-                if (activeEl && modal.contains(activeEl)) {
-                    activeEl.blur();
-                }
-            } catch (e) {
-                // ignore
-            }
-            modal.classList.remove('active');
-            modal.setAttribute('aria-hidden', 'true');
-            resolver(value);
-        };
-
-        confirmBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeWith(true);
-        });
-        cancelBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeWith(false);
-        });
-        closeBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            closeWith(false);
-        });
-        modal.addEventListener('click', (e) => {
-            // Clicking backdrop closes like cancel
-            if (e.target === modal) closeWith(false);
-        });
-        window.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && modal.classList.contains('active')) {
-                closeWith(false);
-            }
-        });
-    }
-
-    async appAlert(message, title = 'Uyarı') {
-        await this.appDialog({ mode: 'alert', title, message });
-    }
-
-    async appConfirm(message, { title = 'Onay', confirmText = 'Evet', cancelText = 'Vazgeç', confirmVariant = 'primary' } = {}) {
-        return await this.appDialog({ mode: 'confirm', title, message, confirmText, cancelText, confirmVariant });
-    }
-
-    appDialog({ mode = 'alert', title = 'Uyarı', message = '', confirmText = 'Tamam', cancelText = 'İptal', confirmVariant = 'primary' } = {}) {
-        this.initAppDialog();
-        if (!this._dialog) return Promise.resolve(mode === 'confirm' ? false : true);
-        const { modal, titleEl, messageEl, confirmBtn, cancelBtn } = this._dialog;
-
-        // Reset buttons
-        confirmBtn.classList.remove('btn-danger', 'btn-primary');
-        confirmBtn.classList.add(confirmVariant === 'danger' ? 'btn-danger' : 'btn-primary');
-        confirmBtn.textContent = confirmText;
-        cancelBtn.textContent = cancelText;
-        cancelBtn.style.display = mode === 'confirm' ? 'inline-flex' : 'none';
-
-        titleEl.textContent = title;
-        messageEl.textContent = message;
-
-        // iOS-like opening animation
-        if (modal.classList.contains('closing')) {
-            modal.classList.remove('closing');
-        }
-        modal.classList.add('active');
-        
-        // Trigger animation
-        requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                const modalContent = modal.querySelector('.modal-content');
-                if (modalContent) {
-                    modalContent.style.transform = 'scale(1)';
-                    modalContent.style.opacity = '1';
-                }
-            });
-        });
-        modal.setAttribute('aria-hidden', 'false');
-
-        return new Promise((resolve) => {
-            this._dialogResolver = resolve;
-        });
-    }
-
-    showLoadingOverlay(message = 'İşleniyor...') {
-        const overlay = document.getElementById('loading-overlay');
-        const messageEl = document.getElementById('loading-message');
-        if (overlay) {
-            if (messageEl) messageEl.textContent = message;
-            overlay.style.display = 'flex';
-            // Prevent body scroll
-            document.body.style.overflow = 'hidden';
-        }
-    }
-
-    hideLoadingOverlay() {
-        const overlay = document.getElementById('loading-overlay');
-        if (overlay) {
-            overlay.style.display = 'none';
-            // Restore body scroll
-            document.body.style.overflow = '';
-        }
-    }
-
+    // ---------- Görünüm & navigasyon ----------
     async loadInitialData() {
         try {
             // Ensure instant sale table exists (non-blocking)
@@ -1353,17 +1092,16 @@ class MekanApp {
         el.textContent = Number.isFinite(value) ? `${Math.round(value)} ₺` : '0 ₺';
     }
 
-    /** Açık masaların (instant + açık süreli + satışı olan normal) check toplamını hesaplar. */
+    /** Açık masaların (anlık satış hariç: açık süreli + satışı olan normal) check toplamını hesaplar. */
     sumOpenTablesCheckTotal(tables) {
         if (!Array.isArray(tables) || tables.length === 0) return 0;
         let sum = 0;
         for (const t of tables) {
+            if (t.type === 'instant') continue;
             const isClosed = t.type === 'hourly' && !t.openTime;
-            const isOpen = t.type === 'instant'
-                ? true
-                : (t.type === 'hourly'
-                    ? (t.isActive && t.openTime)
-                    : (t.isActive || (Number(t._computedSalesTotal) || 0) > 0));
+            const isOpen = t.type === 'hourly'
+                ? (t.isActive && t.openTime)
+                : (t.isActive || (Number(t._computedSalesTotal) || 0) > 0);
             if (!isOpen) continue;
             const check = t._computedCheckTotal != null ? t._computedCheckTotal : (t.checkTotal || 0);
             sum += Number(check) || 0;
@@ -1410,7 +1148,20 @@ class MekanApp {
             .join('');
     }
 
-    // Tables Management
+    /** Boş görünüm mesajı (masalar, ürünler vb.) */
+    createEmptyState(viewKey) {
+        const messages = {
+            tables: '<div class="empty-state"><p>Henüz masa yok. Masa ekleyin.</p></div>',
+            products: '<div class="empty-state"><p>Ürün bulunamadı</p></div>',
+            customers: '<div class="empty-state"><p>Müşteri bulunamadı</p></div>',
+            sales: '<div class="empty-state"><p>Satış bulunamadı</p></div>',
+            expenses: '<div class="empty-state"><p>Gider bulunamadı</p></div>',
+            daily: '<div class="empty-state"><p>Veri yok</p></div>'
+        };
+        return messages[viewKey] || '<div class="empty-state"><p>Veri yok</p></div>';
+    }
+
+    // ---------- Tables (liste ve kartlar) ----------
     async loadTables() {
         const container = document.getElementById('tables-container');
         if (!container) {
@@ -1575,8 +1326,7 @@ class MekanApp {
             }
         }
 
-        let headerTotal = this.sumOpenTablesCheckTotal(tables);
-        if (instantTable) headerTotal += await this.getInstantTableDailyTotal(instantTable.id);
+        const headerTotal = this.sumOpenTablesCheckTotal(tables);
         this.updateHeaderOpenTablesTotal(headerTotal);
 
         // Create table cards - need to await async createTableCard
@@ -1996,11 +1746,11 @@ class MekanApp {
         if (!modalEl || !modalEl.classList.contains('modal-bottom-sheet') || window.innerWidth > 768) return;
         const modalContent = modalEl.querySelector('.modal-content');
         if (!modalContent) return;
-        modalContent.style.transform = 'translateY(100%)';
+        modalContent.style.transform = 'translate3d(0, 100%, 0)';
         modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                modalContent.style.transform = 'translateY(0)';
+                modalContent.style.transform = 'translate3d(0, 0, 0)';
             });
         });
         this.setupBottomSheetSwipe(modalEl, () => this.closeFormModal(modalEl.id));
@@ -2024,7 +1774,6 @@ class MekanApp {
 
         const tables = await this.db.getAllTables();
         const now = Date.now();
-        let openTotalSum = 0;
         for (const table of tables) {
             const cached = this._transferCardStateCache?.get(table.id) || this._transferCardStateCache?.get(String(table.id));
             if (cached && cached.until > now) continue;
@@ -2052,14 +1801,13 @@ class MekanApp {
                 }
             }
 
-            if (isActive || table.type === 'instant') openTotalSum += displayTotal;
-
             const priceElement = card.querySelector('.table-price');
             if (priceElement) priceElement.textContent = `${Math.round(displayTotal)} ₺`;
             card.classList.toggle('active', Boolean(isActive) || table.type === 'instant');
             card.classList.toggle('inactive', !Boolean(isActive) && table.type !== 'instant');
         }
-        this.updateHeaderOpenTablesTotal(openTotalSum);
+        // Header toplamını sadece loadTables günceller; burada güncelleme yapma.
+        // Aksi halde 10 sn'lik interval farklı anlık veriyle toplamı değiştirip "arada değişiyor sonra düzeliyor" hissi veriyor.
     }
 
     startTableCardPriceUpdates() {
@@ -2595,6 +2343,7 @@ class MekanApp {
         this.dailyResetInterval = setInterval(checkAndReset, 60000); // Check every minute
     }
 
+    // ---------- Masa formu (ekleme/düzenleme) ----------
     async openTableFormModal(table = null) {
         const modal = document.getElementById('table-form-modal');
         const title = document.getElementById('table-form-modal-title');
@@ -2726,6 +2475,7 @@ class MekanApp {
         }
     }
 
+    // ---------- Masa modalı (detay, ürün ekleme, ödeme) ----------
     async openTableModal(tableId, opts = {}) {
         const { preSync = false } = opts || {};
         
@@ -3176,11 +2926,12 @@ class MekanApp {
         
         // Load products and sales - use cache if available, otherwise fetch in parallel
         if (useCache && cachedData.products) {
-            // Render cached products immediately
+            // Render cached products immediately (kategoriye göre sıralı)
             const container = document.getElementById('table-products-grid');
             if (container && cachedData.products.length > 0) {
+                const sortedProducts = this.sortProductsByCategoryThenName(cachedData.products);
                 container.dataset.tableId = String(tableId);
-                container.innerHTML = cachedData.products.map(product => this.createTableProductCard(product, tableId)).join('');
+                container.innerHTML = sortedProducts.map(product => this.createTableProductCard(product, tableId)).join('');
                 // Bind event delegation if not already bound
                 if (!this._tableProductsDelegationBound) {
                     this._tableProductsDelegationBound = true;
@@ -3216,10 +2967,10 @@ class MekanApp {
             // Load sales
             await this.loadTableSales(tableId);
             
-            // Update cache for next time
+            // Update cache for next time (ürünler kategoriye göre saklansın)
             this._tableModalPrefetchCache.set(tableId, {
                 table: table,
-                products: products,
+                products: this.sortProductsByCategoryThenName(products),
                 sales: unpaidSales,
                 timestamp: Date.now()
             });
@@ -3472,10 +3223,11 @@ class MekanApp {
         tableModalEl.classList.add('closing');
         const modalContent = tableModalEl.querySelector('.modal-content');
         const isBottomSheet = tableModalEl.classList.contains('modal-bottom-sheet');
+        const isMobile = window.innerWidth <= 768;
 
-        if (modalContent && isBottomSheet) {
+        if (modalContent && isBottomSheet && isMobile) {
             modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
-            modalContent.style.transform = 'translateY(100%)';
+            modalContent.style.transform = 'translate3d(0, 100%, 0)';
             setTimeout(() => {
                 tableModalEl.classList.remove('active', 'closing');
                 modalContent.style.transform = '';
@@ -3484,19 +3236,25 @@ class MekanApp {
                 this.refreshProductsCache();
             }, 375);
         } else if (modalContent) {
+            const modalRect = modalContent.getBoundingClientRect();
             const tableCard = this.getTableCardEl(this.currentTableId);
-            let animationOrigin = { x: '50%', y: '50%' };
+            let originX = modalRect.left + modalRect.width / 2;
+            let originY = modalRect.top + modalRect.height / 2;
             if (tableCard) {
                 const cardRect = tableCard.getBoundingClientRect();
-                animationOrigin = { x: `${cardRect.left + cardRect.width / 2}px`, y: `${cardRect.top + cardRect.height / 2}px` };
+                originX = cardRect.left + cardRect.width / 2;
+                originY = cardRect.top + cardRect.height / 2;
             } else {
                 const instantSaleBtn = document.getElementById('instant-sale-btn');
                 if (instantSaleBtn) {
                     const btnRect = instantSaleBtn.getBoundingClientRect();
-                    animationOrigin = { x: `${btnRect.left + btnRect.width / 2}px`, y: `${btnRect.top + btnRect.height / 2}px` };
+                    originX = btnRect.left + btnRect.width / 2;
+                    originY = btnRect.top + btnRect.height / 2;
                 }
             }
-            modalContent.style.transformOrigin = `${animationOrigin.x} ${animationOrigin.y}`;
+            const xPx = originX - modalRect.left;
+            const yPx = originY - modalRect.top;
+            modalContent.style.transformOrigin = `${xPx}px ${yPx}px`;
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
@@ -3563,6 +3321,7 @@ class MekanApp {
                 container.innerHTML = '<div class="empty-state"><p>Ürün bulunamadı</p></div>';
                 return;
                     }
+            products = this.sortProductsByCategoryThenName(products);
             container.dataset.tableId = String(tableId);
             container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
             // Bind event delegation if not already bound
@@ -3595,7 +3354,8 @@ class MekanApp {
             return;
         }
 
-        // Render square tap-to-add cards (1 item per tap)
+        // Sıra: 1 alkollü, 2 meşrubat, 3 yiyecek; her grupta alfabetik
+        products = this.sortProductsByCategoryThenName(products);
         container.dataset.tableId = String(tableId);
         container.innerHTML = products.map(product => this.createTableProductCard(product, tableId)).join('');
 
@@ -5410,7 +5170,7 @@ class MekanApp {
         }, 350);
     }
 
-    // Helper: Check if product tracks stock
+    // ---------- Ürünler (yardımcılar) ----------
     tracksStock(product) {
         return product.trackStock !== false && product.stock !== null && product.stock !== undefined;
     }
@@ -5441,11 +5201,24 @@ class MekanApp {
         return 'cat-soft';
     }
 
+    /** Masa detayı ürün sırası: 1 alkollü, 2 meşrubat, 3 yiyecek; her grupta alfabetik */
+    sortProductsByCategoryThenName(products) {
+        const order = { alcohol: 0, soft: 1, food: 2 };
+        const arr = Array.isArray(products) ? [...products] : [];
+        arr.sort((a, b) => {
+            const catA = order[this.getProductCategoryKey(a)] ?? 1;
+            const catB = order[this.getProductCategoryKey(b)] ?? 1;
+            if (catA !== catB) return catA - catB;
+            return String(a?.name || '').localeCompare(String(b?.name || ''), 'tr', { sensitivity: 'base' });
+        });
+        return arr;
+    }
+
     // --- Product icons (built-in) ---
     renderProductIcon(iconValue) {
         const v = (iconValue == null) ? '' : String(iconValue);
         const key = v.startsWith('ico:') ? v.slice(4) : v;
-        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay', 'nescafe', 'soda', 'meyveli-soda', 'su']);
+        const supported = new Set(['tuborg', 'carlsberg', 'kasar', 'ayran', 'cola', 'sigara', 'cay', 'nescafe', 'soda', 'meyveli-soda', 'su', 'viski']);
         if (supported.has(key)) {
             return `<span class="app-ico" data-ico="${key}" aria-hidden="true"></span>`;
         }
@@ -6635,6 +6408,7 @@ class MekanApp {
     }
 
     // Expenses Management
+    // ---------- Giderler ----------
     async loadExpenses() {
         const expenses = await this.db.getAllExpenses();
         const container = document.getElementById('expenses-container');
@@ -6918,6 +6692,7 @@ class MekanApp {
     }
 
     // Products Management with Lazy Loading
+    // ---------- Ürünler (liste & form) ----------
     async loadProducts(reset = false) {
         const container = document.getElementById('products-container');
         
@@ -6937,9 +6712,10 @@ class MekanApp {
             }
         }
 
-        // Get all products (sorted)
+        // Get all products: önce kategoriye göre (alkollü, meşrubat, yiyecek), sonra alfabetik; böylece sıra hep aynı kalır
         if (!this._allProducts || reset) {
-            this._allProducts = this.sortProductsByStock(await this.db.getAllProducts());
+            const raw = await this.db.getAllProducts();
+            this._allProducts = this.sortProductsByCategoryThenName(raw);
         }
 
         const products = this._allProducts;
@@ -7230,6 +7006,7 @@ class MekanApp {
     }
 
     // Customers Management
+    // ---------- Müşteriler ----------
     async loadCustomers(reset = true) {
         try {
             const container = document.getElementById('customers-container');
@@ -8065,6 +7842,7 @@ class MekanApp {
     }
 
     // Sales History
+    // ---------- Satış geçmişi ----------
     async loadSales() {
         const tables = await this.db.getAllTables();
         const sales = await this.db.getAllSales();
@@ -8351,6 +8129,7 @@ class MekanApp {
         return startDate.getTime() === todayStart.getTime() && endDate.getTime() === effectiveEnd.getTime();
     }
 
+    // ---------- Günlük rapor ----------
     async loadDailyDashboard() {
         const { startDate, endDate } = this.getReportDateRange();
 
@@ -8712,6 +8491,7 @@ class MekanApp {
 
     // Chart functions removed - keeping only basic reporting
 
+    // ---------- Tema & footer ----------
     initDarkMode() {
         // Check if user has manually set a preference
         const manualPreference = localStorage.getItem('darkMode');
@@ -8986,6 +8766,9 @@ class MekanApp {
         }
     }
 }
+
+// Modülleri sınıfa ekle (diyaloglar)
+Object.assign(MekanApp.prototype, dialogsModule);
 
 // Register Service Worker for PWA (only on HTTP/HTTPS, not file://)
 // Service Worker is optional - app works without it

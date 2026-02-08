@@ -824,7 +824,7 @@ header h1 {
 .report-date-field {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex: 1;
     min-width: 0;
 }
@@ -835,7 +835,8 @@ header h1 {
     color: var(--dark-text);
     white-space: nowrap;
     flex: 0 0 auto;
-    min-width: 80px;
+    min-width: 0;
+    width: max-content;
 }
 
 [data-theme="dark"] .report-date-field label {
@@ -1905,6 +1906,10 @@ header h1 {
 .app-ico[data-ico="su"] {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='8 8 48 48'%3E%3Cdefs%3E%3ClinearGradient id='sucap' x1='0%25' y1='0%25' x2='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234FC3F7'/%3E%3Cstop offset='50%25' stop-color='%2329B6F6'/%3E%3Cstop offset='100%25' stop-color='%23029BE5'/%3E%3C/linearGradient%3E%3ClinearGradient id='subody' x1='0%25' y1='0%25' x2='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%2381D4FA'/%3E%3Cstop offset='30%25' stop-color='%23B3E5FC'/%3E%3Cstop offset='70%25' stop-color='%2390CAF9'/%3E%3Cstop offset='100%25' stop-color='%234FC3F7'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M30 6 L30 10 L28 14 L26 20 Q24 28 24 42 Q24 52 26 56 L38 56 Q40 52 40 42 Q40 28 38 20 L36 14 L34 10 L34 6 Z' fill='url(%23subody)' fill-opacity='.75' stroke='%234FC3F7' stroke-width='0.8'/%3E%3Cpath d='M30 6 L34 6 L34 10 L36 16 Q38 26 38 40 Q38 52 37 55 L27 55 Q26 52 26 40 Q26 26 28 16 L30 10 Z' fill='%23fff' fill-opacity='.25'/%3E%3Crect x='28' y='4' width='8' height='5' rx='1' fill='url(%23sucap)'/%3E%3Cpath d='M27 6 L37 6' stroke='%23B3E5FC' stroke-width='0.6' opacity='.8'/%3E%3Cpath d='M26 22 L38 22' stroke='%2329B6F6' stroke-width='0.5' opacity='.5'/%3E%3Cpath d='M26 30 L38 30' stroke='%2329B6F6' stroke-width='0.5' opacity='.5'/%3E%3Cpath d='M26 38 L38 38' stroke='%2329B6F6' stroke-width='0.5' opacity='.5'/%3E%3Cpath d='M26 46 L38 46' stroke='%2329B6F6' stroke-width='0.5' opacity='.5'/%3E%3C/svg%3E");
 }
+/* Viski: kısa kesme cam kadehi – yarıya kadar amber viski */
+.app-ico[data-ico="viski"] {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='vglass' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23e8e8e8'/%3E%3Cstop offset='40%25' stop-color='%23fff'/%3E%3Cstop offset='100%25' stop-color='%23d0d0d0'/%3E%3C/linearGradient%3E%3ClinearGradient id='vliq' x1='0%25' y1='100%25' x2='0%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%238B6914'/%3E%3Cstop offset='50%25' stop-color='%23C9A227'/%3E%3Cstop offset='100%25' stop-color='%23D4A84A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M20 24 L22 50 L42 50 L44 24 Z' fill='url(%23vglass)' fill-opacity='.9' stroke='%23aaa' stroke-width='0.7'/%3E%3Cpath d='M22 38 L22 50 L42 50 L42 38 Z' fill='url(%23vliq)'/%3E%3Cpath d='M23 38 L23 49 L41 49 L41 38 Z' fill='%23C9A227' fill-opacity='.5'/%3E%3Cpath d='M26 26 L28 26 L28 50 L26 50 Z' stroke='%23fff' stroke-width='0.5' fill='none' opacity='.45'/%3E%3Cpath d='M38 26 L40 26 L40 50 L38 50 Z' stroke='%23fff' stroke-width='0.5' fill='none' opacity='.45'/%3E%3Cpath d='M22 50 L42 50 L40 54 L24 54 Z' fill='%23e5e5e5' stroke='%23aaa' stroke-width='0.5'/%3E%3C/svg%3E");
+}
 
 .product-card-name {
     flex: 1;
@@ -2880,21 +2885,23 @@ header h1 {
         width: 100%;
         max-width: 100%;
         margin: 0;
+        left: 0;
+        right: 0;
         border-radius: 14px 14px 0 0;
         max-height: 90vh;
-        transform: translateY(100%);
+        transform: translate3d(0, 100%, 0);
         transition: transform 0.375s cubic-bezier(0.32, 0.72, 0, 1);
         box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
     }
     .modal.modal-bottom-sheet.active .modal-content {
-        transform: translateY(0);
+        transform: translate3d(0, 0, 0);
     }
     .modal.modal-bottom-sheet.closing .modal-content {
-        transform: translateY(100%);
+        transform: translate3d(0, 100%, 0);
         transition: transform 0.375s cubic-bezier(0.32, 0.72, 0, 1);
     }
     .modal.modal-bottom-sheet:not(.active) .modal-content {
-        transform: translateY(100%);
+        transform: translate3d(0, 100%, 0);
     }
 }
 
@@ -3388,7 +3395,7 @@ body:has(#auth-modal.modal.active) header {
     border: none;
     position: relative;
     width: 100%;
-    min-height: 44px;
+    min-height: 48px;
 }
 
 [data-theme="dark"] .table-modal-header {
@@ -3404,12 +3411,43 @@ body:has(#auth-modal.modal.active) header {
     flex: 1 1 auto;
 }
 
-/* Instant sale quantity controls (header) – aynı yükseklik, dikey hizalı */
+/* Geri + Taşı butonları: gruplanmış, iç içe ve daralmayı önlemek için */
+.table-modal-header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+.table-modal-header-buttons .close-header,
+.table-modal-header-buttons .close {
+    position: static !important;
+    right: auto;
+    top: auto;
+    float: none;
+}
+.table-modal-header-buttons .close-header {
+    margin-left: 0;
+    width: auto;
+    min-width: 80px;
+    min-height: 48px;
+    height: 48px;
+    padding: 0 14px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Instant sale quantity controls (header) – ANLIK SATIŞ / Geri ile aynı yükseklik (48px) */
 .instant-qty-controls {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    height: 40px;
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
     padding: 0 8px;
     border-radius: 10px;
     background: rgba(44, 62, 80, 0.06);
@@ -3418,10 +3456,11 @@ body:has(#auth-modal.modal.active) header {
     box-sizing: border-box;
 }
 .instant-qty-btn {
-    width: 40px;
-    height: 40px;
-    min-width: 40px;
-    min-height: 40px;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    max-height: 48px;
     border-radius: 10px;
     padding: 0;
     font-weight: 900;
@@ -3434,8 +3473,9 @@ body:has(#auth-modal.modal.active) header {
 }
 .instant-qty-input {
     width: 52px;
-    height: 40px;
-    min-height: 40px;
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
     border-radius: 10px;
     border: 1px solid rgba(0,0,0,0.12);
     background: #fff;
@@ -3452,20 +3492,33 @@ body:has(#auth-modal.modal.active) header {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
 }
 
-/* Anlık satış modunda başlık + kontrol aynı yükseklik ve dikey ortalı */
+/* Anlık satış modunda başlık + kontrol + Geri aynı yükseklik (48px), dikey hizalı */
 .table-modal-titlebar.instant-mode {
     align-items: center;
+    min-height: 48px;
+    height: 48px;
 }
 .table-modal-titlebar.instant-mode h2 {
-    height: 40px;
-    min-height: 40px;
+    height: 48px;
+    min-height: 48px;
+    max-height: 48px;
     display: flex;
     align-items: center;
+    justify-content: flex-start;
     padding: 0 12px;
     font-size: 1.05rem;
+    line-height: 48px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.table-modal-titlebar.instant-mode .instant-qty-controls {
+    flex-shrink: 0;
+    box-sizing: border-box;
+    min-height: 48px;
+    max-height: 48px;
 }
 
-/* Mobile: keep "Anlık Satış" fully readable + qty controls aynı yükseklik */
+/* Mobile: ANLIK SATIŞ + qty + Geri hepsi aynı yükseklik (40px) */
 @media (max-width: 540px) {
     .table-modal-titlebar.instant-mode {
         gap: 6px;
@@ -3473,35 +3526,40 @@ body:has(#auth-modal.modal.active) header {
     .table-modal-titlebar.instant-mode h2 {
         padding: 0 10px;
         font-size: 1rem;
-        height: 36px;
-        min-height: 36px;
+        height: 40px;
+        min-height: 40px;
         max-width: none;
         white-space: normal;
         overflow: hidden;
-        display: -webkit-box;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
         -webkit-line-clamp: 2;
         line-clamp: 2;
-        -webkit-box-orient: vertical;
         line-height: 1.2;
     }
     .table-modal-titlebar.instant-mode .instant-qty-controls {
         padding: 0 6px;
         gap: 4px;
-        height: 36px;
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
         border-radius: 10px;
     }
     .table-modal-titlebar.instant-mode .instant-qty-btn {
-        width: 36px;
-        height: 36px;
-        min-width: 36px;
-        min-height: 36px;
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+        max-height: 40px;
         border-radius: 8px;
         font-size: 1rem;
     }
     .table-modal-titlebar.instant-mode .instant-qty-input {
         width: 44px;
-        height: 36px;
-        min-height: 36px;
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
         border-radius: 8px;
         font-size: 0.9rem;
         padding: 0 4px;
@@ -3531,6 +3589,7 @@ body:has(#auth-modal.modal.active) header {
     text-shadow: none;
     height: 48px;
     min-height: 48px;
+    max-height: 48px;
     box-sizing: border-box;
     max-width: 300px;
     z-index: 1;
@@ -3542,7 +3601,8 @@ body:has(#auth-modal.modal.active) header {
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
-    height: 40px;
+    height: 48px;
+    min-height: 48px;
 }
 
 .table-modal-header-actions {
@@ -5249,7 +5309,8 @@ form select:focus {
     }
 
     .report-date-field label {
-        min-width: 70px;
+        min-width: 0;
+        width: max-content;
         font-size: 0.8rem;
         flex-shrink: 0;
     }
@@ -5517,7 +5578,8 @@ form select:focus {
     }
 
     .report-date-field label {
-        min-width: 60px;
+        min-width: 0;
+        width: max-content;
         font-size: 0.75rem;
     }
 
@@ -5842,14 +5904,55 @@ form select:focus {
         background: var(--dark-bg) !important;
     }
 
+    .table-modal-header {
+        min-height: 40px;
+    }
     .table-modal-header h2 {
         margin: 0;
         line-height: 1.1;
     }
 
+    .table-modal-titlebar.instant-mode {
+        min-height: 40px;
+        height: 40px;
+        max-height: 40px;
+    }
+    .table-modal-titlebar.instant-mode h2 {
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .instant-qty-controls {
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
+    }
+    .instant-qty-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+        max-height: 40px;
+    }
+    .instant-qty-input {
+        height: 40px;
+        min-height: 40px;
+        max-height: 40px;
+    }
+
+    .table-modal-header-buttons .close-header {
+        min-height: 40px;
+        height: 40px;
+    }
     .close-header {
         width: auto;
         height: 40px;
+        min-height: 40px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -5860,6 +5963,11 @@ form select:focus {
         top: auto;
         right: auto;
         margin-left: auto;
+    }
+
+    .table-modal-header-buttons {
+        height: 40px;
+        min-height: 40px;
     }
 
     /* Footer actions: fixed at bottom of modal */
@@ -6402,18 +6510,89 @@ form select:focus {
 
 /* Desktop optimizations - only for screens wider than 1024px */
 @media (min-width: 1024px) {
-    /* Table modal footer buttons - smaller and better spaced on desktop */
+    /* Table modal footer: kompakt (mobil gibi kocaman değil) */
+    .table-modal-footer {
+        flex-direction: row;
+        align-items: center;
+        gap: 20px;
+        flex-wrap: nowrap;
+    }
+    .table-info-footer .table-info-grid {
+        gap: 8px 12px;
+        padding: 0;
+    }
+    .table-modal-footer .table-info-grid span {
+        padding: 6px 12px;
+        height: 36px;
+        font-size: 0.9rem;
+    }
+    .table-modal-footer .table-info-grid span strong {
+        font-size: 0.85rem;
+    }
+    .table-modal-footer .table-info-grid span > span {
+        font-size: 0.9rem;
+    }
     .table-modal-footer .table-footer-buttons {
-        max-width: 500px;
-        gap: 16px;
+        max-width: 420px;
+        gap: 10px;
+        grid-template-columns: repeat(2, minmax(100px, 1fr));
     }
-    
     .table-modal-footer .table-footer-buttons .btn-footer {
-        padding: 14px 24px;
-        font-size: 0.95rem;
-        min-width: 140px;
+        padding: 10px 18px;
+        font-size: 0.9rem;
+        min-width: 100px;
+        height: 44px;
     }
-    
+    .table-modal-footer .table-footer-buttons #cancel-hourly-btn {
+        grid-column: 1 / -1;
+    }
+
+    /* Masa modalı ürün/sipariş listesi: ürün adı tam görünsün (kesilmesin) */
+    .sale-product-details {
+        min-width: 0;
+    }
+    .sale-product-name {
+        flex: 1 1 40%;
+        min-width: 140px;
+        max-width: 320px;
+        white-space: normal;
+        line-height: 1.3;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Müşteriler: masaüstünde masalar ile aynı düzen ve boyut */
+    .customers-grid {
+        grid-template-columns: repeat(6, 1fr);
+        gap: 20px;
+    }
+    .customer-card {
+        aspect-ratio: auto;
+        min-height: 100px;
+        padding: 14px 12px;
+        border-radius: 14px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .customer-card-content {
+        width: 100%;
+        text-align: center;
+    }
+    .customer-card h3 {
+        font-size: 0.95rem;
+        margin-bottom: 6px;
+    }
+    .customer-card-balance {
+        font-size: 0.95rem;
+        padding: 4px 10px;
+    }
+
     /* View header back button - better spacing for desktop */
     .view-header {
         padding: 12px 20px;
@@ -6457,10 +6636,36 @@ form select:focus {
         font-size: 1.4rem;
     }
     
-    /* Table info grid - better spacing */
+    /* Table info grid - better spacing (genel) */
     .table-info-grid {
-        gap: 16px 24px;
-        font-size: 0.95rem;
+        gap: 8px 12px;
+        font-size: 0.9rem;
+    }
+
+    /* Ürünler sayfası: isim tek harf kalmasın, tam veya 2 satır görünsün */
+    .product-card-name {
+        min-width: 140px;
+        white-space: normal;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.3;
+    }
+
+    /* Ürün kartları yatayda uzun olsun; düzenle/sil her zaman görünsün */
+    .products-grid {
+        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+        gap: 14px;
+    }
+    .product-card {
+        min-width: 0;
+        padding: 12px 18px;
+    }
+    .product-actions {
+        flex-shrink: 0;
     }
 }
 
@@ -6478,6 +6683,15 @@ form select:focus {
     .table-card {
         padding: 16px 14px;
     }
+
+    /* Müşteriler: geniş masaüstünde masalar gibi 8 sütun */
+    .customers-grid {
+        grid-template-columns: repeat(8, 1fr);
+        gap: 22px;
+    }
+    .customer-card {
+        padding: 16px 14px;
+    }
     
     .modal-content {
         max-width: 700px;
@@ -6485,7 +6699,7 @@ form select:focus {
     }
     
     .table-modal-footer .table-footer-buttons {
-        max-width: 600px;
-        gap: 20px;
+        max-width: 480px;
+        gap: 12px;
     }
 }

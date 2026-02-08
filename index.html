@@ -18,7 +18,8 @@
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <!-- Generated in dist/ by build.mjs on Cloudflare Pages -->
+    <!-- env.js: Supabase URL/anon key. Yoksa veya 500 verirse supabase-config.js varsayılanları kullanılır. -->
+    <script>window.__MEKANAPP_ENV__ = window.__MEKANAPP_ENV__ || {};</script>
     <script src="env.js"></script>
 </head>
 <body>
@@ -291,11 +292,13 @@
                         <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-plus" aria-label="Arttır">+</button>
                     </div>
                 </div>
-                <button type="button" class="close-header move-table-btn" id="move-table-btn" aria-label="Masaya Taşı" style="display: none;"><span class="close-txt">Taşı</span></button>
-                <button type="button" class="close close-header" aria-label="Geri">
-                    <span class="close-ico" aria-hidden="true">❮</span>
-                    <span class="close-txt">Geri</span>
-                </button>
+                <div class="table-modal-header-buttons">
+                    <button type="button" class="close-header move-table-btn" id="move-table-btn" aria-label="Masaya Taşı" style="display: none;"><span class="close-txt">Taşı</span></button>
+                    <button type="button" class="close close-header" aria-label="Geri">
+                        <span class="close-ico" aria-hidden="true">❮</span>
+                        <span class="close-txt">Geri</span>
+                    </button>
+                </div>
             </div>
             <div id="table-modal-body">
                 <!-- Products Selection Section (shown when table is open or regular table) -->
@@ -410,6 +413,7 @@
                         <option value="su">Su (Mavi Şişe)</option>
                         <option value="kasar">Kaşar Peyniri</option>
                         <option value="sigara">Sigara</option>
+                        <option value="viski">Viski (Kadehi)</option>
                         <option value="☕">☕ Kahve</option>
                         <option value="🍵">🍵 Çay</option>
                         <option value="🫖">🫖 Demlik</option>
