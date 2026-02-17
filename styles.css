@@ -6498,7 +6498,9 @@ form select:focus {
     }
     .product-mini-ico-lg {
         font-size: 1.55rem !important;
-        margin-bottom: 2px !important;
+        /* Mobilde ikon kartın üstüne yapışmasın diye biraz aşağı al */
+        margin-top: 4px !important;
+        margin-bottom: 4px !important;
     }
     .product-card-mini-qty.table-product-qty-controls {
         gap: 2px !important;
