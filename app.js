@@ -77,6 +77,7 @@ class MekanApp {
         this._tableModalForceRefreshIds = new Set(); // after transfer, next open of target must skip cache
         this._transferCardStateCache = new Map(); // tableId -> { until, state } – prevent realtime/interval from overwriting for a few sec
         this._loadTablesInProgress = false; // Tek seferde bir loadTables; senkronizasyon için
+        this._debouncedLoadTables = null; // Arka arkaya ürün eklerken loadTables tek seferde
         this.currentUser = null;
         this.userRole = null; // 'admin' or 'garson'
         this._hapticEnabled = 'vibrate' in navigator;
@@ -914,48 +915,51 @@ class MekanApp {
     // ---------- Görünüm & navigasyon ----------
     async loadInitialData() {
         try {
-            // Ensure instant sale table exists (non-blocking)
-            this.ensureInstantSaleTable().catch(err => {
-                console.error('Error ensuring instant sale table:', err);
-                // Non-critical - can be created later
+            // İlk açılış: sadece masa listesi + hesap totalleri + açıklık (local veri) – ekran hemen açılsın
+            await this.loadTablesLight().catch(err => {
+                console.error('Error loading tables (light):', err);
             });
-            
-            // Load views in parallel with individual error handling
-            // This ensures that if one view fails, others can still load
-            const viewPromises = [
-                this.loadTables().catch(err => {
-                    console.error('Error loading tables:', err);
-                    return false;
-                }),
-                this.loadProducts().catch(err => {
-                    console.error('Error loading products:', err);
-                    return false;
-                }),
-                this.loadCustomers().catch(err => {
-                    console.error('Error loading customers:', err);
-                    return false;
-                }),
-                this.loadSales().catch(err => {
-                    console.error('Error loading sales:', err);
-                    return false;
-                })
-            ];
-            
-            await Promise.allSettled(viewPromises);
-            
-            // Start auto-update for table cards if we're on the tables view (default view)
             if (this.currentView === 'tables') {
                 try {
-                this.startTableCardPriceUpdates();
+                    this.startTableCardPriceUpdates();
                 } catch (err) {
                     console.error('Error starting table card updates:', err);
-                    // Non-critical
                 }
             }
+            // Diğer verileri arka planda çek; bitince sync + tam masa listesi
+            this.loadRestOfInitialDataAsync();
         } catch (error) {
             console.error('Error loading initial data:', error, error?.message, error?.details, error?.hint, error?.code);
-            // Continue anyway - some data might still load
         }
+    }
+
+    /** Arka planda: anlık satış masası, ürünler, müşteriler, satışlar; sonra sync + tam loadTables */
+    loadRestOfInitialDataAsync() {
+        Promise.all([
+            this.ensureInstantSaleTable().catch(err => {
+                console.error('Error ensuring instant sale table:', err);
+                return null;
+            }),
+            this.loadProducts().catch(err => {
+                console.error('Error loading products:', err);
+                return false;
+            }),
+            this.loadCustomers().catch(err => {
+                console.error('Error loading customers:', err);
+                return false;
+            }),
+            this.loadSales().catch(err => {
+                console.error('Error loading sales:', err);
+                return false;
+            })
+        ]).then(() => {
+            if (typeof this.db?.syncTablesFull === 'function') {
+                return this.db.syncTablesFull().catch(() => {}).then(() => this.loadTables());
+            }
+            return this.loadTables();
+        }).catch(err => {
+            console.error('Error in loadRestOfInitialDataAsync:', err);
+        });
     }
 
     async ensureInstantSaleTable() {
@@ -1162,6 +1166,190 @@ class MekanApp {
     }
 
     // ---------- Tables (liste ve kartlar) ----------
+    /** İlk açılışta hızlı ekran: sadece local masalar + hesap totalleri + açıklık. Sync ve diğer veriler sonra. */
+    async loadTablesLight() {
+        const container = document.getElementById('tables-container');
+        if (!container) return;
+        this.setTablesLoading(true);
+        try {
+            // İlk açılışta (local DB boşsa veya sadece instant table varsa) önce Supabase'den çek
+            let tables = await this.db.getAllTables() || [];
+            const isFirstLoad = tables.length === 0 || (tables.length === 1 && tables.find(t => t.type === 'instant'));
+            
+            if (isFirstLoad && typeof this.db?.syncTablesFull === 'function') {
+                try {
+                    // İlk açılışta direkt Supabase'den çek (local değil) - her zaman güncel veri
+                    await Promise.race([
+                        this.db.syncTablesFull(),
+                        new Promise((r) => setTimeout(r, 5000))
+                    ]).catch(() => {});
+                    tables = await this.db.getAllTables() || [];
+                } catch (_) {}
+            } else if (!isFirstLoad && typeof this.db?.syncTablesFull === 'function') {
+                // Sonraki açılışlarda: önce local göster, arka planda sync yap (hızlı açılış)
+                // Local veriler zaten yüklendi, sync arka planda devam edecek
+            }
+            if (tables.length === 0) {
+                this.updateHeaderOpenTablesTotal(0);
+                container.innerHTML = this.createEmptyState('tables') + this.createAddTableCard();
+                const addCard = document.getElementById('add-table-card');
+                if (addCard) addCard.onclick = () => this.openTableFormModal();
+                return;
+            }
+            const instantTable = tables.find(t => t.type === 'instant');
+            tables = tables.filter(t => t.type !== 'instant');
+            tables.sort((a, b) => {
+                if (a.type === 'hourly' && b.type !== 'hourly') return -1;
+                if (a.type !== 'hourly' && b.type === 'hourly') return 1;
+                const iconA = a.icon || (a.type === 'hourly' ? '🎱' : '🪑');
+                const iconB = b.icon || (b.type === 'hourly' ? '🎱' : '🪑');
+                if (iconA !== iconB) return iconA.localeCompare(iconB);
+                return a.name.localeCompare(b.name, 'tr', { sensitivity: 'base' });
+            });
+            // Tüm unpaid sales'leri bir kerede çek (her masa için ayrı çağrı yerine)
+            let allUnpaidSales = [];
+            try {
+                const allSales = await this.db.getAllSales() || [];
+                allUnpaidSales = allSales.filter(s => !s.isPaid);
+            } catch (_) {}
+            
+            // Masalara göre grupla
+            const salesByTableId = new Map();
+            for (const sale of allUnpaidSales) {
+                if (!sale.tableId) continue;
+                const tableId = String(sale.tableId);
+                if (!salesByTableId.has(tableId)) {
+                    salesByTableId.set(tableId, []);
+                }
+                salesByTableId.get(tableId).push(sale);
+            }
+            
+            for (const table of tables) {
+                if (this._isTableSettling(table.id)) continue;
+                const unpaidSales = salesByTableId.get(String(table.id)) || [];
+                const computedSalesTotal = unpaidSales.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+                table._computedSalesTotal = computedSalesTotal;
+                if (table.type === 'hourly' && table.isActive && table.openTime) {
+                    const hoursUsed = calculateHoursUsed(table.openTime);
+                    table._computedHourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                    table._computedCheckTotal = table._computedHourlyTotal + computedSalesTotal;
+                } else {
+                    table._computedHourlyTotal = 0;
+                    table._computedCheckTotal = computedSalesTotal;
+                }
+                if (unpaidSales.length > 0 && table.type !== 'hourly') table.isActive = true;
+            }
+            for (const t of tables) {
+                if (t.type !== 'hourly' && t.type !== 'instant' && (Number(t._computedSalesTotal) || 0) > 0) t.isActive = true;
+            }
+            const headerTotal = this.sumOpenTablesCheckTotal(tables);
+            this.updateHeaderOpenTablesTotal(headerTotal);
+            const tableCards = await Promise.all(tables.map(table => this.createTableCard(table)));
+            container.innerHTML = tableCards.join('') + this.createAddTableCard();
+            const addCard = document.getElementById('add-table-card');
+            if (addCard) addCard.onclick = () => this.openTableFormModal();
+            tables.forEach(table => {
+                const card = document.getElementById(`table-${table.id}`);
+                if (!card) return;
+                this.setupSwipeGesture(card, table);
+                const delayBtn = card.querySelector('.table-delay-btn');
+                if (delayBtn) delayBtn.addEventListener('click', async (e) => { e.preventDefault(); e.stopPropagation(); await this.openDelayedStartModal(table.id); });
+                let pressTimer = null, hasLongPressed = false;
+                const startLongPress = () => {
+                    hasLongPressed = false;
+                    if (table.type === 'instant') return;
+                    pressTimer = setTimeout(async () => {
+                        hasLongPressed = true;
+                        if (await this.appConfirm(`"${table.name}" masasını silmek istediğinize emin misiniz?`, { title: 'Masa Sil', confirmText: 'Sil', cancelText: 'Vazgeç', confirmVariant: 'danger' })) {
+                            this.showTableCardProcessing(table.id, 'Siliniyor...', 'cancel');
+                            try {
+                                await this.db.deleteTable(table.id);
+                                await this.loadTables();
+                                if (this.currentView === 'daily') await this.loadDailyDashboard();
+                            } catch (err) {
+                                console.error('Masa silinirken hata:', err);
+                                this.hideTableCardProcessing(table.id);
+                                await this.appAlert('Masa silinirken hata oluştu.', 'Hata');
+                            } finally {
+                                this.hideTableCardProcessing(table.id);
+                            }
+                        }
+                        setTimeout(() => { hasLongPressed = false; }, 100);
+                    }, 3000);
+                };
+                const cancelLongPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+                const prefetchTableData = async () => {
+                    const cached = this._tableModalPrefetchCache.get(table.id);
+                    const now = Date.now();
+                    if (!cached || (now - cached.timestamp) >= this._tableModalPrefetchTimeout) {
+                        Promise.all([
+                            this.db.getTable(table.id).catch(() => null),
+                            this.db.getUnpaidSalesByTable(table.id).catch(() => []),
+                            this.db.getAllProducts().then(products => this.sortProductsByStock(products)).catch(() => [])
+                        ]).then(([tableData, sales, products]) => {
+                            if (tableData) this._tableModalPrefetchCache.set(table.id, { table: tableData, sales, products, timestamp: now });
+                        }).catch(() => {});
+                    }
+                };
+                card.addEventListener('touchstart', () => { startLongPress(); prefetchTableData(); }, { passive: true });
+                card.addEventListener('touchend', cancelLongPress);
+                card.addEventListener('touchcancel', cancelLongPress);
+                card.addEventListener('mousedown', () => { startLongPress(); prefetchTableData(); });
+                card.addEventListener('mouseup', cancelLongPress);
+                card.addEventListener('mouseleave', cancelLongPress);
+                if (table.type === 'hourly') {
+                    let tapTimer = null, tapCount = 0;
+                    card.addEventListener('click', async (e) => {
+                        if (hasLongPressed) { hasLongPressed = false; return; }
+                        cancelLongPress();
+                        e.preventDefault();
+                        const current = await this.db.getTable(table.id);
+                        if (current && current.openTime) {
+                            clearTimeout(tapTimer);
+                            tapCount = 0;
+                            this.openTableModal(table.id, { preSync: true });
+                            return;
+                        }
+                        tapCount++;
+                        if (tapCount === 1) {
+                            tapTimer = setTimeout(() => { tapCount = 0; }, 300);
+                        } else if (tapCount === 2) {
+                            clearTimeout(tapTimer);
+                            tapCount = 0;
+                            this.currentTableId = table.id;
+                            this.setTableCardOpening(table.id, true);
+                            const startTime = Date.now();
+                            try {
+                                await this.openTable();
+                            } finally {
+                                const elapsed = Date.now() - startTime;
+                                if (elapsed < 2000) await new Promise(r => setTimeout(r, 2000 - elapsed));
+                                else await new Promise(r => setTimeout(r, 50));
+                                this.setTableCardOpening(table.id, false);
+                                try {
+                                    const updatedTable = await this.db.getTable(table.id);
+                                    if (updatedTable) {
+                                        this.setTableCardState(table.id, { isActive: true, type: 'hourly', openTime: updatedTable.openTime || new Date().toISOString(), hourlyRate: updatedTable.hourlyRate || 0, salesTotal: updatedTable.salesTotal || 0, checkTotal: updatedTable.checkTotal || 0 });
+                                        if (this.refreshSingleTableCard) await this.refreshSingleTableCard(table.id);
+                                    }
+                                } catch (err) {}
+                            }
+                        }
+                    });
+                } else {
+                    card.addEventListener('click', (e) => {
+                        if (hasLongPressed) { hasLongPressed = false; return; }
+                        cancelLongPress();
+                        this.openTableModal(table.id, { preSync: true });
+                    });
+                }
+            });
+            if (this.currentView === 'tables') this.updateTableCardPrices();
+        } finally {
+            this.setTablesLoading(false);
+        }
+    }
+
     async loadTables() {
         const container = document.getElementById('tables-container');
         if (!container) {
@@ -2259,6 +2447,30 @@ class MekanApp {
         card.classList.remove('table-card-processing');
     }
 
+    showProductCardFeedback(card, amount, productName) {
+        if (!card) return;
+        
+        // Remove any existing feedback
+        const existing = card.querySelector('.product-card-feedback');
+        if (existing) existing.remove();
+        
+        // Add success class for green background
+        card.classList.add('product-card-success');
+        
+        // Create feedback message overlay
+        const feedback = document.createElement('div');
+        feedback.className = 'product-card-feedback';
+        feedback.textContent = `${amount} adet ${productName} eklendi`;
+        card.appendChild(feedback);
+        
+        // Remove feedback after 1.5 seconds
+        setTimeout(() => {
+            card.classList.remove('product-card-success');
+            const feedbackEl = card.querySelector('.product-card-feedback');
+            if (feedbackEl) feedbackEl.remove();
+        }, 1500);
+    }
+
     async getInstantTableDailyTotal(tableId) {
         try {
             const allSales = await this.db.getAllSales();
@@ -2676,12 +2888,8 @@ class MekanApp {
             // Track current table type for UI behaviors (e.g. instant sale qty)
             this.currentTableType = table.type;
 
-            // Instant sale: show qty controls next to title; default 1 every time modal opens
-            this.setupInstantSaleQtyControls?.();
-            this.setInstantSaleQtyControlsVisible?.(table.type === 'instant');
-            if (table.type === 'instant') {
-                this.setInstantSaleQty?.(1);
-            }
+            // Anlık satış için header'daki qty kontrollerini gizle (artık her kartta kendi kontrolleri var)
+            this.setInstantSaleQtyControlsVisible?.(false);
 
         // Get all unpaid sales for this table and compute totals from sales (avoid stale table aggregates)
         // ALWAYS fetch fresh unpaid sales - don't use cache to avoid stale data causing button visibility issues
@@ -2938,13 +3146,34 @@ class MekanApp {
                     container.addEventListener('click', async (e) => {
                         const card = e.target.closest('.product-card-mini');
                         if (!card) return;
+                        if (e.target.closest('.table-product-qty-minus')) {
+                            const input = card.querySelector('.table-product-qty-input');
+                            if (input) {
+                                const v = Math.max(1, (parseInt(input.value, 10) || 1) - 1);
+                                input.value = String(v);
+                            }
+                            e.stopPropagation();
+                            return;
+                        }
+                        if (e.target.closest('.table-product-qty-plus')) {
+                            const input = card.querySelector('.table-product-qty-input');
+                            if (input) {
+                                const v = Math.min(99, (parseInt(input.value, 10) || 1) + 1);
+                                input.value = String(v);
+                            }
+                            e.stopPropagation();
+                            return;
+                        }
+                        if (e.target.closest('.table-product-qty-input')) {
+                            e.stopPropagation();
+                            return;
+                        }
                         if (card.classList.contains('out-of-stock')) return;
                         const pid = card.getAttribute('data-product-id');
                         const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                         if (!pid || !tid) return;
-                        const amount = (this.currentTableType === 'instant')
-                            ? this.getInstantSaleQty?.()
-                            : 1;
+                        const input = card.querySelector('.table-product-qty-input');
+                        const amount = input ? Math.max(1, Math.min(99, parseInt(input.value, 10) || 1)) : 1;
                         this.queueQuickAddToTable(tid, pid, amount);
                     });
                 }
@@ -3330,13 +3559,34 @@ class MekanApp {
                 container.addEventListener('click', async (e) => {
                     const card = e.target.closest('.product-card-mini');
                     if (!card) return;
+                    if (e.target.closest('.table-product-qty-minus')) {
+                        const input = card.querySelector('.table-product-qty-input');
+                        if (input) {
+                            const v = Math.max(1, (parseInt(input.value, 10) || 1) - 1);
+                            input.value = String(v);
+                        }
+                        e.stopPropagation();
+                        return;
+                    }
+                    if (e.target.closest('.table-product-qty-plus')) {
+                        const input = card.querySelector('.table-product-qty-input');
+                        if (input) {
+                            const v = Math.min(99, (parseInt(input.value, 10) || 1) + 1);
+                            input.value = String(v);
+                        }
+                        e.stopPropagation();
+                        return;
+                    }
+                    if (e.target.closest('.table-product-qty-input')) {
+                        e.stopPropagation();
+                        return;
+                    }
                     if (card.classList.contains('out-of-stock')) return;
                     const pid = card.getAttribute('data-product-id');
                     const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                     if (!pid || !tid) return;
-                    const amount = (this.currentTableType === 'instant')
-                        ? this.getInstantSaleQty?.()
-                        : 1;
+                    const input = card.querySelector('.table-product-qty-input');
+                    const amount = input ? Math.max(1, Math.min(99, parseInt(input.value, 10) || 1)) : 1;
                     this.queueQuickAddToTable(tid, pid, amount);
                 });
             }
@@ -3365,14 +3615,34 @@ class MekanApp {
             container.addEventListener('click', async (e) => {
                 const card = e.target.closest('.product-card-mini');
                 if (!card) return;
+                if (e.target.closest('.table-product-qty-minus')) {
+                    const input = card.querySelector('.table-product-qty-input');
+                    if (input) {
+                        const v = Math.max(1, (parseInt(input.value, 10) || 1) - 1);
+                        input.value = String(v);
+                    }
+                    e.stopPropagation();
+                    return;
+                }
+                if (e.target.closest('.table-product-qty-plus')) {
+                    const input = card.querySelector('.table-product-qty-input');
+                    if (input) {
+                        const v = Math.min(99, (parseInt(input.value, 10) || 1) + 1);
+                        input.value = String(v);
+                    }
+                    e.stopPropagation();
+                    return;
+                }
+                if (e.target.closest('.table-product-qty-input')) {
+                    e.stopPropagation();
+                    return;
+                }
                 if (card.classList.contains('out-of-stock')) return;
                 const pid = card.getAttribute('data-product-id');
                 const tid = card.closest('#table-products-grid')?.getAttribute('data-table-id');
                 if (!pid || !tid) return;
-                // Fast taps should stack and be processed serially so stock decrements correctly.
-                const amount = (this.currentTableType === 'instant')
-                    ? this.getInstantSaleQty?.()
-                    : 1;
+                const input = card.querySelector('.table-product-qty-input');
+                const amount = input ? Math.max(1, Math.min(99, parseInt(input.value, 10) || 1)) : 1;
                 this.queueQuickAddToTable(tid, pid, amount);
             });
         }
@@ -3381,16 +3651,20 @@ class MekanApp {
     createTableProductCard(product, tableId) {
         const tracksStock = this.tracksStock(product);
         const isOutOfStock = tracksStock && product.stock === 0;
-        const stockText = !tracksStock ? '∞' : (isOutOfStock ? 'Stok Yok' : `${product.stock}`);
-        const stockClass = isOutOfStock ? 'stock-out' : (!tracksStock ? 'stock-high' : (product.stock < 10 ? 'stock-low' : 'stock-high'));
         const catClass = this.getProductCategoryClass?.(product) || '';
         const iconHtml = this.renderProductIcon?.(product.icon) || (product.icon || '📦');
+        const qtyRow = `
+            <div class="product-card-mini-qty table-product-qty-controls">
+                <button type="button" class="btn btn-secondary table-product-qty-minus" aria-label="Azalt">−</button>
+                <input class="table-product-qty-input" type="number" min="1" max="99" value="1" inputmode="numeric" />
+                <button type="button" class="btn btn-secondary table-product-qty-plus" aria-label="Arttır">+</button>
+            </div>`;
 
         return `
             <div class="product-card-mini ${catClass} ${isOutOfStock ? 'out-of-stock' : ''}" id="table-product-card-${product.id}" data-product-id="${product.id}" title="${product.name}">
                 <div class="product-mini-ico-lg" aria-hidden="true">${iconHtml}</div>
                 <div class="product-mini-name">${product.name}</div>
-                <div class="product-mini-stock ${stockClass}">Stok: ${stockText}</div>
+                ${qtyRow}
             </div>
         `;
     }
@@ -5716,19 +5990,9 @@ class MekanApp {
             table.checkTotal = table.hourlyTotal + table.salesTotal;
             await this.db.updateTable(table);
 
-            // Close modal immediately before reload
-            this.closeAddProductModal();
-
-            // Reload modal content in parallel
-            // Don't use cache here - we need fresh data after adding a product
-            await Promise.all([
-                this.loadTableProducts(tableId, { useCache: false }),
-                this.loadTableSales(tableId)
-            ]);
-            
-            // Update table totals in modal
+            // Modal açık kalsın; sadece satış listesi ve toplam güncellensin (takılma azalsın)
+            await this.loadTableSales(tableId);
             const updatedTable = await this.db.getTable(tableId);
-            // Ensure totals are computed from sales (avoid stale aggregated columns)
             try {
                 const unpaid = await this.db.getUnpaidSalesByTable(tableId);
                 const salesTotal = (unpaid || []).reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
@@ -5740,29 +6004,26 @@ class MekanApp {
                     updatedTable.hourlyTotal = updatedTable.hourlyTotal || 0;
                 }
                 updatedTable.checkTotal = (updatedTable.hourlyTotal || 0) + salesTotal;
-            } catch (_) {
-                // ignore
-            }
+            } catch (_) {}
             await this.updateModalTotals(updatedTable);
-            
-            // If modal is still open, ensure buttons are visible
             if (this.currentTableId === tableId) {
-                // Force refresh button visibility
                 const payBtn = document.getElementById('pay-table-btn');
                 const creditBtn = document.getElementById('credit-table-btn');
-                if (payBtn && updatedTable.checkTotal > 0) {
-                    payBtn.style.display = 'inline-block';
-                }
-                if (creditBtn && updatedTable.checkTotal > 0) {
-                    creditBtn.style.display = 'inline-block';
+                if (payBtn && updatedTable.checkTotal > 0) payBtn.style.display = 'inline-block';
+                if (creditBtn && updatedTable.checkTotal > 0) creditBtn.style.display = 'inline-block';
+                // Eklenen ürün kartındaki adeti varsayılan 1 yap ve geri bildirim göster
+                const card = document.querySelector(`#table-products-grid .product-card-mini[data-product-id="${productId}"]`);
+                const qtyInput = card?.querySelector('.table-product-qty-input');
+                if (qtyInput) qtyInput.value = '1';
+                if (card) {
+                    this.showProductCardFeedback(card, amount, product.name);
                 }
             }
-            
-            // Reload views in parallel
-            const reloadPromises = [this.loadTables()];
-            if (this.currentView === 'products') reloadPromises.push(this.loadProducts());
-            if (this.currentView === 'daily') reloadPromises.push(this.loadDailyDashboard());
-            await Promise.all(reloadPromises);
+            // Masalar listesini debounce ile güncelle (arka arkaya eklemede tek seferde)
+            if (!this._debouncedLoadTables) this._debouncedLoadTables = debounce(() => this.loadTables(), 400);
+            this._debouncedLoadTables();
+            if (this.currentView === 'products') this.loadProducts().catch(() => {});
+            if (this.currentView === 'daily') this.loadDailyDashboard().catch(() => {});
         } catch (error) {
             console.error('Ürün eklenirken hata:', error);
             await this.appAlert('Ürün eklenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
@@ -5837,11 +6098,33 @@ class MekanApp {
             
             await this.db.updateTable(table);
 
+            // Hemen masa kartını güncelle (loadTables çağrısından önce - geçici kapanma görünmesin)
+            const remainingUnpaidSalesAfterUpdate = await this.db.getUnpaidSalesByTable(sale.tableId);
+            const computedSalesTotal = remainingUnpaidSalesAfterUpdate.reduce((sum, s) => sum + (Number(s?.saleTotal) || 0), 0);
+            let computedHourlyTotal = 0;
+            let computedCheckTotal = computedSalesTotal;
+            if (table.type === 'hourly' && table.isActive && table.openTime) {
+                const hoursUsed = calculateHoursUsed(table.openTime);
+                computedHourlyTotal = hoursUsed * (table.hourlyRate || 0);
+                computedCheckTotal = computedHourlyTotal + computedSalesTotal;
+            }
+            const isTableActive = remainingUnpaidSalesAfterUpdate.length > 0 || (table.type === 'hourly' && table.openTime);
+            this.setTableCardState(sale.tableId, {
+                isActive: isTableActive,
+                type: table.type,
+                openTime: table.openTime,
+                hourlyRate: table.hourlyRate || 0,
+                salesTotal: computedSalesTotal,
+                checkTotal: computedCheckTotal
+            });
+
             // Reload products list in the modal and refresh modal content
             // Don't use cache here - we need fresh data after deleting a product
             await this.loadTableProducts(sale.tableId, { useCache: false });
             await this.openTableModal(sale.tableId);
-            await this.loadTables();
+            // loadTables'ı debounce ile çağır (kart zaten güncellendi)
+            if (!this._debouncedLoadTables) this._debouncedLoadTables = debounce(() => this.loadTables(), 400);
+            this._debouncedLoadTables();
             
             // Update products view if it's currently active (to show updated stock)
             if (this.currentView === 'products') {
@@ -6128,12 +6411,12 @@ class MekanApp {
                 });
             }
             
-            // Background refresh
+            // Background refresh - biraz gecikmeli (DB güncellemesi tamamlansın, kart zaten güncellendi)
             setTimeout(() => {
                 const views = ['tables', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 100);
+            }, 500);
         } catch (error) {
             console.error('Ödeme işlenirken hata:', error);
             this.hideTableCardProcessing(tableId);
@@ -6376,17 +6659,17 @@ class MekanApp {
             customer.balance = (customer.balance || 0) + finalCheckTotal;
             await this.db.updateCustomer(customer);
 
-            // Update UI with final state
-            if (result.table) {
-                this.setTableCardState(tableId, {
-                    isActive: false,
-                    type: result.table.type,
-                    openTime: result.table.type === 'hourly' ? null : result.table.openTime,
-                    hourlyRate: result.table.hourlyRate || 0,
-                    salesTotal: 0,
-                    checkTotal: 0
-                });
-            }
+            // Update UI with final state - ensure closed state
+            const finalState = {
+                isActive: false,
+                type: result.table?.type || table.type,
+                openTime: null,
+                hourlyRate: result.table?.hourlyRate || table.hourlyRate || 0,
+                salesTotal: 0,
+                checkTotal: 0,
+                hourlyTotal: 0
+            };
+            this.setTableCardState(tableId, finalState);
 
             // Wait for DB operations to complete
             await new Promise(resolve => setTimeout(resolve, 1500));
@@ -6394,12 +6677,27 @@ class MekanApp {
             // Hide processing overlay
             this.hideTableCardProcessing(tableId);
             
-            // Background refresh (don't block UI)
+            // Final verification: ensure table state is correct
+            const finalCheck = await this.db.getTable(tableId);
+            if (finalCheck && (finalCheck.isActive || (finalCheck.type === 'hourly' && finalCheck.openTime))) {
+                finalCheck.isActive = false;
+                finalCheck.openTime = null;
+                finalCheck.closeTime = finalCheck.closeTime || new Date().toISOString();
+                finalCheck.salesTotal = 0;
+                finalCheck.checkTotal = 0;
+                if (finalCheck.type === 'hourly') {
+                    finalCheck.hourlyTotal = 0;
+                }
+                await this.db.updateTable(finalCheck);
+                this.setTableCardState(tableId, finalState);
+            }
+            
+            // Background refresh - biraz gecikmeli (DB güncellemesi tamamlansın, kart zaten güncellendi)
             setTimeout(() => {
                 const views = ['tables', 'customers', 'sales'];
                 if (this.currentView === 'daily') views.push('daily');
                 this.reloadViews(views);
-            }, 100);
+            }, 500);
         } catch (error) {
             console.error('Veresiye yazılırken hata:', error);
             this.hideTableCardProcessing(tableId);
@@ -6833,33 +7131,19 @@ class MekanApp {
     }
 
     createProductCard(product) {
-        const tracksStock = this.tracksStock(product);
         const iconHtml = this.renderProductIcon?.(product.icon) || (product.icon || '📦');
-        let stockClass = 'stock-high';
-        let stockText = '';
-        
-        // Only admin can see stock information
-        if (this.isAdmin()) {
-        if (!tracksStock) {
-            stockClass = 'stock-high';
-                stockText = '∞';
-        } else if (product.stock === 0) {
-            stockClass = 'stock-out';
-                stockText = '0';
-        } else if (product.stock < 10) {
-            stockClass = 'stock-low';
-                stockText = `${product.stock}`;
-        } else {
-                stockText = `${product.stock}`;
-            }
-        }
+        const tracksStock = this.tracksStock(product);
+        const stockText = !tracksStock ? '∞' : (product.stock === 0 ? 'Stok Yok' : `${product.stock}`);
+        const stockClass = !tracksStock ? 'stock-high' : (product.stock === 0 ? 'stock-out' : (product.stock < 10 ? 'stock-low' : 'stock-high'));
 
         return `
             <div class="product-card" data-product-id="${product.id}">
                 <div class="product-card-icon">${iconHtml}</div>
                 <div class="product-card-name">${product.name}</div>
-                <div class="product-card-price">${Math.round(product.price)} ₺</div>
-                ${this.isAdmin() ? `<div class="product-card-stock ${stockClass}">${stockText}</div>` : ''}
+                <div class="product-card-price-stock">
+                    <span class="product-card-price">${Math.round(product.price)} ₺</span>
+                    <span class="product-card-stock ${stockClass}">Stok: ${stockText}</span>
+                </div>
                 <div class="product-actions">
                     ${this.isAdmin() ? `
                     <button class="btn btn-primary btn-icon" id="edit-product-${product.id}" title="Düzenle">✎</button>
@@ -6870,7 +7154,7 @@ class MekanApp {
         `;
     }
 
-    openProductFormModal(product = null) {
+    async openProductFormModal(product = null) {
         // Only admin can add/edit products
         if (!this.isAdmin()) {
             this.appAlert('Ürün ekleme/düzenleme yetkiniz yok. Lütfen yönetici ile iletişime geçin.', 'Yetki Yok');
@@ -6905,11 +7189,19 @@ class MekanApp {
         document.getElementById('product-track-stock').addEventListener('change', handleTrackStockChange);
         
         if (product) {
+            if (product.id != null) {
+                try {
+                    const fresh = await this.db.getProduct(product.id);
+                    if (fresh) product = fresh;
+                } catch (_) {}
+            }
             title.textContent = 'Ürünü Düzenle';
-            document.getElementById('product-id').value = product.id;
+            const productId = product.id;
+            document.getElementById('product-id').value = productId;
             document.getElementById('product-name').value = product.name;
-            document.getElementById('product-price').value = product.price;
-            document.getElementById('product-arrival-price').value = product.arrivalPrice || 0;
+            const priceVal = product.price;
+            document.getElementById('product-price').value = priceVal != null && priceVal !== '' ? Number(priceVal) : '';
+            document.getElementById('product-arrival-price').value = product.arrivalPrice ?? 0;
             if (iconSelect) iconSelect.value = product.icon || '📦';
             if (categorySelect) categorySelect.value = this.getProductCategoryKey(product);
             
@@ -6963,14 +7255,28 @@ class MekanApp {
     async saveProduct() {
         const id = document.getElementById('product-id').value;
         const name = document.getElementById('product-name').value;
-        const price = parseFloat(document.getElementById('product-price').value);
+        const priceRaw = document.getElementById('product-price').value;
+        const price = Number(priceRaw);
         const arrivalPrice = parseFloat(document.getElementById('product-arrival-price').value) || 0;
         const icon = (document.getElementById('product-icon')?.value || '📦');
         const category = (document.getElementById('product-category')?.value || 'soft');
         const trackStock = document.getElementById('product-track-stock').checked;
-        const stock = trackStock ? parseInt(document.getElementById('product-stock').value) : null;
+        const stock = trackStock ? parseInt(document.getElementById('product-stock').value, 10) : null;
 
-        const productData = { name, price, arrivalPrice, icon, category, stock, trackStock };
+        if (Number.isNaN(price) || price < 0) {
+            await this.appAlert('Lütfen geçerli bir fiyat girin.', 'Uyarı');
+            return;
+        }
+
+        const productData = {
+            name,
+            price: price,
+            arrivalPrice: Number.isNaN(arrivalPrice) ? 0 : arrivalPrice,
+            icon,
+            category,
+            stock: trackStock && stock != null && !Number.isNaN(stock) ? stock : null,
+            trackStock
+        };
 
         try {
             if (id) {
@@ -6979,9 +7285,9 @@ class MekanApp {
             } else {
                 await this.db.addProduct(productData);
             }
-            
             this.closeFormModal('product-modal');
-            await this.loadProducts(true); // Reset pagination
+            this._allProducts = null;
+            await this.loadProducts(true);
         } catch (error) {
             console.error('Ürün kaydedilirken hata:', error);
             await this.appAlert('Ürün kaydedilirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
