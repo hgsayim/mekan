@@ -293,7 +293,22 @@ header h1 {
     opacity: 0.9;
 }
 
-/* Products add icon bubble */
+/* Products add card: kare kart, masa kartıyla uyumlu */
+.product-card.add-card .product-card-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+.product-card.add-card .product-card-content h3 {
+    margin: 0 0 4px 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+.product-card.add-card .product-card-details {
+    font-size: 0.75rem;
+}
 .product-card.add-card .product-card-icon {
     background: rgba(37, 99, 235, 0.12);
 }
@@ -1016,10 +1031,18 @@ header h1 {
         grid-template-columns: repeat(6, 1fr);
         gap: 20px;
     }
+    .products-grid {
+        grid-template-columns: repeat(6, 1fr);
+        gap: 20px;
+    }
 }
 
 @media (min-width: 1400px) {
     .tables-grid {
+        grid-template-columns: repeat(8, 1fr);
+        gap: 22px;
+    }
+    .products-grid {
         grid-template-columns: repeat(8, 1fr);
         gap: 22px;
     }
@@ -1493,6 +1516,62 @@ header h1 {
     background: linear-gradient(135deg, rgba(255, 140, 0, 0.98) 0%, rgba(230, 126, 34, 0.98) 100%);
 }
 
+/* Masa kartında "x adet [ürün] eklendi" geri bildirimi */
+.table-card-added-feedback {
+    position: relative;
+    overflow: hidden;
+}
+
+.table-card-added-feedback .table-card-added-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.2;
+    color: #1b5e20;
+    background: linear-gradient(135deg, rgba(232, 245, 233, 0.98) 0%, rgba(200, 230, 201, 0.98) 100%);
+    z-index: 10;
+    pointer-events: none;
+}
+
+[data-theme="dark"] .table-card-added-feedback .table-card-added-msg {
+    color: #a5d6a7;
+    background: linear-gradient(135deg, rgba(27, 61, 31, 0.98) 0%, rgba(46, 92, 51, 0.98) 100%);
+}
+
+/* Masa kartında "x adet [ürün] silindi" geri bildirimi (kırmızı, ekleme ile aynı stil) */
+.table-card-deleted-feedback {
+    position: relative;
+    overflow: hidden;
+}
+
+.table-card-deleted-feedback .table-card-deleted-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.2;
+    color: #b71c1c;
+    background: linear-gradient(135deg, rgba(255, 235, 238, 0.98) 0%, rgba(255, 205, 210, 0.98) 100%);
+    z-index: 10;
+    pointer-events: none;
+}
+
+[data-theme="dark"] .table-card-deleted-feedback .table-card-deleted-msg {
+    color: #ef9a9a;
+    background: linear-gradient(135deg, rgba(76, 27, 27, 0.98) 0%, rgba(120, 40, 40, 0.98) 100%);
+}
+
 @keyframes tableSettlePop {
     0% { opacity: 0; transform: translateY(8px) scale(0.98); }
     12% { opacity: 1; transform: translateY(0) scale(1); }
@@ -1500,20 +1579,20 @@ header h1 {
     100% { opacity: 0; transform: translateY(6px) scale(0.98); }
 }
 
-/* Hourly table delayed start button (top-right, red) */
+/* Hourly table delayed start button (top-right, red) – %12 ufaltıldı */
 .table-card .table-delay-btn {
     position: absolute;
     top: 0;
     right: 0;
-    width: 39px;
-    height: 39px;
-    min-width: 38px;
-    min-height: 38px;
+    width: 40px;
+    height: 40px;
+    min-width: 39px;
+    min-height: 39px;
     border: none;
     border-radius: 0 12px 0 28px;
     background: var(--danger-color);
     color: #fff;
-    font-size: 1.2rem;
+    font-size: 1.23rem;
     font-weight: 800;
     cursor: pointer;
     display: flex;
@@ -1540,21 +1619,56 @@ header h1 {
     max-width: 420px;
 }
 
-.delayed-start-time-input {
-    width: 100%;
-    margin-top: 8px;
+.delayed-start-time-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.delayed-start-time-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.delayed-start-time-select {
+    flex: 1;
+    min-width: 0;
     padding: 14px 16px;
     border: 2px solid var(--border-color);
     border-radius: 14px;
     font-size: 1.1rem;
     background: white;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    color: inherit;
+    cursor: pointer;
+    appearance: auto;
+    -webkit-appearance: menulist;
 }
 
-.delayed-start-time-input:focus {
+.delayed-start-time-select:focus {
     outline: none;
     border-color: rgba(52, 152, 219, 0.55);
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.18);
+}
+
+.delayed-start-time-sep {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--secondary-color);
+}
+
+[data-theme="dark"] .delayed-start-time-select {
+    background: var(--dark-surface);
+    border-color: var(--dark-border);
+    color: var(--dark-text-primary);
+}
+
+.receipt-item-icon {
+    display: inline-block;
+    margin-right: 4px;
+    font-size: 1em;
+    vertical-align: middle;
 }
 
 .manual-delete-btn {
@@ -1783,12 +1897,12 @@ header h1 {
 
 .products-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    min-width: 0;
 }
 
 /* Tek tip içerik kartları: ürün, müşteri, gider, satış (masa kartları ayrı kalır) */
-.product-card,
 .customer-card,
 .expense-card,
 .sale-card {
@@ -1801,7 +1915,10 @@ header h1 {
     min-height: 50px;
 }
 
-[data-theme="dark"] .product-card,
+[data-theme="dark"] .product-card {
+    background: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+}
 [data-theme="dark"] .customer-card,
 [data-theme="dark"] .expense-card,
 [data-theme="dark"] .sale-card {
@@ -1824,23 +1941,34 @@ header h1 {
     box-shadow: 0 2px 12px rgba(0,0,0,0.25);
 }
 
+/* Ürün kartı: masa kartıyla aynı boyut ve aralıklar (kare, padding 12px) */
 .product-card {
     display: flex;
+    flex-direction: column;
+    justify-content: center;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
+    text-align: center;
+    padding: 12px;
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    aspect-ratio: 1;
+    min-height: 0;
+    background: #ffffff;
 }
 
 .product-card-icon {
-    font-size: 1.5rem;
-    width: 40px;
-    height: 40px;
+    font-size: 1.8rem;
+    width: 48px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--light-bg);
     border-radius: 50%;
     flex-shrink: 0;
+    margin-bottom: 6px;
 }
 
 /* --- Built-in icons (SVG via data-URI) + fallback emoji/text --- */
@@ -1912,32 +2040,25 @@ header h1 {
 }
 
 .product-card-name {
-    flex: 1;
     color: var(--primary-color);
-    margin: 0;
-    font-size: 0.9rem;
+    margin: 0 0 4px 0;
+    font-size: 0.88rem;
     font-weight: 600;
-    white-space: nowrap;
+    line-height: 1.2;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
     overflow: hidden;
-    text-overflow: ellipsis;
     min-width: 0;
-}
-
-.product-card-price-stock {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
+    width: 100%;
 }
 
 .product-card-price {
     color: var(--secondary-color);
     font-size: 0.85rem;
     font-weight: 700;
-    white-space: nowrap;
-    flex-shrink: 0;
-    min-width: 60px;
-    text-align: right;
+    margin-bottom: 2px;
 }
 
 .product-card-stock {
@@ -1946,38 +2067,14 @@ header h1 {
     padding: 2px 6px;
     border-radius: 4px;
     white-space: nowrap;
-    flex-shrink: 0;
-    text-align: center;
 }
 
-.product-card-stock.stock-high {
-    background: rgba(39, 174, 96, 0.1);
-    color: #27ae60;
-}
-
-.product-card-stock.stock-low {
-    background: rgba(241, 196, 15, 0.15);
-    color: #f39c12;
-}
-
-.product-card-stock.stock-out {
-    background: rgba(231, 76, 60, 0.15);
-    color: #e74c3c;
-}
-
-[data-theme="dark"] .product-card-stock.stock-high {
-    background: rgba(39, 174, 96, 0.2);
-    color: #2ecc71;
-}
-
-[data-theme="dark"] .product-card-stock.stock-low {
-    background: rgba(241, 196, 15, 0.2);
-    color: #f1c40f;
-}
-
-[data-theme="dark"] .product-card-stock.stock-out {
-    background: rgba(231, 76, 60, 0.2);
-    color: #e74c3c;
+.product-card .product-actions {
+    margin-top: auto;
+    padding-top: 6px;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
 }
 
 .product-details {
@@ -2239,7 +2336,25 @@ header h1 {
 #customer-detail-content {
     flex: 1 1 auto;
     min-height: 0;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
+    overflow-x: hidden;
+}
+
+#customer-detail-content .customer-receipt-item {
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+#customer-detail-content .receipt-section {
+    margin-bottom: 16px;
+}
+
+#customer-detail-content .receipt-section:last-of-type {
+    margin-bottom: 0;
+}
+
+#customer-detail-content .receipt-total {
+    margin-top: 16px;
 }
 
 #customer-detail-summary {
@@ -2253,6 +2368,7 @@ header h1 {
 .customer-detail-actions {
     flex: 0 0 auto;
     margin-bottom: 0;
+    margin-top: 4px;
 }
 
 #customer-detail-summary .customer-detail-balance-val {
@@ -2285,6 +2401,11 @@ header h1 {
     background: var(--dark-surface) !important;
     border-color: var(--dark-border) !important;
     color: var(--dark-text-primary) !important;
+}
+
+.customer-receipt-item {
+    overflow: hidden;
+    min-width: 0;
 }
 
 [data-theme="dark"] .customer-receipt-item {
@@ -3237,11 +3358,13 @@ body:has(#auth-modal.modal.active) header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 10px 8px;
+    gap: 12px;
+    padding: 10px 12px;
     margin-bottom: 6px;
     border-radius: 6px;
     background: rgba(236, 240, 241, 0.3);
     transition: background 0.2s;
+    min-width: 0;
 }
 
 .receipt-item:hover {
@@ -3253,22 +3376,28 @@ body:has(#auth-modal.modal.active) header {
 }
 
 .receipt-item-name {
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--dark-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .receipt-item-details {
     font-size: 0.85rem;
     color: #7f8c8d;
     margin-left: 10px;
+    flex-shrink: 0;
 }
 
 .receipt-item-price {
+    flex-shrink: 0;
     font-weight: 700;
     font-size: 0.95rem;
-    min-width: 90px;
+    min-width: 70px;
     text-align: right;
     color: var(--secondary-color);
 }
@@ -3332,11 +3461,8 @@ body:has(#auth-modal.modal.active) header {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    overflow-x: hidden;
     border-radius: 20px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    width: 100%;
-    box-sizing: border-box;
 }
 
 [data-theme="dark"] #table-modal .modal-content {
@@ -3347,12 +3473,9 @@ body:has(#auth-modal.modal.active) header {
 #table-modal-body {
     flex: 1;
     overflow-y: auto;
-    overflow-x: hidden;
     min-height: 0;
     margin-bottom: 10px;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
-    width: 100%;
-    box-sizing: border-box;
     /* Hide scrollbar but keep scrolling functionality */
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE and Edge */
@@ -3534,53 +3657,6 @@ body:has(#auth-modal.modal.active) header {
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.15);
 }
 
-/* Masa modalı ürün kartı: adet +/- (anlık satıştaki gibi) */
-.product-card-mini-qty.table-product-qty-controls {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    margin-top: 8px;
-    width: 100%;
-    max-width: 100%;
-    padding: 0 2px;
-    box-sizing: border-box;
-}
-.product-card-mini-qty .table-product-qty-minus,
-.product-card-mini-qty .table-product-qty-plus {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    min-height: 32px;
-    max-width: 32px;
-    padding: 0;
-    border-radius: 8px;
-    font-size: 1.1rem;
-    line-height: 1;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.product-card-mini-qty .table-product-qty-input {
-    width: 40px;
-    min-width: 40px;
-    max-width: 40px;
-    height: 32px;
-    padding: 0 2px;
-    text-align: center;
-    font-size: 0.9rem;
-    border-radius: 8px;
-    border: 1px solid rgba(0,0,0,0.15);
-    -moz-appearance: textfield;
-    flex-shrink: 0;
-}
-.product-card-mini-qty .table-product-qty-input::-webkit-outer-spin-button,
-.product-card-mini-qty .table-product-qty-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
 /* Anlık satış modunda başlık + kontrol + Geri aynı yükseklik (48px), dikey hizalı */
 .table-modal-titlebar.instant-mode {
     align-items: center;
@@ -3726,6 +3802,14 @@ body:has(#auth-modal.modal.active) header {
     align-items: center;
     justify-content: flex-start;
     min-width: 0;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.03);
+    border-radius: 10px;
+    margin-right: 8px;
+}
+
+[data-theme="dark"] .table-info-footer {
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .table-info-footer .table-info-grid {
@@ -3780,13 +3864,18 @@ body:has(#auth-modal.modal.active) header {
     border-radius: var(--btn-radius);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
     transition: all 0.3s ease;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
+    gap: 10px;
     border: 2px solid transparent;
     position: relative;
     overflow: hidden;
+}
+
+.btn-footer .btn-ico,
+.btn-footer .btn-txt {
+    flex-shrink: 0;
 }
 
 .btn-footer::before {
@@ -4335,6 +4424,7 @@ form select:focus {
     display: flex;
     flex-direction: row;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
     overflow: hidden;
 }
@@ -4347,7 +4437,7 @@ form select:focus {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -4362,6 +4452,7 @@ form select:focus {
     font-size: 0.8rem;
     flex: 0 0 auto;
     white-space: nowrap;
+    margin-left: 8px;
 }
 
 .sale-product-amount {
@@ -4715,6 +4806,25 @@ form select:focus {
     margin-bottom: 10px;
 }
 
+.empty-state-hint {
+    font-size: 0.9rem;
+    color: #95a5a6;
+    margin: 4px 0 0 0;
+}
+
+[data-theme="dark"] .empty-state-hint {
+    color: var(--dark-text-secondary);
+}
+
+.table-sales-empty.empty-state {
+    min-height: 120px;
+    padding: 24px 20px;
+}
+
+.table-sales-empty.empty-state p {
+    margin: 0;
+}
+
 /* Daily Dashboard Styles */
 #daily-container {
     display: flex;
@@ -4889,34 +4999,41 @@ form select:focus {
 }
 
 /* Products grid for table modal */
+/* Masa detay kart boyutları %15 küçültüldü; ikonlar aynı */
+#table-products-section {
+    animation: tableProductsFadeIn 0.35s ease-out;
+}
+
+@keyframes tableProductsFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
 .products-grid-mini {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
-    margin-top: 15px;
-    width: 100%;
-    box-sizing: border-box;
-    overflow-x: hidden;
+    grid-template-columns: repeat(auto-fill, minmax(127px, 1fr));
+    gap: 10px;
+    margin-top: 13px;
 }
 
 .product-card-mini {
     background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    padding: 10px 8px;
-    border-radius: 12px;
+    padding: 6px 5px;
+    border-radius: 10px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.05);
     border: 2px solid transparent;
-    transition: all 0.3s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
     cursor: pointer;
     position: relative;
     box-sizing: border-box;
     overflow: hidden;
-    aspect-ratio: 1 / 1;
-    display: flex;
-    min-width: 0;
+    aspect-ratio: 1;
     width: 100%;
+    min-height: 0;
+    display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     text-align: center;
 }
 
@@ -4933,8 +5050,8 @@ form select:focus {
 }
 
 .product-card-mini:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.1);
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 8px 22px rgba(0,0,0,0.15), 0 3px 8px rgba(0,0,0,0.1);
     border-color: rgba(52, 152, 219, 0.4);
     background: linear-gradient(135deg, #ffffff 0%, #f0f7ff 100%);
 }
@@ -4947,56 +5064,6 @@ form select:focus {
     border-color: var(--success-color);
     background: linear-gradient(135deg, #e8f8f5 0%, #ffffff 100%);
     box-shadow: 0 4px 12px rgba(39, 174, 96, 0.25), 0 2px 4px rgba(39, 174, 96, 0.15);
-}
-
-.product-card-mini.product-card-success {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
-    border-color: #28a745 !important;
-    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3), 0 2px 4px rgba(40, 167, 69, 0.2) !important;
-    animation: productCardSuccessPulse 0.3s ease-out;
-}
-
-.product-card-mini.product-card-success .product-mini-ico-lg,
-.product-card-mini.product-card-success .product-mini-name,
-.product-card-mini.product-card-success .product-card-mini-qty {
-    opacity: 0;
-    visibility: hidden;
-}
-
-@keyframes productCardSuccessPulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
-}
-
-.product-card-feedback {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: transparent;
-    color: white;
-    padding: 4px 6px;
-    border-radius: 8px;
-    font-size: 0.75rem;
-    font-weight: 700;
-    white-space: normal;
-    text-align: center;
-    line-height: 1.3;
-    z-index: 10;
-    pointer-events: none;
-    animation: productCardFeedbackFade 1.5s ease-out forwards;
-    max-width: calc(100% - 12px);
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-}
-
-@keyframes productCardFeedbackFade {
-    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
-    15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-    85% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-    100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9); }
 }
 
 [data-theme="dark"] .product-card-mini {
@@ -5015,38 +5082,216 @@ form select:focus {
     border-color: var(--success-color) !important;
 }
 
-[data-theme="dark"] .product-card-mini.product-card-success {
-    background: linear-gradient(135deg, #28a745 0%, #20c997 100%) !important;
-    border-color: #28a745 !important;
-}
-
-[data-theme="dark"] .product-card-mini.product-card-success .product-mini-ico-lg,
-[data-theme="dark"] .product-card-mini.product-card-success .product-mini-name,
-[data-theme="dark"] .product-card-mini.product-card-success .product-card-mini-qty {
-    opacity: 0;
-    visibility: hidden;
-}
-
-[data-theme="dark"] .product-card-feedback {
-    color: white;
-    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-}
-
 .product-card-mini.selected::before {
     background: linear-gradient(90deg, transparent, var(--success-color), transparent);
     opacity: 1;
 }
 
+/* Masa detay ürün kartı ikonları %20 büyütüldü */
 .product-mini-ico-lg {
-    font-size: 2.2rem;
+    font-size: 2.4rem;
     line-height: 1;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     transform: translateY(0.5px);
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
+    width: 48px;
+    height: 48px;
+}
+
+.product-mini-name {
+    margin-top: 0;
+    margin-bottom: 6px;
+    padding: 0 4px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    line-height: 1.2;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    color: var(--dark-text, #333);
+}
+
+/* Normal görünüm: ikon ve ürün adı ortada */
+.product-card-mini-normal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+}
+
+.product-mini-ico-lg {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* Viski, ayran, kaşar, kola: ikon biraz daha büyük (%20 baz üzerine) */
+.product-card-mini.product-icon-lg .product-mini-ico-lg {
+    font-size: 2.1rem;
+    line-height: 1.2;
+}
+
+.product-mini-name {
+    width: 100%;
+    text-align: center;
+}
+
+/* Adet seçim modu: sayı ortada daha yüksek, aralıklar minimal */
+.product-card-mini-qty {
+    position: absolute;
+    inset: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 1px;
+    padding: 3px;
+    background: rgba(255,255,255,0.98);
+    border-radius: 10px;
+    z-index: 2;
+    box-sizing: border-box;
+}
+
+[data-theme="dark"] .product-card-mini-qty {
+    background: rgba(30,30,30,0.98);
+}
+
+/* + − butonları: aynı en-boy, ortada sayı bunlardan %25 yüksek; toplam kart içine sığar */
+.product-card-mini-qty .product-qty-plus,
+.product-card-mini-qty .product-qty-minus {
+    flex: 0 0 26px;
+    min-width: 0;
+    width: 100%;
+    height: 26px;
+    min-height: 26px;
+    max-height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: rgba(52, 152, 219, 0.15);
+    color: var(--secondary-color, #3498db);
+    font-size: 1.15rem;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.product-card-mini-qty .product-qty-plus:hover,
+.product-card-mini-qty .product-qty-minus:hover {
+    background: rgba(52, 152, 219, 0.3);
+}
+
+/* Sayı: ortada daha yüksek, boşluk az */
+.product-card-mini-qty .product-qty-number {
+    flex: 1 1 auto;
+    min-height: 40px;
+    min-width: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--dark-text, #333);
+    font-size: 1.35rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.2s;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.product-card-mini-qty .product-qty-number:hover {
+    background: rgba(76, 175, 80, 0.2);
+}
+
+.product-card-mini-qty .product-qty-value {
+    display: block;
+}
+
+[data-theme="dark"] .product-card-mini-qty .product-qty-number { color: var(--dark-text, #eee); }
+
+/* Ürün eklendi geri bildirimi: kart arka planı + mesaj */
+.product-card-mini.added-feedback {
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%) !important;
+    border-color: #4caf50 !important;
+    box-shadow: 0 4px 12px rgba(76, 175, 80, 0.35);
+}
+
+[data-theme="dark"] .product-card-mini.added-feedback {
+    background: linear-gradient(135deg, #1b3d1f 0%, #2e5c32 100%) !important;
+    border-color: #66bb6a !important;
+}
+
+/* Ürün silindi: kırmızı arka plan (ekleme ile aynı stil) */
+.product-card-mini.deleted-feedback {
+    background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%) !important;
+    border-color: #e57373 !important;
+    box-shadow: 0 4px 12px rgba(229, 115, 115, 0.35);
+}
+
+[data-theme="dark"] .product-card-mini.deleted-feedback {
+    background: linear-gradient(135deg, #4c1f1f 0%, #783030 100%) !important;
+    border-color: #e57373 !important;
+}
+
+.product-card-deleted-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    color: #b71c1c;
+    background: rgba(255, 235, 238, 0.95);
+    border-radius: 10px;
+    z-index: 2;
+}
+
+[data-theme="dark"] .product-card-deleted-msg {
+    color: #ef9a9a;
+    background: rgba(76, 27, 27, 0.95);
+}
+
+.product-card-added-msg {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    text-align: center;
+    color: #1b5e20;
+    background: rgba(232, 245, 233, 0.95);
+    border-radius: 10px;
+    z-index: 2;
+}
+
+[data-theme="dark"] .product-card-added-msg {
+    color: #a5d6a7;
+    background: rgba(27, 61, 31, 0.95);
 }
 
 /* Subtle category tint (table detail) */
@@ -5068,21 +5313,6 @@ form select:focus {
 .sale-item-row.cat-soft { background: rgba(11, 122, 59, 0.045); }
 .sale-item-row.cat-food { background: rgba(243, 194, 79, 0.06); }
 
-.product-mini-name {
-    color: #ff8c00;
-    font-size: 0.88rem;
-    font-weight: 800;
-    line-height: 1.25;
-    margin-top: 0;
-    margin-bottom: 6px;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-height: 1.25em;
-    display: block;
-}
-
 .product-mini-stock {
     font-size: 0.78rem;
     font-weight: 700;
@@ -5091,9 +5321,8 @@ form select:focus {
     box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     max-width: 100%;
     white-space: nowrap;
-    margin-top: 4px;
+    margin-top: 0;
     margin-bottom: 0;
-    display: inline-block;
 }
 
 .product-card-mini .product-price-mini {
@@ -5371,7 +5600,8 @@ form select:focus {
     }
 
     .products-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 18px;
     }
 
     .stats-grid {
@@ -5547,10 +5777,25 @@ form select:focus {
         grid-template-columns: repeat(4, 1fr);
         gap: 10px;
     }
+    .products-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
 
     .table-card {
         padding: 8px 6px;
         min-height: 80px;
+    }
+    .product-card {
+        padding: 10px 8px;
+    }
+    .product-card-name {
+        font-size: 0.8rem;
+    }
+    .product-card-icon {
+        width: 40px;
+        height: 40px;
+        font-size: 1.5rem;
     }
 
     .table-icon {
@@ -5603,6 +5848,13 @@ form select:focus {
         grid-template-columns: repeat(4, 1fr);
         gap: 10px;
     }
+    .products-grid {
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+    .product-card {
+        padding: 7px;
+    }
 
     .table-card {
         padding: 7px;
@@ -5611,10 +5863,10 @@ form select:focus {
     }
 
     .table-card .table-delay-btn {
-        width: 29px;
-        height: 29px;
+        width: 30px;
+        height: 30px;
         border-radius: 0 12px 0 22px;
-        font-size: 0.9rem;
+        font-size: 0.92rem;
     }
 
     .table-icon {
@@ -5852,25 +6104,24 @@ form select:focus {
     }
 
     .product-card-icon {
-        font-size: 1.3rem;
-        width: 36px;
-        height: 36px;
+        font-size: 1.56rem;
+        width: 43px;
+        height: 43px;
     }
 
     .product-card-name {
         font-size: 0.85rem;
     }
 
-    .product-card-price-stock {
-        gap: 6px;
-    }
     .product-card-price {
         font-size: 0.8rem;
         min-width: 50px;
     }
+
     .product-card-stock {
-        font-size: 0.7rem;
-        padding: 2px 5px;
+        font-size: 0.75rem;
+        padding: 2px 6px;
+        min-width: 30px;
     }
 
     .product-actions {
@@ -5955,16 +6206,13 @@ form select:focus {
     /* Table modal product picker: show 4 products per row on phones (user preference) */
         .products-grid-mini {
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 6px;
-        margin-top: 12px;
-        width: 100%;
-        box-sizing: border-box;
-        overflow-x: hidden;
+        gap: 5px;
+        margin-top: 10px;
     }
 
     .product-card-mini {
-        padding: 12px 8px;
-        border-radius: 12px;
+        padding: 10px 8px;
+        border-radius: 10px;
     }
 
     .product-card-mini h4 {
@@ -6282,7 +6530,7 @@ form select:focus {
 
     /* Product picker cards: more compact, table-like (fit more items vertically) */
     .product-card-mini {
-        padding: 10px 8px;
+        padding: 10px 10px;
         border-radius: 12px;
     }
     .product-card-mini h4 {
@@ -6464,9 +6712,6 @@ form select:focus {
     /* "Ürün Seçin" başlığını küçült */
     #table-products-section {
         margin-top: 4px !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-        overflow-x: hidden !important;
     }
     
     #table-products-section h3 {
@@ -6475,66 +6720,33 @@ form select:focus {
         margin-bottom: 4px !important;
     }
 
-    /* Table detail product grid: like table cards (4 columns, square) */
+    /* Table detail product grid: %15 küçük kartlar, ikonlar aynı */
     .products-grid-mini {
-        grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
-        gap: 6px !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-        overflow-x: hidden !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 5px !important;
     }
     .product-card-mini {
-        padding: 4px 2px !important;
-        border-radius: 12px !important;
-        min-width: 0 !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-    }
-    .product-card-feedback {
-        font-size: 0.65rem !important;
-        padding: 3px 4px !important;
-        max-width: calc(100% - 8px) !important;
-        line-height: 1.2 !important;
+        padding: 3px !important;
+        border-radius: 10px !important;
     }
     .product-mini-ico-lg {
-        font-size: 1.55rem !important;
-        /* Mobilde ikon kartın üstüne yapışmasın diye biraz aşağı al */
-        margin-top: 4px !important;
-        margin-bottom: 4px !important;
+        font-size: 1.86rem !important;
+        margin-bottom: 2px !important;
     }
-    .product-card-mini-qty.table-product-qty-controls {
-        gap: 2px !important;
-        padding: 0 1px !important;
-    }
-    .product-card-mini-qty .table-product-qty-minus,
-    .product-card-mini-qty .table-product-qty-plus {
-        width: 28px !important;
-        height: 28px !important;
-        min-width: 28px !important;
-        min-height: 28px !important;
-        max-width: 28px !important;
-        font-size: 1rem !important;
-    }
-    .product-card-mini-qty .table-product-qty-input {
-        width: 32px !important;
-        min-width: 32px !important;
-        max-width: 32px !important;
-        height: 28px !important;
-        font-size: 0.8rem !important;
+    .product-card-mini.product-icon-lg .product-mini-ico-lg {
+        font-size: 2.28rem !important;
     }
     .product-mini-name {
-        /* On 4-column phones the cards get very small; keep name always visible, stok ile iç içe görünmesin */
+        /* On 4-column phones the cards get very small; keep name always visible */
         color: rgba(44, 62, 80, 0.95) !important;
         font-size: 0.68rem !important;
         line-height: 1.25 !important;
-        margin-bottom: 0 !important;
-        padding-bottom: 6px !important;
-        min-height: 1.25em !important;
+        margin-bottom: 0px !important;
+        padding-bottom: 8px !important;
     }
     .product-mini-stock {
         font-size: 0.60rem !important;
         padding: 1px 5px !important;
-        margin-top: 2px !important;
     }
 
     /* Receipt (Adisyon) modal: fit to phone screen */
@@ -6862,14 +7074,8 @@ form select:focus {
         line-height: 1.3;
     }
 
-    /* Ürün kartları yatayda uzun olsun; düzenle/sil her zaman görünsün */
-    .products-grid {
-        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
-        gap: 14px;
-    }
     .product-card {
         min-width: 0;
-        padding: 12px 18px;
     }
     .product-actions {
         flex-shrink: 0;
@@ -6886,8 +7092,14 @@ form select:focus {
     .tables-grid {
         gap: 24px;
     }
+    .products-grid {
+        gap: 24px;
+    }
     
     .table-card {
+        padding: 16px 14px;
+    }
+    .product-card {
         padding: 16px 14px;
     }
 
@@ -6909,4 +7121,73 @@ form select:focus {
         max-width: 480px;
         gap: 12px;
     }
+}
+
+/* Hesap/veresiye/iptal/anlık satış bilgi şeridi (sağ altta, 2–3 sn) */
+.settlement-toast-container {
+    position: fixed;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0));
+    right: calc(20px + env(safe-area-inset-right, 0));
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.settlement-toast {
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    animation: settlement-toast-in 0.3s ease;
+}
+
+.settlement-toast.settlement-toast--out {
+    animation: settlement-toast-out 0.25s ease forwards;
+}
+
+@keyframes settlement-toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes settlement-toast-out {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+
+.settlement-toast--pay,
+.settlement-toast--instant,
+.settlement-toast--added,
+.settlement-toast--success {
+    background: #27ae60;
+}
+
+.settlement-toast--credit,
+.settlement-toast--warning {
+    background: #e67e22;
+}
+
+.settlement-toast--cancel,
+.settlement-toast--error {
+    background: #c0392b;
+}
+
+.settlement-toast--info {
+    background: #3498db;
 }

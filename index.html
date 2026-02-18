@@ -285,12 +285,6 @@
             <div class="table-modal-header">
                 <div class="table-modal-titlebar">
                 <h2 id="table-modal-title">Masa</h2>
-                    <!-- Instant sale only: quantity control next to the title -->
-                    <div id="instant-qty-controls" class="instant-qty-controls" style="display:none;">
-                        <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-minus" aria-label="Azalt">−</button>
-                        <input id="instant-qty-input" class="instant-qty-input" type="number" min="1" step="1" value="1" inputmode="numeric" />
-                        <button type="button" class="btn btn-secondary instant-qty-btn" id="instant-qty-plus" aria-label="Arttır">+</button>
-                    </div>
                 </div>
                 <div class="table-modal-header-buttons">
                     <button type="button" class="close-header move-table-btn" id="move-table-btn" aria-label="Masaya Taşı" style="display: none;"><span class="close-txt">Taşı</span></button>
@@ -310,7 +304,7 @@
                 <div id="table-sales-list" class="sales-items"></div>
             </div>
             <div class="table-modal-footer">
-                <div class="table-info-footer">
+                <div id="table-info-footer" class="table-info-footer">
                     <div id="hourly-info" style="display: none;" class="table-info-grid">
                         <span><strong>Açılış:</strong> <span id="modal-open-time"></span></span>
                         <span><strong>Oyun:</strong> <span id="modal-hourly-total"></span></span>
@@ -343,15 +337,21 @@
     </div>
 
     <!-- Delayed Start Modal (Hourly Tables) -->
-    <div id="delayed-start-modal" class="modal">
+    <div id="delayed-start-modal" class="modal modal-bottom-sheet">
         <div class="modal-content delayed-start-modal-content">
             <span class="close">&times;</span>
             <h2>Gecikmeli Başlat</h2>
             <input type="hidden" id="delayed-start-table-id">
-            <label>
-                Başlama Saati (Bugün):
-                <input type="time" id="delayed-start-time" class="delayed-start-time-input" required>
-            </label>
+            <label class="delayed-start-time-label">Başlama Saati (Bugün):</label>
+            <div class="delayed-start-time-row">
+                <select id="delayed-start-hour" class="delayed-start-time-select" aria-label="Saat">
+                    <!-- 0–23 filled by JS -->
+                </select>
+                <span class="delayed-start-time-sep">:</span>
+                <select id="delayed-start-minute" class="delayed-start-time-select" aria-label="Dakika">
+                    <!-- 0–59 filled by JS -->
+                </select>
+            </div>
             <div class="form-actions">
                 <button type="button" class="btn btn-primary" id="delayed-start-confirm-btn">Başlat</button>
                 <button type="button" class="btn btn-secondary" id="delayed-start-cancel-btn">İptal</button>
@@ -824,6 +824,9 @@
             </form>
         </div>
     </div>
+
+    <!-- Hesap/veresiye/iptal/anlık satış bilgi şeridi (sağ altta) -->
+    <div id="settlement-toast-container" class="settlement-toast-container" aria-live="polite"></div>
 
     <!-- IndexedDB local cache (must be loaded before app.js / hybrid-db.js) -->
     <script src="database.js"></script>

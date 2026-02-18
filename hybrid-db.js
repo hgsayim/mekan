@@ -289,39 +289,37 @@ export class HybridDatabase {
     }
   }
 
-  // Tables-only full sync (cheap + reliable even if updated_at isn't present/maintained).
-  // Returns true if anything important changed (active/open state etc.)
+  // Tables-only full sync. Local-first: yerel daha yeniyse (updated_at) remote ile ezilmez.
   async syncTablesFull() {
     try {
-      let before = [];
-      try { before = await this.local.getAllTables(); } catch (_) { before = []; }
-      const rows = await this.remote.getAllTables();
+      let localTables = [];
+      try { localTables = await this.local.getAllTables(); } catch (_) {}
+      const remoteRows = await this.remote.getAllTables() || [];
+      const localByKey = new Map((localTables || []).map((t) => [String(t?.id), t]));
 
-      const snap = (t) => JSON.stringify({
-        id: t?.id ?? null,
-        isActive: Boolean(t?.isActive),
-        openTime: t?.openTime ?? null,
-        closeTime: t?.closeTime ?? null,
-        hourlyRate: Number(t?.hourlyRate || 0),
-        hourlyTotal: Number(t?.hourlyTotal || 0),
-        salesTotal: Number(t?.salesTotal || 0),
-        checkTotal: Number(t?.checkTotal || 0),
-        // session history affects "still running" perception
-        hourlySessions: Array.isArray(t?.hourlySessions) ? t.hourlySessions.length : 0,
-      });
+      const merged = [];
+      for (const remote of remoteRows) {
+        const key = String(remote?.id);
+        const local = localByKey.get(key);
+        const remoteTs = remote?.updated_at || remote?.updatedAt || '';
+        const localTs = local?.updated_at || local?.updatedAt || '';
+        if (local && localTs && remoteTs && localTs > remoteTs) {
+          merged.push(local);
+        } else {
+          merged.push(remote);
+        }
+      }
+      // Remote'da olmayan yerel masaları da ekle (silinmemiş olsun)
+      for (const [key, local] of localByKey) {
+        if (!remoteRows.some((r) => String(r?.id) === key)) merged.push(local);
+      }
 
-      const beforeMap = new Map((before || []).map((t) => [String(t?.id), snap(t)]));
-      let changed = false;
-      (rows || []).forEach((t) => {
-        const key = String(t?.id);
-        if (!beforeMap.has(key) || beforeMap.get(key) !== snap(t)) changed = true;
-      });
-      if ((before || []).length !== (rows || []).length) changed = true;
+      const beforeSnap = (localTables || []).map((t) => `${t?.id}:${t?.updated_at || ''}:${t?.openTime || ''}`).join('|');
+      const afterSnap = merged.map((t) => `${t?.id}:${t?.updated_at || ''}:${t?.openTime || ''}`).join('|');
+      const changed = beforeSnap !== afterSnap;
 
-      await this._replaceStore('tables', rows);
-      // Keep delta sync cheap
-      const nowIso = new Date().toISOString();
-      this._setLastSyncISO('tables', nowIso);
+      await this._replaceStore('tables', merged);
+      this._setLastSyncISO('tables', new Date().toISOString());
       return changed;
     } catch (_) {
       return false;
@@ -330,27 +328,14 @@ export class HybridDatabase {
 
   // ----- Products -----
   async addProduct(product) {
-    // Önce local'e yaz (UI hemen güncellensin) - geçici ID ile
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = await this.remote.addProduct(product);
     try {
-      await this.local.addProduct({ ...product, id: tempId });
-    } catch (_) {}
-    
-    // Sonra remote'a yaz (arka planda)
-    let realId;
-    try {
-      realId = await this.remote.addProduct(product);
-      // Local'deki kaydı gerçek ID ile güncelle
-      try {
-        await this.local.deleteProduct(tempId).catch(() => {});
-        await this.local.addProduct({ ...product, id: realId });
-      } catch (_) {}
-    } catch (err) {
-      // Remote yazma başarısız olursa local'deki geçici kaydı sil
-      try { await this.local.deleteProduct(tempId); } catch (_) {}
-      throw err;
+      await this.local.updateProduct({ ...product, id });
+    } catch (e) {
+      // If update fails because it doesn't exist, fallback to add
+      try { await this.local.addProduct({ ...product, id }); } catch (_) {}
     }
-    return realId;
+    return id;
   }
   async getAllProducts() {
     try { return await this.local.getAllProducts(); } catch (_) { return await this.remote.getAllProducts(); }
@@ -363,42 +348,23 @@ export class HybridDatabase {
     return await this.remote.getProduct(id);
   }
   async updateProduct(product) {
-    // Önce local'e yaz (UI hemen güncellensin)
     try { await this.local.updateProduct(product); } catch (_) {}
-    // Sonra remote'a yaz (arka planda)
-    const id = await this.remote.updateProduct(product);
+    const id = product?.id ?? null;
+    this.remote.updateProduct(product).catch((e) => console.warn('HybridDB: updateProduct remote:', e?.message || e));
     return id;
   }
   async deleteProduct(id) {
-    // Önce local'den sil (UI hemen güncellensin)
-    try { await this.local.deleteProduct(id); } catch (_) {}
-    // Sonra remote'dan sil (arka planda)
     await this.remote.deleteProduct(id);
+    try { await this.local.deleteProduct(id); } catch (_) {}
   }
 
   // ----- Tables -----
   async addTable(table) {
-    // Önce local'e yaz (UI hemen güncellensin) - geçici ID ile
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    try {
-      await this.local.addTable({ ...table, id: tempId });
-    } catch (_) {}
-    
-    // Sonra remote'a yaz (arka planda)
-    let realId;
-    try {
-      realId = await this.remote.addTable(table);
-      // Local'deki kaydı gerçek ID ile güncelle
-      try {
-        await this.local.deleteTable(tempId).catch(() => {});
-        await this.local.addTable({ ...table, id: realId });
-      } catch (_) {}
-    } catch (err) {
-      // Remote yazma başarısız olursa local'deki geçici kaydı sil
-      try { await this.local.deleteTable(tempId); } catch (_) {}
-      throw err;
+    const id = await this.remote.addTable(table);
+    try { await this.local.updateTable({ ...table, id }); } catch (_) {
+      try { await this.local.addTable({ ...table, id }); } catch (_) {}
     }
-    return realId;
+    return id;
   }
   async getAllTables() {
     try { return await this.local.getAllTables(); } catch (_) { return await this.remote.getAllTables(); }
@@ -411,43 +377,25 @@ export class HybridDatabase {
     return await this.remote.getTable(id);
   }
   async updateTable(table) {
-    // Önce local'e yaz (UI hemen güncellensin)
-    try { await this.local.updateTable(table); } catch (_) {}
-    // Sonra remote'a yaz (arka planda)
-    const id = await this.remote.updateTable(table);
+    const nowIso = new Date().toISOString();
+    const row = { ...table, updated_at: nowIso };
+    try { await this.local.updateTable(row); } catch (_) {}
+    const id = row?.id ?? null;
+    this.remote.updateTable(row).catch((e) => console.warn('HybridDB: updateTable remote:', e?.message || e));
     return id;
   }
   async deleteTable(id) {
-    // Önce local'den sil (UI hemen güncellensin)
-    try { await this.local.deleteTable(id); } catch (_) {}
-    // Sonra remote'dan sil (arka planda)
     await this.remote.deleteTable(id);
+    try { await this.local.deleteTable(id); } catch (_) {}
   }
 
   // ----- Sales -----
   async addSale(sale) {
-    // Önce local'e yaz (UI hemen güncellensin) - geçici ID ile
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const saleWithTempId = { ...sale, id: tempId };
-    try {
-      await this.local.addSale(saleWithTempId);
-    } catch (_) {}
-    
-    // Sonra remote'a yaz (arka planda)
-    let realId;
-    try {
-      realId = await this.remote.addSale(sale);
-      // Local'deki kaydı gerçek ID ile güncelle
-      try {
-        await this.local.deleteSale(tempId).catch(() => {});
-        await this.local.addSale({ ...sale, id: realId });
-      } catch (_) {}
-    } catch (err) {
-      // Remote yazma başarısız olursa local'deki geçici kaydı sil
-      try { await this.local.deleteSale(tempId); } catch (_) {}
-      throw err;
+    const id = await this.remote.addSale(sale);
+    try { await this.local.updateSale({ ...sale, id }); } catch (_) {
+      try { await this.local.addSale({ ...sale, id }); } catch (_) {}
     }
-    return realId;
+    return id;
   }
   async getAllSales() {
     try { return await this.local.getAllSales(); } catch (_) { return await this.remote.getAllSales(); }
@@ -460,17 +408,13 @@ export class HybridDatabase {
     return await this.remote.getSale(id);
   }
   async updateSale(sale) {
-    // Önce local'e yaz (UI hemen güncellensin)
-    try { await this.local.updateSale(sale); } catch (_) {}
-    // Sonra remote'a yaz (arka planda)
     const id = await this.remote.updateSale(sale);
+    try { await this.local.updateSale(sale); } catch (_) {}
     return id;
   }
   async deleteSale(id) {
-    // Önce local'den sil (UI hemen güncellensin)
     try { await this.local.deleteSale(id); } catch (_) {}
-    // Sonra remote'dan sil (arka planda)
-    await this.remote.deleteSale(id);
+    this.remote.deleteSale(id).catch((e) => console.warn('HybridDB: deleteSale remote:', e?.message || e));
   }
   async getUnpaidSalesByTable(tableId) {
     try { return await this.local.getUnpaidSalesByTable(tableId); } catch (_) {
@@ -491,27 +435,11 @@ export class HybridDatabase {
 
   // ----- Customers -----
   async addCustomer(customer) {
-    // Önce local'e yaz (UI hemen güncellensin) - geçici ID ile
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    try {
-      await this.local.addCustomer({ ...customer, id: tempId });
-    } catch (_) {}
-    
-    // Sonra remote'a yaz (arka planda)
-    let realId;
-    try {
-      realId = await this.remote.addCustomer(customer);
-      // Local'deki kaydı gerçek ID ile güncelle
-      try {
-        await this.local.deleteCustomer(tempId).catch(() => {});
-        await this.local.addCustomer({ ...customer, id: realId });
-      } catch (_) {}
-    } catch (err) {
-      // Remote yazma başarısız olursa local'deki geçici kaydı sil
-      try { await this.local.deleteCustomer(tempId); } catch (_) {}
-      throw err;
+    const id = await this.remote.addCustomer(customer);
+    try { await this.local.updateCustomer({ ...customer, id }); } catch (_) {
+      try { await this.local.addCustomer({ ...customer, id }); } catch (_) {}
     }
-    return realId;
+    return id;
   }
   async getAllCustomers() {
     try { return await this.local.getAllCustomers(); } catch (_) { return await this.remote.getAllCustomers(); }
@@ -524,17 +452,13 @@ export class HybridDatabase {
     return await this.remote.getCustomer(id);
   }
   async updateCustomer(customer) {
-    // Önce local'e yaz (UI hemen güncellensin)
-    try { await this.local.updateCustomer(customer); } catch (_) {}
-    // Sonra remote'a yaz (arka planda)
     const id = await this.remote.updateCustomer(customer);
+    try { await this.local.updateCustomer(customer); } catch (_) {}
     return id;
   }
   async deleteCustomer(id) {
-    // Önce local'den sil (UI hemen güncellensin)
-    try { await this.local.deleteCustomer(id); } catch (_) {}
-    // Sonra remote'dan sil (arka planda)
     await this.remote.deleteCustomer(id);
+    try { await this.local.deleteCustomer(id); } catch (_) {}
   }
   async getSalesByCustomer(customerId) {
     // Prefer remote because it can be large; local may be stale if sync is off.
@@ -547,28 +471,23 @@ export class HybridDatabase {
 
   // ----- Expenses -----
   async addExpense(expense) {
-    // Önce local'e yaz (UI hemen güncellensin) - geçici ID ile
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     try {
-      await this.local.addExpense({ ...expense, id: tempId });
-    } catch (_) {}
-    
-    // Sonra remote'a yaz (arka planda)
-    let realId;
-    try {
-      realId = await this.remote.addExpense(expense);
-      // Local'deki kaydı gerçek ID ile güncelle
+      const id = await this.remote.addExpense(expense);
+      try { await this.local.updateExpense({ ...expense, id }); } catch (_) {
+        try { await this.local.addExpense({ ...expense, id }); } catch (_) {}
+      }
+      return id;
+    } catch (error) {
+      console.error('addExpense remote error:', error);
+      // If remote fails, still try to save locally for offline support
       try {
-        await this.local.deleteExpense(tempId).catch(() => {});
-        await this.local.addExpense({ ...expense, id: realId });
-      } catch (_) {}
-    } catch (err) {
-      // Remote yazma başarısız olursa local'deki geçici kaydı sil
-      try { await this.local.deleteExpense(tempId); } catch (_) {}
-      // Offline desteği için local'de tut (geçici ID ile)
-      return tempId;
+        const localId = await this.local.addExpense(expense);
+        return localId;
+      } catch (localError) {
+        console.error('addExpense local error:', localError);
+        throw error; // Throw original remote error
+      }
     }
-    return realId;
   }
   async getAllExpenses() {
     try { return await this.local.getAllExpenses(); } catch (_) { return await this.remote.getAllExpenses(); }
@@ -581,16 +500,20 @@ export class HybridDatabase {
     return await this.remote.getExpense(id);
   }
   async updateExpense(expense) {
-    // Önce local'e yaz (UI hemen güncellensin)
-    try { await this.local.updateExpense(expense); } catch (_) {}
-    // Sonra remote'a yaz (arka planda)
     try {
       const id = await this.remote.updateExpense(expense);
+      try { await this.local.updateExpense(expense); } catch (_) {}
       return id;
     } catch (error) {
       console.error('updateExpense remote error:', error);
-      // Remote başarısız olsa bile local güncellendi, devam et
-      return expense.id;
+      // If remote fails, still try to update locally for offline support
+      try {
+        await this.local.updateExpense(expense);
+        return expense.id;
+      } catch (localError) {
+        console.error('updateExpense local error:', localError);
+        throw error; // Throw original remote error
+      }
     }
   }
   async deleteExpense(id) {
@@ -600,15 +523,18 @@ export class HybridDatabase {
       throw new Error('Invalid expense ID');
     }
     
-    // Önce local'den sil (UI hemen güncellensin)
-    try { await this.local.deleteExpense(expenseId); } catch (_) {}
-    
-    // Sonra remote'dan sil (arka planda)
     try {
       await this.remote.deleteExpense(expenseId);
+      try { await this.local.deleteExpense(expenseId); } catch (_) {}
     } catch (error) {
       console.error('deleteExpense remote error:', error);
-      // Remote başarısız olsa bile local zaten silindi, devam et
+      // If remote fails, still try to delete locally for offline support
+      try {
+        await this.local.deleteExpense(expenseId);
+      } catch (localError) {
+        console.error('deleteExpense local error:', localError);
+        throw error; // Throw original remote error
+      }
     }
   }
 
