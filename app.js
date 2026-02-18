@@ -647,7 +647,7 @@ class MekanApp {
         }
 
         // Close modals (kayarak kapansın - closeFormModal/closeTableModal kullan)
-        const formModalIdsForClose = ['table-form-modal', 'product-modal', 'customer-modal', 'expense-form-modal', 'customer-detail-modal', 'customer-payment-modal', 'customer-credit-add-modal', 'add-product-table-modal', 'receipt-modal', 'customer-selection-modal', 'transfer-target-modal', 'delayed-start-modal'];
+        const formModalIdsForClose = ['table-form-modal', 'product-modal', 'customer-modal', 'expense-form-modal', 'customer-detail-modal', 'customer-payment-modal', 'customer-credit-add-modal', 'add-product-table-modal', 'receipt-modal', 'customer-selection-modal', 'transfer-target-modal', 'delayed-start-modal', 'gift-items-modal'];
         document.querySelectorAll('.close').forEach(closeBtn => {
             closeBtn.addEventListener('click', (e) => {
                 const modal = e.target.closest('.modal');
@@ -1747,8 +1747,12 @@ class MekanApp {
         if (!modalEl || !modalEl.classList.contains('modal-bottom-sheet') || window.innerWidth > 768) return;
         const modalContent = modalEl.querySelector('.modal-content');
         if (!modalContent) return;
+        // Ensure starting position
         modalContent.style.transform = 'translate3d(0, 100%, 0)';
         modalContent.style.transition = 'transform 0.375s cubic-bezier(0.32, 0.72, 0, 1)';
+        // Force reflow to ensure starting position is applied
+        void modalContent.offsetHeight;
+        // Then animate to final position
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 modalContent.style.transform = 'translate3d(0, 0, 0)';
@@ -3599,10 +3603,11 @@ class MekanApp {
 
                 const productIdKey = (it.productId != null) ? String(it.productId) : '';
                 const priceKey = String(price);
-                const key = `${productIdKey}|${priceKey}|${it.name || ''}`;
+                const isGift = it.isGift || false;
+                const key = `${productIdKey}|${priceKey}|${it.name || ''}|${isGift}`;
 
                 const icon = it.icon || iconByProductId[productIdKey] || '📦';
-                const lineTotal = price * amount;
+                const lineTotal = isGift ? 0 : (price * amount);
 
                 let agg = row.itemsByProductKey.get(key);
                 if (!agg) {
@@ -3612,6 +3617,7 @@ class MekanApp {
                         icon,
                         amount: 0,
                         total: 0,
+                        isGift: isGift,
                         firstTs: ts,
                         lastTs: ts,
                         // action target (most recent underlying item)
@@ -3655,6 +3661,7 @@ class MekanApp {
                     icon: g.icon,
                     amount: g.amount,
                     total: g.total,
+                    isGift: g.isGift || false,
                     firstTs: g.firstTs,
                     lastTs: g.lastTs,
                     actionSaleId: g.actionSaleId,
@@ -3691,12 +3698,16 @@ class MekanApp {
                 const itemTime = it.firstTs ? formatTimeOnly(new Date(it.firstTs).toISOString()) : row.timeOnly;
                 
                 // Hidden action buttons (shown on tap)
+                const isGift = it.isGift || false;
+                const giftBtnClass = isGift ? 'btn-warning' : 'btn-secondary';
+                const giftBtnTitle = isGift ? 'İkramı Kaldır' : 'İkram Et';
                 const buttons = `
                     <div class="sale-item-actions" data-sale-id="${saleId}" data-item-index="${idx}">
                         <button class="btn btn-danger btn-icon sale-action-btn" id="delete-sale-item-${saleId}-${idx}" title="İptal">×</button>
                         <button class="btn btn-success btn-icon sale-action-btn" id="pay-sale-item-${saleId}-${idx}" title="Nakit Öde">₺</button>
                         <button class="btn btn-info btn-icon sale-action-btn" id="credit-sale-item-${saleId}-${idx}" title="Veresiye">💳</button>
                         <button class="btn btn-icon sale-action-btn sale-action-transfer" id="transfer-sale-item-${saleId}-${idx}" title="Başka masaya taşı">➜</button>
+                        <button class="btn ${giftBtnClass} btn-icon sale-action-btn" id="gift-sale-item-${saleId}-${idx}" title="${giftBtnTitle}">🎁</button>
                     </div>
                 `;
                 
@@ -3705,10 +3716,10 @@ class MekanApp {
                         <div class="sale-product-line-content">
                             <div class="sale-product-icon">${iconHtml}</div>
                             <div class="sale-product-details">
-                                <div class="sale-product-name">${it.name || 'Ürün'}</div>
+                                <div class="sale-product-name">${it.name || 'Ürün'}${isGift ? ' <span class="gift-badge">🎁 İkram</span>' : ''}</div>
                                 <div class="sale-product-meta">
                                     <span class="sale-product-amount">${Math.round(it.amount || 0)} adet</span>
-                                    <span class="sale-product-total">${Math.round(it.total || 0)} ₺</span>
+                                    <span class="sale-product-total">${isGift ? '<span class="gift-price">0 ₺</span>' : `${Math.round(it.total || 0)} ₺`}</span>
                                 </div>
                             </div>
                         </div>
@@ -3752,7 +3763,8 @@ class MekanApp {
                     name: item.name || 'Ürün',
                     icon,
                     amount: item.amount,
-                    total: item.price * item.amount,
+                    total: (item.isGift ? 0 : (item.price * item.amount)),
+                    isGift: item.isGift || false,
                     firstTs: new Date(sale.sellDateTime).getTime(),
                     lastTs: new Date(sale.sellDateTime).getTime(),
                     actionSaleId: sale.id,
@@ -3836,6 +3848,14 @@ class MekanApp {
                         this.openTransferTargetModal('sale', { saleId: sale.id });
                     });
                 }
+                const giftBtn = lineEl.querySelector(`#gift-sale-item-${sale.id}-${index}`);
+                if (giftBtn) {
+                    giftBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        closeAllMenus();
+                        this.giftItemFromSale(sale.id, index);
+                    });
+                }
             });
         });
 
@@ -3860,7 +3880,8 @@ class MekanApp {
         if (!sale) return;
         const item = sale.items[itemIndex];
         if (!item) return;
-        const itemTotal = (item.price || 0) * (item.amount || 0);
+        // Gift items don't count towards totals
+        const itemTotal = (item.isGift || item.isCancelled) ? 0 : ((item.price || 0) * (item.amount || 0));
         const table = await this.db.getTable(sale.tableId);
         if (!table) return;
 
@@ -3905,15 +3926,65 @@ class MekanApp {
                     }
                 }
                 item.isCancelled = true;
-                sale.saleTotal = sale.items.filter(i => !i.isCancelled).reduce((sum, i) => sum + (i.price * i.amount), 0);
+                // Recalculate sale total (gift items don't count)
+                sale.saleTotal = sale.items.filter(i => !i.isCancelled).reduce((sum, i) => {
+                    if (i.isGift) return sum;
+                    return sum + (i.price * i.amount);
+                }, 0);
                 sale.isCancelled = sale.items.every(i => i.isCancelled);
                 if (sale.isCancelled) {
                     sale.isPaid = true;
                     sale.paymentTime = new Date().toISOString();
                 }
                 await this.db.updateSale(sale);
-                const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                let unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                
+                // Clean up gift items if only gifts remain and total is 0
+                const hasOnlyGifts = unpaidSales.length > 0 && unpaidSales.every(s => 
+                    s.items && s.items.length > 0 && s.items.every(item => item.isGift || item.isCancelled)
+                );
+                const nonGiftTotal = unpaidSales.reduce((sum, s) => {
+                    return sum + (s.items || []).reduce((itemSum, item) => {
+                        if (item.isGift || item.isCancelled) return itemSum;
+                        return itemSum + ((item.price || 0) * (item.amount || 0));
+                    }, 0);
+                }, 0);
+                
+                // Use newCheckTotal instead of table.checkTotal (which hasn't been updated yet)
+                if (hasOnlyGifts && nonGiftTotal === 0 && newCheckTotal === 0) {
+                    for (const s of unpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    unpaidSales = [];
+                    newSalesTotal = 0;
+                    newCheckTotal = 0;
+                }
+                
                 await this._updateTableTotals(table, unpaidSales);
+                
+                // Recalculate checkTotal after update to ensure accuracy
+                let recalculatedCheckTotal = unpaidSales.reduce((sum, s) => {
+                    return sum + (s.items || []).reduce((itemSum, item) => {
+                        if (item.isGift || item.isCancelled) return itemSum;
+                        return itemSum + ((item.price || 0) * (item.amount || 0));
+                    }, 0);
+                }, 0);
+                if (table.type === 'hourly' && table.openTime) {
+                    const hoursUsed = calculateHoursUsed(table.openTime);
+                    recalculatedCheckTotal = hoursUsed * (table.hourlyRate || 0) + recalculatedCheckTotal;
+                }
+                
+                // If checkTotal is 0, clear all unpaid sales (including gifts)
+                if (recalculatedCheckTotal === 0) {
+                    const allUnpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                    for (const s of allUnpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    unpaidSales = [];
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                }
+                
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
                     table.isActive = false;
                     table.openTime = null;
@@ -3966,7 +4037,11 @@ class MekanApp {
 
             // Remove item from original sale
             sale.items.splice(itemIndex, 1);
-            sale.saleTotal = sale.items.reduce((sum, item) => sum + (item.price * item.amount), 0);
+            // Recalculate sale total (gift items don't count)
+            sale.saleTotal = sale.items.reduce((sum, item) => {
+                if (item.isGift || item.isCancelled) return sum;
+                return sum + (item.price * item.amount);
+            }, 0);
 
             // If no items left, delete the original sale
             if (sale.items.length === 0) {
@@ -3978,8 +4053,32 @@ class MekanApp {
             // Update table totals
             const table = await this.db.getTable(sale.tableId);
             if (table) {
-                const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                let unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                
                 await this._updateTableTotals(table, unpaidSales);
+                
+                // Recalculate checkTotal after update to ensure accuracy
+                let recalculatedCheckTotal = unpaidSales.reduce((sum, s) => {
+                    return sum + (s.items || []).reduce((itemSum, item) => {
+                        if (item.isGift || item.isCancelled) return itemSum;
+                        return itemSum + ((item.price || 0) * (item.amount || 0));
+                    }, 0);
+                }, 0);
+                if (table.type === 'hourly' && table.openTime) {
+                    const hoursUsed = calculateHoursUsed(table.openTime);
+                    recalculatedCheckTotal = hoursUsed * (table.hourlyRate || 0) + recalculatedCheckTotal;
+                }
+                
+                // If checkTotal is 0, clear all unpaid sales (including gifts)
+                if (recalculatedCheckTotal === 0) {
+                    const allUnpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                    for (const s of allUnpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    unpaidSales = [];
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                }
 
                 // If last unpaid item is gone, auto-close regular tables
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -4017,6 +4116,128 @@ class MekanApp {
         
         // Open customer selection modal
         await this.openCustomerSelectionModalForItem();
+    }
+
+    async giftItemFromSale(saleId, itemIndex) {
+        const sale = await this.db.getSale(saleId);
+        if (!sale) return;
+        const item = sale.items[itemIndex];
+        if (!item) return;
+        
+        const wasGift = item.isGift || false;
+        const newGiftStatus = !wasGift;
+        const itemTotal = (item.price || 0) * (item.amount || 0);
+        
+        // Update item gift status
+        item.isGift = newGiftStatus;
+        
+        // Recalculate sale total (gift items don't count)
+        sale.saleTotal = sale.items.reduce((sum, it) => {
+            if (it.isGift) return sum;
+            return sum + ((it.price || 0) * (it.amount || 0));
+        }, 0);
+        
+        // Update table totals
+        const table = await this.db.getTable(sale.tableId);
+        if (!table) return;
+        
+        let unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+        const prevSalesTotal = Number(table.salesTotal) || 0;
+        let newSalesTotal = unpaidSales.reduce((sum, s) => {
+            return sum + (s.items || []).reduce((itemSum, it) => {
+                if (it.isGift || it.isCancelled) return itemSum;
+                return itemSum + ((it.price || 0) * (it.amount || 0));
+            }, 0);
+        }, 0);
+        
+        let newCheckTotal = newSalesTotal;
+        if (table.type === 'hourly' && table.openTime) {
+            const hoursUsed = calculateHoursUsed(table.openTime);
+            newCheckTotal = hoursUsed * (table.hourlyRate || 0) + newSalesTotal;
+        }
+        
+        // Clean up gift items if only gifts remain and total is 0
+        const hasOnlyGifts = unpaidSales.length > 0 && unpaidSales.every(s => 
+            s.items && s.items.every(item => item.isGift || item.isCancelled)
+        );
+        const nonGiftTotal = unpaidSales.reduce((sum, s) => {
+            return sum + (s.items || []).reduce((itemSum, item) => {
+                if (item.isGift || item.isCancelled) return itemSum;
+                return itemSum + ((item.price || 0) * (item.amount || 0));
+            }, 0);
+        }, 0);
+        
+        if (hasOnlyGifts && nonGiftTotal === 0 && newCheckTotal === 0) {
+            for (const s of unpaidSales) {
+                if (s?.id) await this.db.deleteSale(s.id);
+            }
+            unpaidSales = [];
+            newSalesTotal = 0;
+            newCheckTotal = 0;
+        }
+        
+        // Optimistic UI update
+        this.setTableCardState(sale.tableId, {
+            isActive: table.isActive,
+            type: table.type,
+            openTime: table.openTime || null,
+            hourlyRate: table.hourlyRate || 0,
+            salesTotal: newSalesTotal,
+            checkTotal: newCheckTotal
+        });
+        
+        if (this.currentTableId === sale.tableId) {
+            this.updateModalTotalsFromTable({ ...table, salesTotal: newSalesTotal, checkTotal: newCheckTotal });
+        }
+        
+        // Save to DB
+        Promise.resolve().then(async () => {
+            try {
+                await this.db.updateSale(sale);
+                table.salesTotal = newSalesTotal;
+                table.checkTotal = newCheckTotal;
+                
+                // If only gifts remain, close the table
+                if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
+                    table.isActive = false;
+                    table.openTime = null;
+                    table.closeTime = new Date().toISOString();
+                }
+                
+                await this.db.updateTable(table);
+                
+                // If checkTotal is 0, clear all unpaid sales (including gifts)
+                if (newCheckTotal === 0) {
+                    const allUnpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                    for (const s of allUnpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                    if (table.type !== 'hourly' && table.type !== 'instant') {
+                        table.isActive = false;
+                        table.openTime = null;
+                        table.closeTime = new Date().toISOString();
+                    }
+                    await this.db.updateTable(table);
+                }
+                
+                if (this.currentTableId === sale.tableId) {
+                    await this.loadTableSales(sale.tableId);
+                    await this.updateModalTotals(table);
+                }
+                if (this.currentView === 'tables') this.loadTables().catch(() => {});
+                if (this.currentView === 'daily') await this.loadDailyDashboard();
+                
+                this.showToast(newGiftStatus ? 'Ürün ikram olarak işaretlendi' : 'İkram işareti kaldırıldı', 'success');
+            } catch (error) {
+                console.error('Error toggling gift status:', error);
+                this.setTableCardState(sale.tableId, { isActive: table.isActive, type: table.type, openTime: table.openTime || null, hourlyRate: table.hourlyRate || 0, salesTotal: prevSalesTotal, checkTotal: table.checkTotal });
+                if (this.currentTableId === sale.tableId) this.updateModalTotalsFromTable({ ...table, salesTotal: prevSalesTotal, checkTotal: table.checkTotal });
+                await this.appAlert('İkram durumu güncellenirken hata oluştu. Lütfen tekrar deneyin.', 'Hata');
+                await this.loadTableSales(sale.tableId).catch(() => {});
+            }
+        });
     }
 
     async openTransferTargetModal(mode, opts = {}) {
@@ -4438,8 +4659,52 @@ class MekanApp {
             // Update table totals
             const table = await this.db.getTable(sale.tableId);
             if (table) {
-                const unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                let unpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                
+                // Clean up gift items if only gifts remain and total is 0
+                const hasOnlyGifts = unpaidSales.length > 0 && unpaidSales.every(s => 
+                    s.items && s.items.length > 0 && s.items.every(item => item.isGift || item.isCancelled)
+                );
+                const nonGiftTotal = unpaidSales.reduce((sum, s) => {
+                    return sum + (s.items || []).reduce((itemSum, item) => {
+                        if (item.isGift || item.isCancelled) return itemSum;
+                        return itemSum + ((item.price || 0) * (item.amount || 0));
+                    }, 0);
+                }, 0);
+                
+                // Calculate checkTotal to verify
+                let calculatedCheckTotal = nonGiftTotal;
+                if (table.type === 'hourly' && table.openTime) {
+                    const hoursUsed = calculateHoursUsed(table.openTime);
+                    calculatedCheckTotal = hoursUsed * (table.hourlyRate || 0) + nonGiftTotal;
+                }
+                
+                if (hasOnlyGifts && nonGiftTotal === 0 && calculatedCheckTotal === 0) {
+                    for (const s of unpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    unpaidSales = [];
+                }
+                
                 await this._updateTableTotals(table, unpaidSales);
+                
+                // Calculate final checkTotal after update
+                let finalCheckTotal = nonGiftTotal;
+                if (table.type === 'hourly' && table.openTime) {
+                    const hoursUsed = calculateHoursUsed(table.openTime);
+                    finalCheckTotal = hoursUsed * (table.hourlyRate || 0) + nonGiftTotal;
+                }
+                
+                // If checkTotal is 0, clear all unpaid sales (including gifts)
+                if (finalCheckTotal === 0) {
+                    const allUnpaidSales = await this.db.getUnpaidSalesByTable(sale.tableId);
+                    for (const s of allUnpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    unpaidSales = [];
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                }
 
                 // If last unpaid item is gone, auto-close regular tables
                 if (unpaidSales.length === 0 && table.type !== 'hourly' && table.type !== 'instant') {
@@ -4571,7 +4836,28 @@ class MekanApp {
 
         try {
             // Step 5: Get unpaid sales BEFORE closing table
-            const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            let unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+            
+            // Step 5.5: If only gift items remain and total is 0, clean them up
+            const hasOnlyGifts = unpaidSales.length > 0 && unpaidSales.every(sale => 
+                sale.items && sale.items.every(item => item.isGift || item.isCancelled)
+            );
+            const nonGiftTotal = unpaidSales.reduce((sum, sale) => {
+                return sum + (sale.items || []).reduce((itemSum, item) => {
+                    if (item.isGift || item.isCancelled) return itemSum;
+                    return itemSum + ((item.price || 0) * (item.amount || 0));
+                }, 0);
+            }, 0);
+            
+            if (hasOnlyGifts && nonGiftTotal === 0 && table.checkTotal === 0) {
+                // Delete all gift-only sales
+                for (const sale of unpaidSales) {
+                    if (sale?.id) {
+                        await this.db.deleteSale(sale.id);
+                    }
+                }
+                unpaidSales = []; // Clear the array for further processing
+            }
 
             // Step 6: Prepare table closure state
             const closeTimeISO = paymentTime || new Date().toISOString();
@@ -5775,6 +6061,23 @@ class MekanApp {
                     table.hourlyTotal = optimisticTable.hourlyTotal;
                 }
                 await this.db.updateTable(table);
+                
+                // If checkTotal is 0, clear all unpaid sales (including gifts)
+                if (newCheckTotal === 0) {
+                    const unpaidSales = await this.db.getUnpaidSalesByTable(tableId);
+                    for (const s of unpaidSales) {
+                        if (s?.id) await this.db.deleteSale(s.id);
+                    }
+                    table.salesTotal = 0;
+                    table.checkTotal = 0;
+                    if (table.type !== 'hourly' && table.type !== 'instant') {
+                        table.isActive = false;
+                        table.openTime = null;
+                        table.closeTime = new Date().toISOString();
+                    }
+                    await this.db.updateTable(table);
+                }
+                
                 if (this.currentTableId === tableId) {
                     await this.loadTableSales(tableId);
                     await this.updateModalTotals(table);
@@ -5933,21 +6236,34 @@ class MekanApp {
         }
 
         // Group products by name (keep icon for e.g. Oyun Ücreti)
+        // Include gift items but show price as 0
         const productGroups = {};
         unpaidSales.forEach(sale => {
             sale.items.forEach(item => {
-                if (!productGroups[item.name]) {
-                    productGroups[item.name] = {
+                // Skip cancelled items
+                if (item.isCancelled) return;
+                
+                const key = item.isGift ? `${item.name}_gift` : item.name;
+                if (!productGroups[key]) {
+                    productGroups[key] = {
                         name: item.name,
                         icon: item.icon || null,
                         amount: 0,
                         price: item.price,
-                        total: 0
+                        total: 0,
+                        isGift: item.isGift || false
                     };
                 }
-                if (item.icon && !productGroups[item.name].icon) productGroups[item.name].icon = item.icon;
-                productGroups[item.name].amount += item.amount;
-                productGroups[item.name].total += item.price * item.amount;
+                if (item.icon && !productGroups[key].icon) productGroups[key].icon = item.icon;
+                productGroups[key].amount += item.amount;
+                // Gift items always have 0 total, others accumulate normally
+                if (!item.isGift) {
+                    productGroups[key].total += item.price * item.amount;
+                }
+                // For gift items, ensure total stays 0
+                if (item.isGift) {
+                    productGroups[key].total = 0;
+                }
             });
         });
 
@@ -5964,7 +6280,10 @@ class MekanApp {
         }
 
         Object.values(productGroups).forEach(group => {
-            productTotal += group.total;
+            // Only add non-gift items to productTotal
+            if (!group.isGift) {
+                productTotal += group.total;
+            }
         });
 
         const finalTotal = hourlyTotal + productTotal;
@@ -5990,10 +6309,14 @@ class MekanApp {
             receiptHTML += `<div class="receipt-section">`;
             receiptHTML += `<div class="receipt-section-title">ÜRÜNLER</div>`;
             Object.values(productGroups).forEach(group => {
-                const iconStr = (group.icon && group.icon.trim()) ? `<span class="receipt-item-icon" aria-hidden="true">${group.icon}</span> ` : '';
+                // Use renderProductIcon to properly display SVG icons
+                const iconHtml = group.icon ? this.renderProductIcon(group.icon) : '';
+                const iconStr = iconHtml ? `<span class="receipt-item-icon" aria-hidden="true">${iconHtml}</span> ` : '';
+                const giftLabel = group.isGift ? ' <span style="color: #f39c12; font-weight: 600; font-size: 0.85rem;">🎁 İkram</span>' : '';
+                const displayTotal = group.isGift ? 0 : group.total;
                 receiptHTML += `<div class="receipt-item">`;
-                receiptHTML += `<div class="receipt-item-name">${iconStr}${group.name} x${group.amount}</div>`;
-                receiptHTML += `<div class="receipt-item-price">${Math.round(group.total)} ₺</div>`;
+                receiptHTML += `<div class="receipt-item-name">${iconStr}${group.name} x${group.amount}${giftLabel}</div>`;
+                receiptHTML += `<div class="receipt-item-price">${Math.round(displayTotal)} ₺</div>`;
                 receiptHTML += `</div>`;
             });
             receiptHTML += `</div>`;
@@ -6018,6 +6341,124 @@ class MekanApp {
         receiptHTML += `</div>`;
 
         receiptBody.innerHTML = receiptHTML;
+        if (modal.classList.contains('closing')) modal.classList.remove('closing');
+        modal.classList.add('active');
+        if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
+            this.runBottomSheetOpen(modal);
+        } else {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    const modalContent = modal.querySelector('.modal-content');
+                    if (modalContent) {
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    }
+                });
+            });
+        }
+    }
+
+    async showGiftItemsModal({ startDate, endDate }) {
+        const modal = document.getElementById('gift-items-modal');
+        const body = document.getElementById('gift-items-body');
+        if (!modal || !body) return;
+
+        // Get all sales in date range
+        const allSales = await this.db.getAllSales();
+        const periodSales = allSales.filter(sale => {
+            if (!sale.isPaid) return false;
+            if (sale.isCancelled) return false;
+            const paymentDate = sale.paymentTime ? new Date(sale.paymentTime) : new Date(sale.sellDateTime);
+            return paymentDate >= startDate && paymentDate <= endDate;
+        });
+
+        // Collect all gift items
+        const giftItems = [];
+        periodSales.forEach(sale => {
+            if (sale.items && sale.items.length > 0) {
+                sale.items.forEach(item => {
+                    if (item.isGift && !item.isCancelled) {
+                        giftItems.push({
+                            name: item.name,
+                            icon: item.icon || '🎁',
+                            amount: item.amount || 0,
+                            price: item.price || 0,
+                            date: sale.paymentTime || sale.sellDateTime,
+                            tableId: sale.tableId
+                        });
+                    }
+                });
+            }
+        });
+
+        // Group by product name
+        const giftGroups = {};
+        const allTables = await this.db.getAllTables();
+        const tableMap = {};
+        allTables.forEach(t => tableMap[t.id] = t.name);
+
+        giftItems.forEach(item => {
+            const key = item.name;
+            if (!giftGroups[key]) {
+                giftGroups[key] = {
+                    name: item.name,
+                    icon: item.icon,
+                    totalAmount: 0,
+                    items: []
+                };
+            }
+            giftGroups[key].totalAmount += item.amount;
+            giftGroups[key].items.push(item);
+        });
+
+        // Sort by total amount (descending)
+        const sortedGroups = Object.values(giftGroups).sort((a, b) => b.totalAmount - a.totalAmount);
+
+        // Build HTML
+        let html = '';
+        if (sortedGroups.length === 0) {
+            html = '<div style="text-align: center; padding: 40px; color: #7f8c8d;">Bu tarih aralığında ikram edilen ürün bulunmamaktadır.</div>';
+        } else {
+            html = '<div style="margin-bottom: 20px; color: #7f8c8d; font-size: 0.9rem;">';
+            html += `Tarih: ${startDate.toLocaleDateString('tr-TR')} - ${endDate.toLocaleDateString('tr-TR')}`;
+            html += '</div>';
+            
+            sortedGroups.forEach(group => {
+                html += '<div class="gift-item-group" style="margin-bottom: 20px; padding: 15px; background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); border: 1px solid rgba(236, 240, 241, 0.6);">';
+                html += `<div style="display: flex; align-items: center; margin-bottom: 10px;">`;
+                html += `<span style="font-size: 1.5rem; margin-right: 10px;">${group.icon}</span>`;
+                html += `<div style="flex: 1;">`;
+                html += `<div style="font-weight: 700; font-size: 1.1rem; color: var(--dark-text);">${group.name}</div>`;
+                html += `<div style="font-size: 0.9rem; color: #7f8c8d; margin-top: 4px;">Toplam: ${group.totalAmount} adet</div>`;
+                html += `</div>`;
+                html += `</div>`;
+                
+                // List individual items
+                html += '<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(236, 240, 241, 0.6);">';
+                group.items.forEach(item => {
+                    const date = new Date(item.date);
+                    const dateStr = date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                    const timeStr = date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+                    const tableName = item.tableId ? (tableMap[item.tableId] || `Masa ${item.tableId}`) : 'Bilinmeyen';
+                    html += `<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; font-size: 0.9rem;">`;
+                    html += `<span style="color: #7f8c8d;">${dateStr} ${timeStr} - ${tableName}</span>`;
+                    html += `<span style="font-weight: 600; color: var(--dark-text);">${item.amount} adet</span>`;
+                    html += `</div>`;
+                });
+                html += '</div>';
+                html += '</div>';
+            });
+        }
+
+        body.innerHTML = html;
+        
+        // Setup close button
+        const closeBtn = modal.querySelector('.close');
+        if (closeBtn) {
+            closeBtn.onclick = () => this.closeFormModal('gift-items-modal');
+        }
+
+        // Show modal
         if (modal.classList.contains('closing')) modal.classList.remove('closing');
         modal.classList.add('active');
         if (modal.classList.contains('modal-bottom-sheet') && window.innerWidth <= 768) {
@@ -7727,28 +8168,43 @@ class MekanApp {
                     }
                     
                     // Group products by name from ALL valid sales in this closure (keep icon for Oyun Ücreti)
+                    // Include gift items but show price as 0
                     const productGroups = {};
                     validSales.forEach(sale => {
                         if (sale.items && sale.items.length > 0) {
                             sale.items.forEach(item => {
-                                if (!productGroups[item.name]) {
-                                    productGroups[item.name] = {
+                                // Skip cancelled items
+                                if (item.isCancelled) return;
+                                
+                                const key = item.isGift ? `${item.name}_gift` : item.name;
+                                if (!productGroups[key]) {
+                                    productGroups[key] = {
                                         name: item.name,
                                         icon: item.icon || null,
                                         amount: 0,
                                         price: item.price,
-                                        total: 0
+                                        total: 0,
+                                        isGift: item.isGift || false
                                     };
                                 }
-                                if (item.icon && !productGroups[item.name].icon) productGroups[item.name].icon = item.icon;
-                                productGroups[item.name].amount += item.amount;
-                                productGroups[item.name].total += item.price * item.amount;
+                                if (item.icon && !productGroups[key].icon) productGroups[key].icon = item.icon;
+                                productGroups[key].amount += item.amount;
+                                // Gift items always have 0 total, others accumulate normally
+                                if (!item.isGift) {
+                                    productGroups[key].total += item.price * item.amount;
+                                }
+                                // For gift items, ensure total stays 0
+                                if (item.isGift) {
+                                    productGroups[key].total = 0;
+                                }
                             });
                         }
                     });
                     
-                    // Calculate product total
-                    const productTotal = Object.values(productGroups).reduce((sum, group) => sum + group.total, 0);
+                    // Calculate product total (exclude gift items)
+                    const productTotal = Object.values(productGroups).reduce((sum, group) => {
+                        return sum + (group.isGift ? 0 : group.total);
+                    }, 0);
                     const finalTotal = hourlyTotal + productTotal;
                     
                     // Skip if no products and no hourly total (empty receipt)
@@ -7790,10 +8246,14 @@ class MekanApp {
                         receiptContentHTML += `<div class="receipt-section">`;
                         receiptContentHTML += `<div class="receipt-section-title">ÜRÜNLER</div>`;
                         Object.values(productGroups).forEach(group => {
-                            const iconStr = (group.icon && group.icon.trim()) ? `<span class="receipt-item-icon" aria-hidden="true">${group.icon}</span> ` : '';
+                            // Use renderProductIcon to properly display SVG icons
+                            const iconHtml = group.icon ? this.renderProductIcon(group.icon) : '';
+                            const iconStr = iconHtml ? `<span class="receipt-item-icon" aria-hidden="true">${iconHtml}</span> ` : '';
+                            const giftLabel = group.isGift ? ' <span style="color: #f39c12; font-weight: 600; font-size: 0.85rem;">🎁 İkram</span>' : '';
+                            const displayTotal = group.isGift ? 0 : group.total;
                             receiptContentHTML += `<div class="receipt-item">`;
-                            receiptContentHTML += `<div class="receipt-item-name">${iconStr}${group.name} x${group.amount}</div>`;
-                            receiptContentHTML += `<div class="receipt-item-price">${Math.round(group.total)} ₺</div>`;
+                            receiptContentHTML += `<div class="receipt-item-name">${iconStr}${group.name} x${group.amount}${giftLabel}</div>`;
+                            receiptContentHTML += `<div class="receipt-item-price">${Math.round(displayTotal)} ₺</div>`;
                             receiptContentHTML += `</div>`;
                         });
                         receiptContentHTML += `</div>`;
@@ -8034,22 +8494,25 @@ class MekanApp {
                         name: item.name,
                         amount: 0,
                         price: item.price,
-                        total: 0
+                        total: 0,
+                        isGift: false
                     };
                 }
                 cancelledGroups[item.name].amount += item.amount;
                 cancelledGroups[item.name].total += item.price * item.amount;
             } else {
-                if (!itemGroups[item.name]) {
-                    itemGroups[item.name] = {
+                const key = item.isGift ? `${item.name}_gift` : item.name;
+                if (!itemGroups[key]) {
+                    itemGroups[key] = {
                         name: item.name,
                         amount: 0,
                         price: item.price,
-                        total: 0
+                        total: 0,
+                        isGift: item.isGift || false
                     };
                 }
-                itemGroups[item.name].amount += item.amount;
-                itemGroups[item.name].total += item.price * item.amount;
+                itemGroups[key].amount += item.amount;
+                itemGroups[key].total += item.isGift ? 0 : (item.price * item.amount);
             }
         });
         
@@ -8058,7 +8521,8 @@ class MekanApp {
         
         // Add grouped items
         Object.values(itemGroups).forEach(group => {
-            items += `<div class="sale-item">${group.name} x${group.amount} @ ${Math.round(group.price)} ₺ = ${Math.round(group.total)} ₺</div>`;
+            const giftLabel = group.isGift ? ' <span style="color: #f39c12; font-weight: 600;">🎁 İkram</span>' : '';
+            items += `<div class="sale-item">${group.name} x${group.amount} @ ${Math.round(group.price)} ₺ = ${Math.round(group.total)} ₺${giftLabel}</div>`;
         });
         
         // Add cancelled items (grouped)
@@ -8288,6 +8752,7 @@ class MekanApp {
         let totalProductIncome = 0;
         let totalProductCost = 0;
         let totalProductsSold = 0;
+        let totalGiftAmount = 0; // Total amount of products given as gift
         let totalCreditGiven = 0; // Total amount given as credit today
         let totalCreditReceived = 0; // Total amount received from customers paying their credit debt
         const productCounts = {};
@@ -8305,8 +8770,13 @@ class MekanApp {
                 totalCreditReceived += sale.saleTotal;
             } else {
                 // Only count non-credit sales in income (credit sales are not actual income yet)
+                // Also exclude gift items from income
                 if (!sale.isCredit) {
-                    totalProductIncome += sale.saleTotal;
+                    const saleTotalExcludingGifts = (sale.items || []).reduce((sum, item) => {
+                        if (item.isCancelled || item.isGift) return sum;
+                        return sum + ((item.price || 0) * (item.amount || 0));
+                    }, 0);
+                    totalProductIncome += saleTotalExcludingGifts;
                 }
                 
                 // Count credit sales separately
@@ -8321,9 +8791,15 @@ class MekanApp {
                     // Skip cancelled items
                     if (item.isCancelled) return;
                     
-                    totalProductsSold += item.amount || 0;
-                    // Calculate product cost (arrival price * amount) - only for non-credit sales
-                    if (!sale.isCredit) {
+                    // Count gift items separately
+                    if (item.isGift) {
+                        totalGiftAmount += (item.amount || 0);
+                    } else {
+                        totalProductsSold += item.amount || 0;
+                    }
+                    
+                    // Calculate product cost (arrival price * amount) - only for non-credit, non-gift sales
+                    if (!sale.isCredit && !item.isGift) {
                         const itemCost = (item.arrivalPrice || 0) * (item.amount || 0);
                         totalProductCost += itemCost;
                     }
@@ -8519,6 +8995,18 @@ class MekanApp {
         if (transactionsCountEl) {
             transactionsCountEl.textContent = transactionsCount;
         }
+        const giftAmountEl = document.getElementById('gift-amount');
+        if (giftAmountEl) {
+            giftAmountEl.textContent = totalGiftAmount;
+            // Make it clickable to show gift items list
+            giftAmountEl.style.cursor = 'pointer';
+            giftAmountEl.title = 'İkram edilen ürünleri görmek için tıklayın';
+            giftAmountEl.onclick = () => this.showGiftItemsModal({ startDate, endDate });
+        }
+        
+        // Store gift items data for modal
+        this._giftItemsData = { startDate, endDate, periodPaidSales };
+        
         // Monthly income/expenses removed
 
         // Debug: Log calculated values

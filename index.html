@@ -251,6 +251,13 @@
                                     <p class="stat-value" id="transactions-count">0</p>
                                 </div>
                             </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">🎁</div>
+                                <div class="stat-content">
+                                    <h3>İkram Edilen Toplam</h3>
+                                    <p class="stat-value" id="gift-amount">0</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -490,6 +497,9 @@
                         <option value="🪑">🪑 Sandalye (Yüksek)</option>
                         <option value="🪑">🪑 Sandalye (Bar)</option>
                         <option value="🏢">🏢 Ofis</option>
+                        <option value="🌳">🌳 Ağaç</option>
+                        <option value="🌿">🌿 Çiçek</option>
+                        <option value="🌸">🌸 Çiçek Bahçesi</option>
                         <option value="🍵">🍵 Çay</option>
                         <option value="🪑">🪑 Koltuk (Ofis)</option>
                         <option value="🪑">🪑 Sandalye (Kafe)</option>
@@ -511,6 +521,9 @@
                         <option value="👨">👨 Erkek</option>
                         <option value="👩">👩 Kadın</option>
                         <option value="🧑">🧑 Kişi (Nötr)</option>
+                        <option value="👨🏿">👨🏿 Siyahi Erkek</option>
+                        <option value="👩🏿">👩🏿 Siyahi Kadın</option>
+                        <option value="🧑🏿">🧑🏿 Siyahi Kişi</option>
                         <option value="👨‍🦱">👨‍🦱 Erkek (Saçlı)</option>
                         <option value="👩‍🦱">👩‍🦱 Kadın (Saçlı)</option>
                         <option value="👨‍🦰">👨‍🦰 Erkek (Kızıl)</option>
@@ -722,6 +735,19 @@
                 <button class="btn btn-secondary" id="cancel-receipt-btn">İptal</button>
                 <button class="btn btn-success" id="confirm-payment-btn">Ödemeyi Tamamla</button>
                 <button class="btn btn-info" id="confirm-credit-btn" style="display: none;">Veresiye İşaretle</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gift Items List Modal -->
+    <div id="gift-items-modal" class="modal modal-bottom-sheet">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>İkram Edilen Ürünler</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div id="gift-items-body" class="gift-items-body">
+                <!-- Gift items list will be inserted here -->
             </div>
         </div>
     </div>

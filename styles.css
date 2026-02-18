@@ -1965,6 +1965,7 @@ header h1 {
 /* Kaşar peyniri: kalıp blok – ön yüz, üst yüz, yan yüz, hafif delikler */
 .app-ico[data-ico="kasar"] {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M20 22h22v22H20z' rx='2' fill='%23e8b84a'/%3E%3Cpath d='M20 22l6-5h22l-6 5H20z' fill='%23f5dc7a'/%3E%3Cpath d='M42 22v22l6-5V27l-6-5z' fill='%23c99228'/%3E%3Cellipse cx='28' cy='32' rx='2.5' ry='2' fill='%23d4a030' opacity='.55'/%3E%3Cellipse cx='36' cy='38' rx='2' ry='1.5' fill='%23d4a030' opacity='.5'/%3E%3C/svg%3E");
+    transform: scale(1.25);
 }
 /* Ayran: SÜTAŞ tarzı bardak – beyaz konik bardak, mavi folyo kapak, yeşil oval logo, mavi dalga/splash */
 .app-ico[data-ico="ayran"] {
@@ -2001,6 +2002,7 @@ header h1 {
 /* Viski: kısa kesme cam kadehi – yarıya kadar amber viski */
 .app-ico[data-ico="viski"] {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='vglass' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23e8e8e8'/%3E%3Cstop offset='40%25' stop-color='%23fff'/%3E%3Cstop offset='100%25' stop-color='%23d0d0d0'/%3E%3C/linearGradient%3E%3ClinearGradient id='vliq' x1='0%25' y1='100%25' x2='0%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%238B6914'/%3E%3Cstop offset='50%25' stop-color='%23C9A227'/%3E%3Cstop offset='100%25' stop-color='%23D4A84A'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M20 24 L22 50 L42 50 L44 24 Z' fill='url(%23vglass)' fill-opacity='.9' stroke='%23aaa' stroke-width='0.7'/%3E%3Cpath d='M22 38 L22 50 L42 50 L42 38 Z' fill='url(%23vliq)'/%3E%3Cpath d='M23 38 L23 49 L41 49 L41 38 Z' fill='%23C9A227' fill-opacity='.5'/%3E%3Cpath d='M26 26 L28 26 L28 50 L26 50 Z' stroke='%23fff' stroke-width='0.5' fill='none' opacity='.45'/%3E%3Cpath d='M38 26 L40 26 L40 50 L38 50 Z' stroke='%23fff' stroke-width='0.5' fill='none' opacity='.45'/%3E%3Cpath d='M22 50 L42 50 L40 54 L24 54 Z' fill='%23e5e5e5' stroke='%23aaa' stroke-width='0.5'/%3E%3C/svg%3E");
+    transform: scale(1.25);
 }
 
 .product-card-name {
@@ -3008,6 +3010,7 @@ header h1 {
         transform: translate3d(0, 100%, 0);
         transition: transform 0.375s cubic-bezier(0.32, 0.72, 0, 1);
         box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+        will-change: transform;
     }
     .modal.modal-bottom-sheet.active .modal-content {
         transform: translate3d(0, 0, 0);
@@ -3412,6 +3415,27 @@ body:has(#auth-modal.modal.active) header {
     min-width: 140px;
 }
 
+/* Gift Items Modal */
+.gift-items-body {
+    max-height: 70vh;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.gift-item-group {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.gift-item-group:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12) !important;
+}
+
+[data-theme="dark"] .gift-item-group {
+    background: var(--dark-surface) !important;
+    border-color: var(--dark-border) !important;
+}
+
 #table-modal .modal-content {
     max-width: 900px;
     padding: 20px 25px;
@@ -3435,6 +3459,7 @@ body:has(#auth-modal.modal.active) header {
     min-height: 0;
     margin-bottom: 10px;
     box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+    border-radius: 12px;
     /* Hide scrollbar but keep scrolling functionality */
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* IE and Edge */
@@ -3747,6 +3772,7 @@ body:has(#auth-modal.modal.active) header {
     padding: 15px 0 0 0;
     border-top: 1px solid rgba(0, 0, 0, 0.1);
     flex-wrap: nowrap;
+    border-radius: 0 0 12px 12px;
 }
 
 [data-theme="dark"] .table-modal-footer {
@@ -4429,6 +4455,18 @@ form select:focus {
     font-size: 0.85rem;
 }
 
+.gift-badge {
+    color: #f39c12;
+    font-weight: 600;
+    font-size: 0.85rem;
+    margin-left: 4px;
+}
+
+.gift-price {
+    color: #95a5a6;
+    text-decoration: line-through;
+}
+
 [data-theme="dark"] .sale-product-total {
     color: var(--primary-color) !important;
 }
@@ -4961,6 +4999,9 @@ form select:focus {
 /* Masa detay kart boyutları %15 küçültüldü; ikonlar aynı */
 #table-products-section {
     animation: tableProductsFadeIn 0.35s ease-out;
+    border-radius: 12px;
+    padding: 12px;
+    background: rgba(236, 240, 241, 0.3);
 }
 
 @keyframes tableProductsFadeIn {
@@ -5124,12 +5165,12 @@ form select:focus {
 /* + − butonları: kısa dikey, ortada sayı daha yüksek */
 .product-card-mini-qty .product-qty-plus,
 .product-card-mini-qty .product-qty-minus {
-    flex: 0 0 18px;
+    flex: 0 0 16.2px;
     min-width: 0;
     width: 100%;
-    height: 18px;
-    min-height: 18px;
-    max-height: 18px;
+    height: 16.2px;
+    min-height: 16.2px;
+    max-height: 16.2px;
     padding: 0;
     border: none;
     border-radius: 5px;
@@ -5154,12 +5195,12 @@ form select:focus {
 
 /* Sayı: + − den daha yüksek, ortada belirgin */
 .product-card-mini-qty .product-qty-number {
-    flex: 0 0 40px;
+    flex: 0 0 45px;
     min-width: 0;
     width: 100%;
-    height: 40px;
-    min-height: 40px;
-    max-height: 40px;
+    height: 45px;
+    min-height: 45px;
+    max-height: 45px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5183,9 +5224,14 @@ form select:focus {
 /* Mobil: kart küçükken +/- ve sayı karta sığsın, − alta taşmasın */
 @media (max-width: 540px) {
     .product-card-mini-qty .product-qty-plus,
-    .product-card-mini-qty .product-qty-minus,
+    .product-card-mini-qty .product-qty-minus {
+        flex: 0.8 1 0;
+        min-height: 0;
+        max-height: none;
+        height: auto;
+    }
     .product-card-mini-qty .product-qty-number {
-        flex: 1 1 0;
+        flex: 1.4 1 0;
         min-height: 0;
         max-height: none;
         height: auto;
@@ -6245,6 +6291,7 @@ form select:focus {
         margin-bottom: 8px;
         overflow: auto;
         flex: 1 1 auto;
+        border-radius: 12px;
         /* Hide scrollbar but keep scrolling functionality */
         scrollbar-width: none; /* Firefox */
         -ms-overflow-style: none; /* IE and Edge */
@@ -6263,6 +6310,8 @@ form select:focus {
         z-index: 6;
         background: #fff;
         padding-top: 6px;
+        border-radius: 14px 14px 12px 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     }
 
     [data-theme="dark"] .table-modal-header {
@@ -6343,6 +6392,7 @@ form select:focus {
         background: #fff;
         padding-top: 10px;
         padding-bottom: calc(10px + env(safe-area-inset-bottom));
+        border-radius: 0 0 12px 12px;
         display: flex;
         flex-direction: column;
     }
