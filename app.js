@@ -5756,7 +5756,9 @@ class MekanApp {
             this.updateModalTotalsFromTable(optimisticTable);
             this.showProductCardAddedFeedback(tableId, productId, amount, product.name);
         }
-        if (saleTotal > 0) this.showSettlementToast(saleTotal, 'added');
+        if (saleTotal > 0) {
+            this.showToast(`${amount}x ${product.name} ${Math.round(saleTotal)}₺ eklendi`, 'success');
+        }
 
         // DB arkada; bittikten sonra liste ve header güncellenir
         Promise.resolve().then(async () => {
